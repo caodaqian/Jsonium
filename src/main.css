@@ -1,0 +1,303 @@
+/* Jsonium - 主题系统 */
+
+:root {
+  /* 浅色模式 - Catppuccin Latte */
+  --color-bg-primary: #eff1f5;
+  --color-bg-secondary: #e6e9f0;
+  --color-bg-tertiary: #dce0e8;
+  --color-text-primary: #4c4f69;
+  --color-text-secondary: #5c5f77;
+  --color-text-tertiary: #6c6f85;
+  
+  /* Catppuccin Mauve - 紫色主色 */
+  --color-primary: #c6a0f6;
+  --color-primary-light: #d8b4fe;
+  --color-primary-lighter: #e5d5ff;
+  --color-primary-dark: #b47fd6;
+  --color-primary-darker: #a267c6;
+  
+  /* 状态颜色 - Catppuccin */
+  --color-success: #a6da95;
+  --color-warning: #f5a24e;
+  --color-error: #e78284;
+  --color-info: #85c1dc;
+  
+  /* 边框和分割线 */
+  --color-border: #bcc0cc;
+  --color-divider: #acb0be;
+  
+  /* 其他 */
+  --color-hover-bg: #dfe1ea;
+  --color-active-bg: #d0d3e0;
+  
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  
+  /* 字体 */
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
+
+/* 深色模式 - Catppuccin Macchiato */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #24273a;
+    --color-bg-secondary: #363a4f;
+    --color-bg-tertiary: #494d64;
+    --color-text-primary: #cad3f5;
+    --color-text-secondary: #b8c5d6;
+    --color-text-tertiary: #a5adce;
+    
+    /* Catppuccin Mauve - 紫色主色 */
+    --color-primary: #c6a0f6;
+    --color-primary-light: #d8b4fe;
+    --color-primary-lighter: #e5d5ff;
+    --color-primary-dark: #b47fd6;
+    --color-primary-darker: #a267c6;
+    
+    /* 边框 */
+    --color-border: #5b6078;
+    --color-divider: #49506e;
+    
+    /* 其他 */
+    --color-hover-bg: #494d64;
+    --color-active-bg: #565b73;
+  }
+}
+
+/* 允许手动切换 */
+html.light-mode {
+  --color-bg-primary: #eff1f5;
+  --color-bg-secondary: #e6e9f0;
+  --color-bg-tertiary: #dce0e8;
+  --color-text-primary: #4c4f69;
+  --color-text-secondary: #5c5f77;
+  --color-text-tertiary: #6c6f85;
+  --color-primary: #c6a0f6;
+  --color-primary-light: #d8b4fe;
+  --color-primary-lighter: #e5d5ff;
+  --color-primary-dark: #b47fd6;
+  --color-primary-darker: #a267c6;
+  --color-border: #bcc0cc;
+  --color-divider: #acb0be;
+  --color-hover-bg: #dfe1ea;
+  --color-active-bg: #d0d3e0;
+}
+
+html.dark-mode {
+  --color-bg-primary: #24273a;
+  --color-bg-secondary: #363a4f;
+  --color-bg-tertiary: #494d64;
+  --color-text-primary: #cad3f5;
+  --color-text-secondary: #b8c5d6;
+  --color-text-tertiary: #a5adce;
+  --color-primary: #c6a0f6;
+  --color-primary-light: #d8b4fe;
+  --color-primary-lighter: #e5d5ff;
+  --color-primary-dark: #b47fd6;
+  --color-primary-darker: #a267c6;
+  --color-border: #5b6078;
+  --color-divider: #49506e;
+  --color-hover-bg: #494d64;
+  --color-active-bg: #565b73;
+}
+
+/* 全局重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 基础元素样式 */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  transition: all 0.2s ease;
+  font-weight: var(--font-weight-medium);
+}
+
+button:hover {
+  background-color: var(--color-hover-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+button:active {
+  background-color: var(--color-active-bg);
+  border-color: var(--color-primary-dark);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background-color: var(--color-primary);
+  color: #ffffff;
+  border-color: var(--color-primary);
+}
+
+button.primary:hover {
+  background-color: var(--color-primary-light);
+  border-color: var(--color-primary-light);
+  color: #ffffff;
+}
+
+button.primary:active {
+  background-color: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: all 0.2s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(198, 160, 246, 0.1);
+}
+
+select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23c6a0f6' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+}
+
+textarea {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+  resize: vertical;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-primary-light);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* 通用类 */
+.text-primary {
+  color: var(--color-text-primary);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-tertiary {
+  color: var(--color-text-tertiary);
+}
+
+.bg-primary {
+  background-color: var(--color-bg-primary);
+}
+
+.bg-secondary {
+  background-color: var(--color-bg-secondary);
+}
+
+.border {
+  border: 1px solid var(--color-border);
+}
+
+.rounded {
+  border-radius: 6px;
+}
+
+.shadow-sm {
+  box-shadow: var(--shadow-sm);
+}
+
+.shadow-md {
+  box-shadow: var(--shadow-md);
+}
+
+.shadow-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+.p-xs { padding: var(--spacing-xs); }
+.p-sm { padding: var(--spacing-sm); }
+.p-md { padding: var(--spacing-md); }
+.p-lg { padding: var(--spacing-lg); }
+.p-xl { padding: var(--spacing-xl); }
+
+.gap-xs { gap: var(--spacing-xs); }
+.gap-sm { gap: var(--spacing-sm); }
+.gap-md { gap: var(--spacing-md); }
+.gap-lg { gap: var(--spacing-lg); }
+
+.text-xs { font-size: var(--font-size-xs); }
+.text-sm { font-size: var(--font-size-sm); }
+.text-base { font-size: var(--font-size-base); }
+.text-lg { font-size: var(--font-size-lg); }
+.text-xl { font-size: var(--font-size-xl); }
+
+.font-normal { font-weight: var(--font-weight-normal); }
+.font-medium { font-weight: var(--font-weight-medium); }
+.font-semibold { font-weight: var(--font-weight-semibold); }
+.font-bold { font-weight: var(--font-weight-bold); }
