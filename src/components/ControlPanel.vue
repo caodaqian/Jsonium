@@ -181,6 +181,45 @@ function getTabLabel(tab) {
       <button @click="handleWriteFile" class="panel-btn">
         💾 保存为文件
       </button>
+
+      <!-- 编辑器设置 -->
+      <div class="form-group" style="margin-top:12px;">
+        <h4>编辑器设置</h4>
+
+        <label>
+          <input type="checkbox" v-model="store.editorSettings.preserveWhitespaceOnCopy" />
+          保留复制内容中的原始空白（空格/换行）
+        </label>
+
+        <label style="margin-top:8px; display:block;">
+          格式检测模式
+        </label>
+        <select v-model="store.editorSettings.formatDetectorMode" class="form-select" style="width: auto; display: inline-block;">
+          <option value="lenient">宽松 (lenient)</option>
+          <option value="strict">严格 (strict)</option>
+        </select>
+      </div>
+
+      <!-- AI 设置（与 AI 解析重试相关） -->
+      <div class="form-group" style="margin-top:12px;">
+        <h4>AI 解析设置</h4>
+        <label>
+          <input type="checkbox" v-model="store.aiConfig.parseRetry" />
+          自动在失败时重试仅返回 JSON（parseRetry）
+        </label>
+
+        <label style="margin-top:8px; display:block;">
+          最大重试次数
+        </label>
+        <input
+          type="number"
+          v-model.number="store.aiConfig.parseRetryMax"
+          min="0"
+          step="1"
+          class="form-input"
+          style="width:80px;"
+        />
+      </div>
     </div>
     
     <!-- 转换面板 -->

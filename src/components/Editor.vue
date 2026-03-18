@@ -418,11 +418,12 @@
     }
   }
 
-  async function copyToClipboard(text) {
+    async function copyToClipboard(text) {
     if (text === null || text === undefined) return false;
 
-    // normalize: remove ALL whitespace characters before copying
-    const payload = String(text).replace(/\s+/g, '');
+    // respect preserveWhitespaceOnCopy setting: remove whitespace only if disabled
+    const preserve = store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy;
+    const payload = preserve ? String(text) : String(text).replace(/\s+/g, '');
 
     // Prefer uTools API when available (ensures copy works inside utools environment)
     try {
@@ -443,9 +444,9 @@
     // Try navigator.clipboard
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(String(text));
+        await navigator.clipboard.writeText(payload);
         // eslint-disable-next-line no-console
-        console.debug('[Editor] copyToClipboard via navigator.clipboard', { textSample: String(text).slice(0, 200) });
+        console.debug('[Editor] copyToClipboard via navigator.clipboard', { textSample: String(payload).slice(0, 200) });
         return true;
       }
     } catch (e) {
@@ -455,7 +456,7 @@
     // Fallback to execCommand approach
     try {
       const ta = document.createElement('textarea');
-      ta.value = String(text);
+      ta.value = payload;
       ta.setAttribute('readonly', '');
       ta.style.position = 'fixed';
       ta.style.left = '-9999px';
@@ -464,7 +465,7 @@
       document.execCommand('copy');
       document.body.removeChild(ta);
       // eslint-disable-next-line no-console
-      console.debug('[Editor] copyToClipboard via execCommand', { textSample: String(text).slice(0, 200) });
+      console.debug('[Editor] copyToClipboard via execCommand', { textSample: String(payload).slice(0, 200) });
       return true;
     } catch (e) {
       // emit error for UI feedback (both Vue emit and global window event)
@@ -515,9 +516,13 @@
       let out = '';
       try {
         const parsed = JSON.parse(txt);
-        out = JSON.stringify(parsed).replace(/\s+/g, '');
+        out = JSON.stringify(parsed);
       } catch (e) {
-        out = String(txt).replace(/\s+/g, '');
+        out = String(txt);
+      }
+      // apply whitespace preservation setting
+      if (!(store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy)) {
+        out = String(out).replace(/\s+/g, '');
       }
 
       const ok = await copyToClipboard(out);
@@ -568,14 +573,18 @@
 
       let out;
       try {
-        out = JSON.stringify(txt).replace(/\s+/g, '');
+        out = JSON.stringify(txt);
       } catch (e) {
-        out = ('"' + String(txt)
+        out = '"' + String(txt)
           .replace(/\\/g, '\\\\')
           .replace(/"/g, '\\"')
           .replace(/\r/g, '\\r')
           .replace(/\n/g, '\\n')
-          .replace(/\t/g, '\\t') + '"').replace(/\s+/g, '');
+          .replace(/\t/g, '\\t') + '"';
+      }
+      // apply whitespace preservation setting
+      if (!(store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy)) {
+        out = String(out).replace(/\s+/g, '');
       }
       const ok = await copyToClipboard(out);
       // eslint-disable-next-line no-console

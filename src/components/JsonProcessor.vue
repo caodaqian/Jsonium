@@ -5,7 +5,7 @@ import { detectAndConvert, toFormat, FORMAT_TYPES } from '../services/formatDete
 import { convert } from '../services/converter.js';
 import { queryJsonPath, queryJq } from '../services/queryEngine.js';
 import { getDifferences, buildLineDiffs, buildTreeDiff } from '../services/diffEngine.js';
-import { processWithAI } from '../services/aiProcessor.js';
+import { processWithAI, parseAIJsonWithRetry } from '../services/aiProcessor.js';
 import Editor from './Editor.vue';
 import TabBar from './TabBar.vue';
 import StatusBar from './StatusBar.vue';
@@ -44,6 +44,11 @@ const showLeftPanel = ref(true);
 const tabs = computed(() => store.tabs);
 const activeTab = computed(() => store.getActiveTab());
 const editorRef = ref(null);
+
+// AI 原始响应展示与重试状态
+const aiRawResponse = ref('');
+const aiRawVisible = ref(false);
+const aiRetrying = ref(false);
 
 // line diff overlay
 const showLineDiff = ref(false);
@@ -321,7 +326,22 @@ const handleAIProcess = async (instruction, config) => {
   try {
     const result = await processWithAI(activeTab.value.content, instruction, currentConfig);
     if (result.success) {
-      store.addTab(result.data, 'AI 处理结果', FORMAT_TYPES.JSON);
+      // 如果 AI 返回可解析的 JSON（service 返回格式化 JSON 字符串），优先作为 JSON 面板新建标签
+      if (result.originalFormat && result.originalFormat.toLowerCase() === 'json') {
+        store.addTab(result.data, 'AI 处理结果', FORMAT_TYPES.JSON);
+      } else {
+        // 当返回为文本但包含 rawResponse（或返回的 data 与 rawResponse 不同）时，
+        // 展示原始响应并提供“仅返回 JSON”重试入口（调用 parseAIJsonWithRetry）
+        const raw = result.rawResponse || result.data || '';
+        const normalizedData = result.data || '';
+        if (raw && raw !== normalizedData) {
+          aiRawResponse.value = raw;
+          aiRawVisible.value = true;
+        } else {
+          // 没有可用的 rawResponse，仍将返回值作为新标签展示（文本回退）
+          store.addTab(result.data, 'AI 处理结果', FORMAT_TYPES.JSON);
+        }
+      }
     } else {
       notify.error('处理失败: ' + result.error);
     }
@@ -330,7 +350,47 @@ const handleAIProcess = async (instruction, config) => {
   }
 };
 
-// 复制到剪贴板
+async function handleRetryParseAI() {
+  if (!aiRawResponse.value) return;
+  if (!store.aiConfig) return;
+
+  aiRetrying.value = true;
+  try {
+    const cfg = store.getAIConfig();
+    const max = typeof cfg.parseRetryMax === 'number' ? cfg.parseRetryMax : 1;
+    const res = await parseAIJsonWithRetry(aiRawResponse.value, {
+      provider: cfg.provider,
+      aiConfig: cfg,
+      maxRetries: max
+    });
+    if (res && res.parsed) {
+      const formatted = JSON.stringify(res.parsed, null, 2);
+      store.addTab(formatted, 'AI 重试结果（JSON）', FORMAT_TYPES.JSON);
+      aiRawVisible.value = false;
+      aiRawResponse.value = '';
+    } else {
+      notify.warn('重试未能解析出有效 JSON');
+    }
+  } catch (e) {
+    notify.error('重试失败: ' + (e && e.message ? e.message : String(e)));
+  } finally {
+    aiRetrying.value = false;
+  }
+}
+
+function handleAcceptRaw() {
+  if (!aiRawResponse.value) return;
+  try {
+    // 将原始响应作为新标签加入（以文本展示）
+    store.addTab(aiRawResponse.value, 'AI 原始响应', FORMAT_TYPES.JSON);
+    aiRawVisible.value = false;
+    aiRawResponse.value = '';
+  } catch (e) {
+    notify.error('接受原始响应失败: ' + (e && e.message ? e.message : String(e)));
+  }
+}
+
+ // 复制到剪贴板
 const copyTextToClipboard = async (text, showFeedback = false) => {
   if (text === null || text === undefined) return false;
   // normalize: remove ALL whitespace characters before copying
@@ -430,6 +490,29 @@ const handleDownload = () => {
       <DiffView :leftContent="lineLeft" :rightContent="lineRight" />
     </div>
     
+    <!-- AI 原始响应悬浮面板 -->
+    <teleport to="body">
+      <div v-if="aiRawVisible" class="ai-raw-overlay" role="dialog" aria-modal="true">
+        <div class="ai-raw-panel">
+          <div class="ai-raw-header">
+            <div>AI 原始响应</div>
+            <div class="ai-raw-actions">
+              <button class="btn" @click="aiRawVisible = false">关闭</button>
+            </div>
+          </div>
+          <div class="ai-raw-body">
+            <pre class="ai-raw-pre">{{ aiRawResponse }}</pre>
+          </div>
+          <div class="ai-raw-footer">
+            <button class="panel-btn" @click="handleAcceptRaw()">接受原始响应</button>
+            <button class="panel-btn primary" :disabled="aiRetrying" @click="handleRetryParseAI()">
+              {{ aiRetrying ? '正在重试...' : '重试仅返回 JSON' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
     <!-- 底部状态栏 -->
     <StatusBar
       v-if="activeTab"
@@ -553,5 +636,65 @@ const handleDownload = () => {
   .processor-container {
     flex-direction: column;
   }
+}
+
+/* AI 原始响应面板样式 */
+.ai-raw-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300000;
+  padding: 20px;
+}
+.ai-raw-panel {
+  width: min(1000px, 90%);
+  max-height: 80vh;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+}
+.ai-raw-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-divider);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+.ai-raw-body {
+  padding: 12px;
+  overflow: auto;
+  background: var(--color-bg-primary);
+  flex: 1;
+}
+.ai-raw-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.ai-raw-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--color-divider);
+  background: var(--color-bg-secondary);
+}
+.ai-raw-actions .btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
 }
 </style>

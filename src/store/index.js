@@ -19,7 +19,10 @@ export const useJsonStore = defineStore('json', () => {
     provider: 'utools',
     apiKey: '',
     model: 'gpt-3.5-turbo',
-    endpoint: ''
+    endpoint: '',
+    // 自动解析重试：默认开启一次重试
+    parseRetry: true,
+    parseRetryMax: 1
   });
 
   // AI composer UI 状态（草稿、模型列表、选中模型、加载态、错误）
@@ -106,7 +109,11 @@ export const useJsonStore = defineStore('json', () => {
     lineNumbers: true,
     wordWrap: 'off',
     fontSize: 14,
-    theme: 'vs-dark'
+    theme: 'vs-dark',
+    // 新增：复制到剪贴板时是否保留原始空白（默认保留以兼容旧行为）
+    preserveWhitespaceOnCopy: true,
+    // 新增：格式检测模式，'lenient' | 'strict'
+    formatDetectorMode: 'lenient'
   });
   
   const showDiffSidebar = (leftContent = '') => {
