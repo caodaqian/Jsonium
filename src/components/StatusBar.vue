@@ -466,6 +466,10 @@ const formatJson = () => {
         🔓 反转义
       </button>
 
+      <button @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn" title="设置">
+        ⚙️ 设置
+      </button>
+
       <!-- Help tooltip on the right -->
       <div
         class="help-wrapper"

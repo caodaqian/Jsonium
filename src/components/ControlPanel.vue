@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useJsonStore } from '../store/index.js';
 import notify from '../services/notify.js';
 import { getFormatName } from '../utils/formatNames.js';
@@ -24,6 +24,10 @@ const emit = defineEmits([
 ]);
 
 const store = useJsonStore();
+
+watch(() => store.editorSettings, () => {
+  try { if (typeof store.saveSettingsState === 'function') store.saveSettingsState(); } catch (e) {}
+}, { deep: true });
 
 // 转换面板
 const selectedFormat = ref('json');
@@ -153,41 +157,47 @@ function getTabLabel(tab) {
 <template>
   <div class="control-panel">
     <div class="panel-tabs">
-      <button
-        v-for="tab in ['editor', 'query', 'diff']"
-        :key="tab"
-        :class="['panel-tab', { active: activePanel === tab }]"
-        @click="switchPanel(tab)"
-      >
-        {{ getTabLabel(tab) }}
+      <button class="panel-tab" :class="{ active: activePanel === 'editor' }" @click="switchPanel('editor')">
+        编辑器
       </button>
     </div>
     
-    <!-- 编辑器面板 -->
+    <!-- 编辑器设置面板（仅包含编辑器相关配置） -->
     <div v-if="activePanel === 'editor'" class="panel-content">
-      <h3>编辑器操作</h3>
-      <button @click="$emit('copyToClipboard')" class="panel-btn">
-        📋 复制到剪贴板
-      </button>
-      <button @click="$emit('download')" class="panel-btn">
-        💾 下载为文件
-      </button>
-      <button @click="handleImport" class="panel-btn">
-        📥 导入文本
-      </button>
-      <button @click="handleReadFile" class="panel-btn">
-        📂 读取文件
-      </button>
-      <button @click="handleWriteFile" class="panel-btn">
-        💾 保存为文件
-      </button>
+      <h3>编辑器设置</h3>
 
-      <!-- 编辑器设置 -->
-      <div class="form-group" style="margin-top:12px;">
-        <h4>编辑器设置</h4>
-
+      <div class="form-group" style="margin-top:6px;">
         <label>
-          <input type="checkbox" v-model="store.editorSettings.preserveWhitespaceOnCopy" />
+          <span class="input-toggle">
+            <input type="checkbox" v-model="store.editorSettings.wrapEnabled" aria-label="默认按编辑器宽度自动换行" />
+            <span class="slider" aria-hidden="true"></span>
+          </span>
+          默认按编辑器宽度自动换行
+        </label>
+
+        <label style="display:block; margin-top:6px;">
+          <span class="input-toggle">
+            <input type="checkbox" v-model="store.editorSettings.wrapByWidth" aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）" />
+            <span class="slider" aria-hidden="true"></span>
+          </span>
+          换行策略：按宽度触发（勾选） / 按列数触发（不勾选）
+        </label>
+
+        <label style="display:block; margin-top:6px;">
+          换行阈值（像素）：
+          <input type="number" v-model.number="store.editorSettings.wrapThresholdPx" min="200" step="50" style="width:100px; margin-left:8px;" />
+        </label>
+
+        <label style="display:block; margin-top:6px;">
+          固定换行列数：
+          <input type="number" v-model.number="store.editorSettings.wrapColumn" min="40" step="1" style="width:100px; margin-left:8px;" />
+        </label>
+
+        <label style="display:block; margin-top:10px;">
+          <span class="input-toggle">
+            <input type="checkbox" v-model="store.editorSettings.preserveWhitespaceOnCopy" aria-label="保留复制内容中的原始空白（空格/换行）" />
+            <span class="slider" aria-hidden="true"></span>
+          </span>
           保留复制内容中的原始空白（空格/换行）
         </label>
 
@@ -200,11 +210,20 @@ function getTabLabel(tab) {
         </select>
       </div>
 
+      <div style="margin-top:12px;">
+        <button @click="store.editorSettings.controlPanelVisible = false" class="panel-btn">
+          关闭设置
+        </button>
+      </div>
+
       <!-- AI 设置（与 AI 解析重试相关） -->
       <div class="form-group" style="margin-top:12px;">
         <h4>AI 解析设置</h4>
         <label>
-          <input type="checkbox" v-model="store.aiConfig.parseRetry" />
+          <span class="input-toggle">
+            <input type="checkbox" v-model="store.aiConfig.parseRetry" aria-label="自动在失败时重试仅返回 JSON（parseRetry）" />
+            <span class="slider" aria-hidden="true"></span>
+          </span>
           自动在失败时重试仅返回 JSON（parseRetry）
         </label>
 
@@ -223,85 +242,6 @@ function getTabLabel(tab) {
     </div>
     
     <!-- 转换面板 -->
-    <div v-if="activePanel === 'convert'" class="panel-content">
-      <div class="form-group">
-        <h4>格式转换</h4>
-        <select v-model="selectedFormat" class="form-select">
-          <option v-for="fmt in formats" :key="fmt" :value="fmt">
-            {{ getFormatName(fmt) }}
-          </option>
-        </select>
-        <button @click="handleConvert" class="panel-btn primary">
-          → 转换
-        </button>
-      </div>
-      
-      <div class="form-group">
-        <h4>代码生成</h4>
-        <select v-model="selectedLanguage" class="form-select">
-          <option v-for="lang in languages" :key="lang" :value="lang">
-            {{ lang.toUpperCase() }}
-          </option>
-        </select>
-        <button @click="handleGenerateCode" class="panel-btn primary">
-          🔧 生成代码
-        </button>
-      </div>
-    </div>
-    
-    <!-- 查询面板 -->
-    <div v-if="activePanel === 'query'" class="panel-content">
-      <div class="form-group">
-        <h4>JSON 查询</h4>
-        <div class="query-type-selector">
-          <button
-            v-for="type in queryTypes"
-            :key="type"
-            :class="['type-btn', { active: queryType === type }]"
-            @click="queryType = type"
-          >
-            {{ type.toUpperCase() }}
-          </button>
-        </div>
-        <input
-          v-model="queryExpression"
-          :placeholder="queryType === 'jsonpath' ? '例: $.store.book[0].title' : '例: .store.book[].price'"
-          class="form-input"
-        />
-        <button @click="handleQuery" class="panel-btn primary">
-          🔍 执行查询
-        </button>
-      </div>
-      
-      <div class="query-history" v-if="store.queryHistory.length">
-        <h4>查询历史</h4>
-        <div class="history-list">
-          <div
-            v-for="item in store.queryHistory.slice(0, 5)"
-            :key="item.id"
-            class="history-item"
-            @click="queryExpression = item.query"
-            :title="item.query"
-          >
-            {{ item.query.substring(0, 30) }}
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 对比面板 -->
-    <div v-if="activePanel === 'diff'" class="panel-content">
-      <h4>JSON 对比</h4>
-      <textarea
-        v-model="compareJson"
-        placeholder="输入第二个 JSON..."
-        class="form-textarea"
-      ></textarea>
-      <button @click="handleCompare" class="panel-btn primary">
-        ⚖️ 执行对比
-      </button>
-    </div>
-    
   </div>
 </template>
 
@@ -493,4 +433,65 @@ label {
   margin-bottom: 4px;
   color: #666;
 }
+
+/* modern toggle switch for checkboxes */
+.input-toggle {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.input-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.input-toggle .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-bg-secondary);
+  border-radius: 999px;
+  transition: all 0.18s ease;
+  border: 1px solid var(--color-border);
+}
+.input-toggle .slider:before {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  top: 1px;
+  background: var(--color-bg-primary);
+  border-radius: 50%;
+  transition: transform 0.18s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
+.input-toggle input:checked + .slider {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.input-toggle input:checked + .slider:before {
+  transform: translateX(18px);
+}
+
+/* Ensure interactive elements receive pointer events inside uTools draggable window */
+.control-panel,
+.control-panel button,
+.control-panel input,
+.control-panel select,
+.control-panel textarea,
+.control-panel .panel-tab,
+.control-panel .input-toggle {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  pointer-events: auto;
+}
+
 </style>

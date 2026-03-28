@@ -10,6 +10,7 @@ import Editor from './Editor.vue';
 import TabBar from './TabBar.vue';
 import StatusBar from './StatusBar.vue';
 import OutputPanel from './OutputPanel.vue';
+import ControlPanel from './ControlPanel.vue';
 import DiffSidebar from './DiffSidebar.vue';
 import DiffView from './DiffView.vue';
 import { stringifySortedJson } from '../services/diffEngine.js';
@@ -41,7 +42,22 @@ const props = defineProps({
 // UI 状态
 const activePanel = ref('editor'); // editor, convert, query, diff, ai
 const showLeftPanel = ref(true);
+const isNarrow = ref(false);
+
 const tabs = computed(() => store.tabs);
+
+onMounted(() => {
+  try {
+    if (typeof window !== 'undefined') {
+      const update = () => { isNarrow.value = window.innerWidth <= 900; };
+      update();
+      window.addEventListener('resize', update);
+      onUnmounted(() => {
+        try { window.removeEventListener('resize', update); } catch (_) {}
+      });
+    }
+  } catch (_) {}
+});
 const activeTab = computed(() => store.getActiveTab());
 const editorRef = ref(null);
 
@@ -66,27 +82,42 @@ function closeLineDiff() {
   lineRight.value = '';
 }
 
+function toggleFloatingSidebar() {
+  try {
+    if (!store.diffSidebar.visible) {
+      store.showDiffSidebar('');
+      store.diffSidebar.collapsed = false;
+    } else {
+      store.diffSidebar.collapsed = !store.diffSidebar.collapsed;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
 // 初始化
 const lastImportedText = ref('');
 
-onMounted(async () => {
-  // 尝试从持久化恢复 tabs；若恢复失败则创建初始 tab
-  try {
-    if (typeof store.loadTabsState === 'function') {
-      const restored = await store.loadTabsState();
-      if (!restored) {
-        ensureInitialTab();
+  onMounted(async () => {
+    // 尝试从持久化恢复 tabs；若恢复失败则创建初始 tab
+    try {
+      if (typeof store.loadTabsState === 'function') {
+        const restored = await store.loadTabsState();
+        if (restored) {
+          // 启动时尝试清理过期标签（默认 1 天）
+          try { if (typeof store.cleanupOldTabs === 'function') store.cleanupOldTabs(1); } catch (_) {}
+          // 恢复并清理后再确保至少有一个标签（防止清理导致全空）
+          ensureInitialTab();
+        } else {
+          ensureInitialTab();
+        }
       } else {
-        // 启动时尝试清理过期标签（默认 1 天）
-        try { if (typeof store.cleanupOldTabs === 'function') store.cleanupOldTabs(1); } catch (_) {}
+        ensureInitialTab();
       }
-    } else {
+    } catch (e) {
+      // ignore and fallback
       ensureInitialTab();
     }
-  } catch (e) {
-    // ignore and fallback
-    ensureInitialTab();
-  }
 
   await importEnterAction(props.enterAction);
 
@@ -116,7 +147,7 @@ onMounted(async () => {
         }
       } else if (k === 'n') {
         e.preventDefault();
-        store.addTab('{}');
+        createNewTab('{}');
       }
     } catch (_) { /* ignore */ }
   }
@@ -145,8 +176,16 @@ watch(() => props.enterAction, async (action) => {
 }, { deep: true });
 
 function ensureInitialTab() {
-  if (store.tabs.length === 0) {
-    store.addTab('{}', '', FORMAT_TYPES.JSON);
+  try {
+    const currentTabs = Array.isArray(store.tabs)
+      ? store.tabs
+      : (store.tabs && Array.isArray(store.tabs.value) ? store.tabs.value : []);
+    if (!Array.isArray(currentTabs) || currentTabs.length === 0) {
+      store.addTab('{}', '', FORMAT_TYPES.JSON);
+    }
+  } catch (e) {
+    // 若发生异常，作为兜底仍尝试创建一个标签
+    try { store.addTab('{}', '', FORMAT_TYPES.JSON); } catch (_) {}
   }
 }
 
@@ -170,6 +209,22 @@ async function importEnterAction(action) {
 
   if (editorRef.value && typeof editorRef.value.format === 'function') {
     editorRef.value.format();
+  }
+}
+
+async function createNewTab(initialContent = '{}', name = '', format = FORMAT_TYPES.JSON) {
+  try {
+    const id = store.addTab(initialContent, name, format);
+    activePanel.value = 'editor';
+    // 等待 DOM 更新并尝试聚焦编辑器
+    await nextTick();
+    await nextTick();
+    try { if (editorRef.value && typeof editorRef.value.focus === 'function') editorRef.value.focus(); } catch (_) {}
+    return id;
+  } catch (e) {
+    // 兜底：若 addTab 抛出，仍尝试恢复
+    try { store.addTab(initialContent, name, format); } catch (_) {}
+    return null;
   }
 }
 
@@ -300,6 +355,13 @@ const handleCompare = async (leftContent, rightContent) => {
       diffStats: stats,
       diffLines: []
     });
+
+    // 同时直接展示行级对比，便于用户快速查看变更（使用原始排序后的文本）
+    try {
+      handleOpenLineDiff(sortedLeft, sortedRight);
+    } catch (e) {
+      // ignore
+    }
   } catch (e) {
     notify.error('对比失败: ' + e.message);
     store.showDiffSidebar('');
@@ -447,10 +509,31 @@ const handleDownload = () => {
 };
 
 // 辅助函数
+onMounted(() => {
+  try {
+    if (typeof window !== 'undefined' && window.location && window.location.search && window.location.search.indexOf('autotest') !== -1) {
+      // 自动化测试模式：注入示例左右内容并直接打开行级对比视图
+      const left = JSON.stringify({ a: 1, b: 2, c: { x: 1, y: 2 } }, null, 2);
+      const right = JSON.stringify({ a: 1, b: 3, d: 4, c: { x: 1, y: 9 } }, null, 2);
+      try {
+        const act = store.getActiveTab && store.getActiveTab();
+        if (act && act.id) {
+          try { store.updateTabContent(act.id, right); } catch (_) {}
+        }
+      } catch (_) {}
+      try { handleOpenLineDiff(left, right); } catch (_) {}
+    }
+  } catch (_) {}
+});
+
 </script>
 
 <template>
   <div class="json-processor">
+    <button class="global-sidebar-toggle" @click="toggleFloatingSidebar" aria-label="侧边栏切换" title="切换对比侧边栏">
+      <span v-if="store.diffSidebar.visible && !store.diffSidebar.collapsed">◀</span>
+      <span v-else>▶</span>
+    </button>
     <div class="processor-header">
       <h1 class="app-title">Jsonium</h1>
       <TabBar 
@@ -459,15 +542,50 @@ const handleDownload = () => {
         @selectTab="(id) => store.setActiveTab(id)"
         @closeTab="(id) => store.closeTab(id)"
         @renameTab="(id, name) => store.updateTabName(id, name)"
-        @newTab="() => store.addTab('{}')"
+        @newTab="() => createNewTab()"
         @toggleFavorite="(id) => store.toggleFavorite(id)"
         @closeOtherTabs="(id) => store.closeOtherTabs(id)"
         @closeAllTabs="() => store.closeAllTabs()"
         @closeLeftTabs="(id) => store.closeLeftTabs(id)"
       />
+      <!-- 设置入口由状态栏提供，移除此处的重复按钮 -->
     </div>
     
     <div class="processor-container" v-if="activeTab">
+      <div class="control-panel-wrapper" :class="{ 'drawer-mode': isNarrow }" v-if="store.editorSettings.controlPanelVisible">
+        <template v-if="isNarrow">
+          <div class="drawer-overlay" @click="store.editorSettings.controlPanelVisible = false"></div>
+          <div class="control-panel-drawer">
+            <button class="drawer-close" @click="store.editorSettings.controlPanelVisible = false" aria-label="关闭设置">✕</button>
+            <ControlPanel
+              :activePanel="activePanel"
+              @panelChange="(p) => activePanel = p"
+              @import="handleImportText"
+              @convert="handleConvert"
+              @generateCode="handleGenerateCode"
+              @query="handleQuery"
+              @compare="handleCompare"
+              @aiProcess="handleAIProcess"
+              @copyToClipboard="handleCopyToClipboard"
+              @download="handleDownload"
+            />
+          </div>
+        </template>
+        <template v-else>
+          <ControlPanel
+            :activePanel="activePanel"
+            @panelChange="(p) => activePanel = p"
+            @import="handleImportText"
+            @convert="handleConvert"
+            @generateCode="handleGenerateCode"
+            @query="handleQuery"
+            @compare="handleCompare"
+            @aiProcess="handleAIProcess"
+            @copyToClipboard="handleCopyToClipboard"
+            @download="handleDownload"
+          />
+        </template>
+      </div>
       <div class="workspace">
         <div class="editor-section">
           <Editor 
@@ -638,6 +756,62 @@ const handleDownload = () => {
   }
 }
 
+/* 控制面板容器宽度 */
+.control-panel-wrapper {
+  width: 300px;
+  min-width: 260px;
+  max-width: 360px;
+  flex: 0 0 300px;
+  border-right: 1px solid var(--color-divider);
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  /* 窄屏下不再彻底隐藏侧栏，而使用抽屉覆盖方式（由 isNarrow 控制） */
+  .control-panel-wrapper {
+    width: 100%;
+    min-width: 0;
+  }
+  .control-panel-wrapper.drawer-mode {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    top: 64px;
+    bottom: 16px;
+    width: auto;
+    max-width: 640px;
+    z-index: 300001;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.4);
+    border-right: none;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 300000;
+  }
+  .control-panel-drawer {
+    position: relative;
+    background: var(--color-bg-primary);
+    height: 100%;
+    overflow: auto;
+    padding: 12px;
+    z-index: 300002;
+  }
+  .drawer-close {
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+  }
+}
+
 /* AI 原始响应面板样式 */
 .ai-raw-overlay {
   position: fixed;
@@ -697,4 +871,41 @@ const handleDownload = () => {
   cursor: pointer;
   font-size: 13px;
 }
+
+/* Ensure control panel (non-drawer) is above editor but below global modals */
+.control-panel-wrapper:not(.drawer-mode) {
+  position: relative;
+  z-index: 300000;
+  pointer-events: auto;
+}
+
+/* Ensure inner control panel receives pointer events (avoid accidental suppression) */
+.control-panel-wrapper:not(.drawer-mode) .control-panel {
+  pointer-events: auto;
+}
+
+/* Global floating sidebar toggle (always visible, semi-transparent) */
+.global-sidebar-toggle {
+  position: fixed;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--color-divider);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  z-index: 180000;
+  opacity: 0.85;
+  transition: opacity .18s ease, transform .12s ease;
+  color: var(--color-text-primary);
+}
+
+.global-sidebar-toggle:hover { opacity: 1; transform: translateY(-50%) scale(1.04); }
 </style>

@@ -3,10 +3,13 @@
   import Hello from './Hello/index.vue';
   import JsonProcessor from './components/JsonProcessor.vue';
   import Toast from './components/Toast.vue';
+  import { useJsonStore } from './store';
 
   const route = ref('process')
   const enterAction = ref({})
   const isDarkMode = ref(false)
+
+  const store = useJsonStore();
 
   // 判断是否应该读取剪切板：仅允许特定触发类型/标签
   function shouldReadClipboard(action) {
@@ -45,6 +48,25 @@
           route.value = 'process'
         }
 
+        // 尝试从持久化加载上次 tabs 状态（若可用）
+        try { await store.loadTabsState && store.loadTabsState(); } catch (_) {}
+
+        // 尝试通过 preload 服务调整窗口最小宽度（容错）
+        try {
+          const minW = (store.getEditorSettings && store.getEditorSettings().minWindowWidth) || 1200;
+          if (window.services && typeof window.services.trySetMinWindowWidth === 'function') {
+            try {
+              const ok = await window.services.trySetMinWindowWidth(minW);
+              if (ok) {
+                const last = { width: minW, height: window.outerHeight || window.innerHeight || 800 };
+                try { store.updateEditorSettings && store.updateEditorSettings({ lastWindowSize: last }); } catch (_) {}
+                try { window.services.setLastWindowSize && window.services.setLastWindowSize(last); } catch (_) {}
+                try { store.saveSettingsState && store.saveSettingsState(); } catch (_) {}
+              }
+            } catch (_) { /* ignore */ }
+          }
+        } catch (_) { /* ignore */ }
+
         // 如果 action 没有 text，仅在白名单触发类型下尝试读取系统剪贴板并填充（优先 window.services.readClipboard，其次 navigator.clipboard）
         if (!action.text && shouldReadClipboard(action)) {
           let clipText = ''
@@ -72,6 +94,15 @@
           applyTheme(isDarkMode.value)
         }
       })
+
+      // 在插件被退出/切换出宿主时保存一次（utools 事件）
+      try {
+        if (typeof window.utools.onPluginOut === 'function') {
+          window.utools.onPluginOut(() => {
+            try { store.saveTabsState && store.saveTabsState(); } catch (_) {}
+          })
+        }
+      } catch (_) {}
     }
   })
 

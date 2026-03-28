@@ -78,6 +78,7 @@ export const useJsonStore = defineStore('json', () => {
   
   const diffSidebar = reactive({
     visible: false,
+    collapsed: false,
     mode: 'input', // 'input' | 'result'
     leftInput: '',
     leftContent: '',
@@ -110,6 +111,16 @@ export const useJsonStore = defineStore('json', () => {
     wordWrap: 'off',
     fontSize: 14,
     theme: 'vs-dark',
+    // 新增：基于宽度的自动换行控制（默认开启）
+    wrapEnabled: true,
+    wrapByWidth: true,
+    wrapColumn: 120,
+    wrapThresholdPx: 900,
+    // 控制面板是否显示（UI 控制，默认隐藏）
+    controlPanelVisible: false,
+    // 最小窗口宽度与上次窗口尺寸记录
+    minWindowWidth: 1200,
+    lastWindowSize: { width: null, height: null },
     // 新增：复制到剪贴板时是否保留原始空白（默认保留以兼容旧行为）
     preserveWhitespaceOnCopy: true,
     // 新增：格式检测模式，'lenient' | 'strict'
@@ -334,7 +345,56 @@ export const useJsonStore = defineStore('json', () => {
         createdAt: t.createdAt ? new Date(t.createdAt) : null,
         lastAccessed: t.lastAccessed ? new Date(t.lastAccessed) : (t.createdAt ? new Date(t.createdAt) : null)
       }));
-      activeTabId.value = parsed.activeTabId || (tabs.value[0]?.id ?? null);
+      // 优先通过 setActiveTab 恢复以确保 lastAccessed 等一致性；回退到直接赋值
+      if (parsed.activeTabId) {
+        try { setActiveTab(parsed.activeTabId); } catch (_) { activeTabId.value = parsed.activeTabId; }
+      } else {
+        activeTabId.value = tabs.value.length > 0 ? tabs.value[0].id : null;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+  
+  const SETTINGS_KEY = 'json_settings_v1';
+  const saveSettingsState = () => {
+    try {
+      const payload = JSON.stringify({
+        editorSettings: { ...editorSettings },
+        diffSidebarCollapsed: !!diffSidebar.collapsed,
+        lastWindowSize: editorSettings.lastWindowSize || null
+      });
+      if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.setItem === 'function') {
+        window.utools.dbStorage.setItem(SETTINGS_KEY, payload);
+      } else if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(SETTINGS_KEY, payload);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+  
+  const loadSettingsState = () => {
+    try {
+      let raw = null;
+      if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.getItem === 'function') {
+        raw = window.utools.dbStorage.getItem(SETTINGS_KEY);
+      } else if (typeof localStorage !== 'undefined') {
+        raw = localStorage.getItem(SETTINGS_KEY);
+      }
+      if (!raw) return false;
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch { return false; }
+      if (parsed && parsed.editorSettings) {
+        try { updateEditorSettings(parsed.editorSettings); } catch (_) { /* ignore */ }
+      }
+      if (parsed && typeof parsed.diffSidebarCollapsed !== 'undefined') {
+        diffSidebar.collapsed = !!parsed.diffSidebarCollapsed;
+      }
+      if (parsed && parsed.lastWindowSize) {
+        editorSettings.lastWindowSize = parsed.lastWindowSize;
+      }
       return true;
     } catch (e) {
       return false;
@@ -459,13 +519,17 @@ export const useJsonStore = defineStore('json', () => {
     setDiffLines,
     setDiffResult,
     setDiffError,
-
+    
     // Tab extras
     setActiveTab,
     toggleFavorite,
     closeAllTabs,
     closeOtherTabs,
     closeLeftTabs,
-    cleanupOldTabs
+    cleanupOldTabs,
+    
+    // Settings persistence
+    saveSettingsState,
+    loadSettingsState
   };
 });

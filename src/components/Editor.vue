@@ -44,6 +44,8 @@
   let modifierState = { shift: false, alt: false, ctrl: false, meta: false };
   let lastCopyTs = 0; // short guard to avoid duplicate rapid copy invocations
   let copyingLock = false; // prevent overlapping copy ops
+  let resizeObserver = null;
+  let adjustWrap = null;
 
   // modifierHandler keeps track of modifier keys across separate key events (helps when Alt/Shift are pressed in sequence)
   const modifierHandler = (e) => {
@@ -64,16 +66,63 @@
   let lastEnterTs = 0;
 
   onMounted(async () => {
-    // lazy-load monaco to avoid bundlers resolving it in test envs
+    // 尝试使用 ESM 入口并加载样式，避免 Vite externalized 导致的 runtime 问题
     try {
-      const m = await import('monaco-editor');
-      monaco = m;
-    } catch (e) {
-      // monaco may be unavailable in test environment; continue gracefully
-      monaco = null;
+      // 尽早注入 MonacoEnvironment.getWorker，确保 worker 创建使用 ESM worker 路径，避免 loadForeignModule / Unexpected usage
+      try {
+        if (typeof window !== 'undefined') {
+          window.MonacoEnvironment = window.MonacoEnvironment || {};
+window.MonacoEnvironment.getWorker = function (moduleId, label) {
+  if (label === 'json') {
+    return new Worker(new URL('monaco-editor/esm/vs/language/json/json.worker', import.meta.url), { type: 'module' });
+  }
+  return new Worker(new URL('monaco-editor/esm/vs/editor/editor.worker', import.meta.url), { type: 'module' });
+};
+        }
+      } catch (_) { /* ignore */ }
+
+      // 加载 Monaco CSS（容错）
+      try { await import('monaco-editor/min/vs/editor/editor.main.css'); } catch (_) { /* ignore */ }
+
+      // 优先加载 ESM 编辑器 API（兼容 vite 的打包方式）
+      try {
+        const m = await import('monaco-editor/esm/vs/editor/editor.api');
+        monaco = m && Object.keys(m).length ? m : (window.monaco || null);
+      } catch (e) {
+        // 回退到常规包（部分环境下可用）
+        try {
+          const m2 = await import('monaco-editor');
+          monaco = m2 && m2.editor ? m2 : (window.monaco || null);
+        } catch (e2) {
+          monaco = window.monaco || null;
+        }
+      }
+    } catch (_) {
+      monaco = window.monaco || null;
     }
+
     // Register the JSON formatting provider once (idempotent)
     try { registerJsonFormattingProvider(monaco); } catch (_) { }
+
+    // 尝试加载 JSON 语言贡献并开启诊断（以启用高亮与错误提示）
+    try {
+      // 动态加载 language contribution（容错）
+      try { await import('monaco-editor/esm/vs/language/json/monaco.contribution'); } catch (_) { /* ignore */ }
+
+      // 配置 JSON 诊断/校验选项（若可用）
+    if (monaco && monaco.languages && monaco.languages.json && monaco.languages.json.jsonDefaults) {
+      try {
+        // 禁用远程 schema 请求与代码验证以避免 worker 发起 fetch/loadForeignModule 导致错误
+        monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+          validate: false,
+          enableSchemaRequest: false,
+          allowComments: true,
+          schemas: [] // 可在此加入 JSON Schema 强化自动补全与校验
+        });
+      } catch (_) { /* ignore */ }
+    }
+    } catch (_) { /* ignore */ }
+
     initEditor();
   });
 
@@ -142,6 +191,32 @@
 
     const settings = store.getEditorSettings();
 
+    // compute initial wrap options based on settings and container width
+    const containerWidth = (editorContainer.value && editorContainer.value.clientWidth) || 0;
+    let initialWordWrap = settings.wordWrap || 'off';
+    let initialWordWrapColumn = settings.wrapColumn || 120;
+
+    if (settings.wrapEnabled && settings.wrapByWidth) {
+      try {
+        const width = containerWidth || (window.innerWidth || 1200);
+        // simple threshold-based decision
+        if (typeof settings.wrapThresholdPx === 'number' && width <= settings.wrapThresholdPx) {
+          initialWordWrap = 'on';
+        } else {
+          initialWordWrap = 'off';
+        }
+        // estimate column based on font size (approx avg char width ~ 0.6 * fontSize)
+        const avgCharPx = (settings.fontSize || 14) * 0.6;
+        if (avgCharPx > 0) {
+          initialWordWrapColumn = Math.max(40, Math.floor(width / avgCharPx));
+        }
+      } catch (_) { /* ignore and fall back */ }
+    } else if (settings.wrapEnabled && !settings.wrapByWidth) {
+      // fixed-column wrap mode: enable bounded wrap with explicit column
+      initialWordWrap = 'bounded';
+      initialWordWrapColumn = settings.wrapColumn || 120;
+    }
+
     editor = monaco.editor.create(editorContainer.value, {
       value: props.content,
       language: 'json',
@@ -150,7 +225,8 @@
       minimap: { enabled: settings.minimap !== false },
       folding: settings.folding !== false,
       lineNumbers: settings.lineNumbers !== false ? 'on' : 'off',
-      wordWrap: settings.wordWrap || 'off',
+      wordWrap: initialWordWrap,
+      wordWrapColumn: initialWordWrapColumn,
       automaticLayout: true,
       tabSize: 2,
       insertSpaces: true,
@@ -158,6 +234,60 @@
       scrollBeyondLastLine: false,
       'bracketPairColorization.enabled': true
     });
+
+    // Ensure initial wrap reflects current settings immediately
+    try { adjustWrap && adjustWrap(); } catch (_) {}
+
+    // helper to adjust wrap on resize
+    adjustWrap = () => {
+      try {
+        if (!editor) return;
+        const s = store.getEditorSettings();
+        if (!s.wrapEnabled) {
+          editor.updateOptions({ wordWrap: 'off' });
+          return;
+        }
+        const width = (editorContainer.value && editorContainer.value.clientWidth) || (window.innerWidth || 1200);
+        if (s.wrapByWidth) {
+          const shouldWrap = (typeof s.wrapThresholdPx === 'number') ? (width <= s.wrapThresholdPx) : (width <= 900);
+          if (shouldWrap) {
+            // compute approximate column
+            const avgCharPx = (s.fontSize || 14) * 0.6;
+            const col = Math.max(40, Math.floor(width / (avgCharPx || 8)));
+            editor.updateOptions({ wordWrap: 'bounded', wordWrapColumn: col });
+          } else {
+            editor.updateOptions({ wordWrap: 'off' });
+          }
+        } else {
+          // use explicit column setting
+          const col = s.wrapColumn || 120;
+          editor.updateOptions({ wordWrap: 'bounded', wordWrapColumn: col });
+        }
+      } catch (_) { /* ignore */ }
+    };
+
+    // install ResizeObserver to adjust wrap dynamically
+    try {
+      if (typeof ResizeObserver !== 'undefined' && editorContainer.value) {
+        resizeObserver = new ResizeObserver(() => {
+          adjustWrap();
+        });
+        resizeObserver.observe(editorContainer.value);
+      } else {
+        // fallback to window resize
+        window.addEventListener('resize', adjustWrap);
+      }
+    } catch (_) { /* ignore */ }
+
+    // watch editor settings to apply changes immediately (e.g., toggling wrap)
+    try {
+      try {
+        watch(() => store.editorSettings.wrapEnabled, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+        watch(() => store.editorSettings.wrapByWidth, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+        watch(() => store.editorSettings.wrapThresholdPx, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+        watch(() => store.editorSettings.wrapColumn, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+      } catch (_) {}
+    } catch (_) {}
 
     // track Enter key timestamp to implement an "enter guard" protecting immediate formatting
     editor.onKeyDown((e) => {
@@ -598,7 +728,8 @@
   defineExpose({
     getContent: () => editor?.getValue() || '',
     setContent: (content) => applyEdit(content),
-    format: formatJson
+    format: formatJson,
+    focus: () => { try { editor && typeof editor.focus === 'function' && editor.focus(); } catch (_) {} }
   });
 </script>
 
@@ -621,5 +752,7 @@
     flex: 1;
     border: none;
     background: var(--color-bg-primary);
+    /* 防止父布局收缩导致编辑器高度为 0 的问题，设置一个保底高度 */
+    min-height: 240px;
   }
 </style>

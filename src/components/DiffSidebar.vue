@@ -9,6 +9,7 @@ const store = useJsonStore();
 
 const visible = computed(() => store.diffSidebar.visible);
 const mode = computed(() => store.diffSidebar.mode);
+const collapsed = computed(() => store.diffSidebar.collapsed);
 
 // 左侧仅为待比对输入 A
 const leftInput = computed({
@@ -88,29 +89,24 @@ async function handleCompare() {
 
   isComparing.value = true;
   try {
-    let sortedLeft, sortedRight;
+    // 校验 JSON 格式
     try {
-      sortedLeft = stringifySortedJson(leftInput.value);
+      JSON.parse(leftInput.value);
     } catch (e) {
       leftError.value = '待比对 JSON 格式错误: ' + e.message;
       isComparing.value = false;
       return;
     }
     try {
-      sortedRight = stringifySortedJson(rightContent.value);
+      JSON.parse(rightContent.value);
     } catch (e) {
       globalError.value = '主编辑区 JSON 格式错误: ' + e.message;
       isComparing.value = false;
       return;
     }
 
-    const result = buildTreeDiff(sortedLeft, sortedRight);
-    // 将结果写入 store（兼容旧接口）
-    store.setDiffResult(sortedLeft, sortedRight, {
-      diffTree: result.tree,
-      diffStats: result.stats,
-      diffLines: []
-    });
+    // 直接触发行级对比（不构建树形结果）
+    openLineDiff();
   } catch (e) {
     store.setDiffError('对比失败: ' + e.message);
   } finally {
@@ -124,21 +120,54 @@ function openLineDiff() {
   emit('openLineDiff', left, right);
 }
 
+/**
+ * 如果还未构建树形结果则按需构建并切换到结果模式
+ */
+async function buildTreeIfNeeded() {
+  try {
+    if (store.diffSidebar.diffTree) {
+      return;
+    }
+    const left = store.diffSidebar.leftContent || leftInput.value || '';
+    const right = rightContent.value || '';
+    if (!left || !right) return;
+    const sortedLeft = stringifySortedJson(left);
+    const sortedRight = stringifySortedJson(right);
+    const result = buildTreeDiff(sortedLeft, sortedRight);
+    store.setDiffResult(sortedLeft, sortedRight, {
+      diffTree: result.tree,
+      diffStats: result.stats,
+      diffLines: []
+    });
+    // 清理可能被意外写入的 output 面板内容
+    try { store.clearOutput(); } catch (e) { /* ignore */ }
+  } catch (e) {
+    store.setDiffError('对比失败: ' + e.message);
+  }
+}
+
+function showTreeView() {
+  // 树状对比已移除；直接触发行级对比
+  openLineDiff();
+}
+
 function closeSidebar() {
   store.hideDiffSidebar();
   leftError.value = '';
   globalError.value = '';
 }
 
-import DiffTreeNode from './DiffTreeNode.vue';
 </script>
 
 <template>
-  <aside class="diff-sidebar" :class="{ active: visible }">
+  <aside class="diff-sidebar" :class="{ active: visible, collapsed: collapsed }">
     <header class="diff-sidebar-header">
       <h3 class="title">JSON 对比（基准：主编辑区）</h3>
       <button class="close-btn" @click="closeSidebar">✕</button>
     </header>
+
+    <!-- 原先的视图切换按钮已移除（输入 / 行级），保留侧边栏主要交互 -->
+
 
     <!-- 输入模式：单编辑器 -->
     <div v-if="mode === 'input'" class="input-mode">
@@ -152,7 +181,7 @@ import DiffTreeNode from './DiffTreeNode.vue';
         </div>
       </div>
 
-      <div class="editor-wrapper-small">
+      <div class="editor-wrapper-large">
         <Editor
           ref="editorRef"
           :content="leftInput"
@@ -168,38 +197,6 @@ import DiffTreeNode from './DiffTreeNode.vue';
       <p v-if="globalError" class="error-hint">⚠️ {{ globalError }}</p>
     </div>
 
-    <!-- 结果模式：树形展示 -->
-    <div v-if="mode === 'result'" class="result-mode">
-      <div class="result-toolbar">
-        <div class="summary">
-          <span class="stat added">➕ {{ diffStats.added }}</span>
-          <span class="stat removed">➖ {{ diffStats.removed }}</span>
-          <span class="stat changed">🔄 {{ diffStats.changed }}</span>
-          <span class="stat unchanged" v-if="diffStats.unchanged">· {{ diffStats.unchanged }}</span>
-        </div>
-
-        <div class="actions">
-          <select v-model="diffFilter">
-            <option value="all">全部</option>
-            <option value="changed">仅变更</option>
-            <option value="added">仅新增</option>
-            <option value="removed">仅删除</option>
-          </select>
-          <button class="line-btn" @click="openLineDiff">🔎 行级对比</button>
-          <button class="back-btn" @click="handleBackToInput">↩ 重新输入</button>
-        </div>
-      </div>
-
-      <div class="result-content" v-if="diffTree">
-        <div class="tree-root">
-          <DiffTreeNode :node="diffTree" :filter="diffFilter" />
-        </div>
-      </div>
-
-      <div v-else class="result-empty">
-        <p>✓ 两个 JSON 相同或无差异节点</p>
-      </div>
-    </div>
 
     <div v-if="error && mode === 'result'" class="global-error">
       {{ error }}
@@ -240,7 +237,7 @@ import DiffTreeNode from './DiffTreeNode.vue';
 .input-header { display:flex; justify-content:space-between; align-items:center; gap:var(--spacing-sm); }
 .controls { display:flex; gap:8px; align-items:center; }
 
-.editor-wrapper-small { height: 220px; border:1px solid var(--color-border); border-radius:4px; overflow:hidden; background:var(--color-bg-primary); }
+  .editor-wrapper-large { flex: 1; min-height: 0; display:flex; flex-direction:column; border:1px solid var(--color-border); border-radius:4px; overflow:hidden; background:var(--color-bg-primary); }
 
 .error-hint { margin:0; padding:0 4px; font-size:11px; color:var(--color-error); line-height:1.4; }
 
@@ -253,7 +250,7 @@ import DiffTreeNode from './DiffTreeNode.vue';
 
 .result-content { flex:1; overflow-y:auto; background:var(--color-bg-primary); border-radius:4px; border:1px solid var(--color-divider); padding:8px; }
 
-.tree-root { font-family: 'Monaco','Menlo','Courier New',monospace; font-size:13px; color:var(--color-text-primary); }
+  .tree-root { font-family: 'Monaco','Menlo','Courier New',monospace; font-size:13px; color:var(--color-text-primary); }
 
 .tree-node { margin-left: 4px; }
 .node-line { display:flex; align-items:center; gap:8px; padding:4px 6px; border-bottom:1px solid var(--color-divider); }
@@ -269,5 +266,37 @@ import DiffTreeNode from './DiffTreeNode.vue';
 .node-val { margin-left:auto; font-size:12px; color:var(--color-text-tertiary); }
 
 .result-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--color-text-tertiary); font-size:13px; }
-.global-error { padding:8px; background:rgba(239,68,68,0.1); border-top:1px solid rgba(239,68,68,0.3); color:var(--color-error); font-size:11px; text-align:center; }
+  .global-error { padding:8px; background:rgba(239,68,68,0.1); border-top:1px solid rgba(239,68,68,0.3); color:var(--color-error); font-size:11px; text-align:center; }
+
+  /* 侧边栏收起样式与悬浮箭头 */
+  .diff-sidebar {
+    transition: width 180ms ease;
+  }
+
+  .diff-sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    overflow: hidden;
+    border-left: none;
+    box-shadow: none;
+    display: none;
+  }
+
+  .diff-sidebar.collapsed .input-mode,
+  .diff-sidebar.collapsed .result-mode,
+  .diff-sidebar.collapsed .result-content,
+  .diff-sidebar.collapsed .result-empty {
+    display: none;
+  }
+
+
+
+
+  .diff-sidebar.collapsed .diff-sidebar-header { display: none; }
+
+  /* 清理：移除不再使用的标签样式（原 .diff-tabs/.tab-btn） */
+  .diff-tabs { display: none !important; }
+  .tab-btn { display: none !important; }
+
 </style>

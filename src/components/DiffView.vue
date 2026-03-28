@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue';
-import { getDifferences, generateDiffSummary, findLineForPath as engineFindLineForPath, getValueAtPath } from '../services/diffEngine.js';
+import { ref, computed, nextTick, watch, onMounted } from 'vue';
+import { getDifferences, generateDiffSummary, findLineForPath as engineFindLineForPath, getValueAtPath, extractOnlyDifferences, buildLineDiffs } from '../services/diffEngine.js';
 import DiffTextView from './DiffTextView.vue';
 import notify from '../services/notify.js';
 
@@ -11,9 +11,49 @@ const props = defineProps({
 
 const differences = ref([]);
 const summary = ref(null);
-const mode = ref('tree'); // 'tree' | 'line'
 const selectedPath = ref(null);
 const diffTextRef = ref(null);
+const onlyDiffs = ref(false);
+const lineDiffs = ref([]);
+const folded = ref(false);
+const foldThreshold = 5; // 连续相同行超过此值则可折叠
+
+const displayedLeft = computed(() => {
+  try {
+    if (onlyDiffs.value) {
+      const res = extractOnlyDifferences(props.leftContent, props.rightContent);
+      if (res && res.success) {
+        const left = res.left;
+        if (!selectedPath.value) return pretty(left);
+        const val = getValueAtPath(left, selectedPath.value);
+        return pretty(val === undefined ? '' : val);
+      }
+    }
+    return getSubContent(selectedPath.value, props.leftContent);
+  } catch (e) {
+    return getSubContent(selectedPath.value, props.leftContent);
+  }
+});
+
+const displayedRight = computed(() => {
+  try {
+    if (onlyDiffs.value) {
+      const res = extractOnlyDifferences(props.leftContent, props.rightContent);
+      if (res && res.success) {
+        const right = res.right;
+        if (!selectedPath.value) return pretty(right);
+        const val = getValueAtPath(right, selectedPath.value);
+        return pretty(val === undefined ? '' : val);
+      }
+    }
+    return getSubContent(selectedPath.value, props.rightContent);
+  } catch (e) {
+    return getSubContent(selectedPath.value, props.rightContent);
+  }
+});
+
+const displayedLeftString = computed(() => String(typeof displayedLeft === 'function' ? displayedLeft() : (displayedLeft.value || '')));
+const displayedRightString = computed(() => String(typeof displayedRight === 'function' ? displayedRight() : (displayedRight.value || '')));
 
 const diffContent = computed(() => {
   if (!differences.value.length) return 'No differences';
@@ -57,7 +97,7 @@ function getSubContent(path, content) {
   }
 }
 
-function compareDiffs() {
+async function compareDiffs() {
   if (!props.leftContent || !props.rightContent) {
     notify.warn('请输入两个 JSON');
     return;
@@ -69,20 +109,74 @@ function compareDiffs() {
       differences.value = result.differences;
       summary.value = generateDiffSummary(result.differences);
     }
+
+    // 生成行级 diff 并触发 DiffTextView 装饰与折叠计算
+    try {
+      const leftText = String(displayedLeftString.value || '').split(/\r?\n/);
+      const rightText = String(displayedRightString.value || '').split(/\r?\n/);
+      const ld = buildLineDiffs(leftText, rightText);
+      lineDiffs.value = ld;
+
+      // 计算折叠区间：扫描连续 unchanged 段
+      const leftRanges = [];
+      const rightRanges = [];
+      let i = 0;
+      while (i < ld.length) {
+        if (ld[i].type === 'unchanged') {
+          const start = i;
+          let j = i;
+          while (j < ld.length && ld[j].type === 'unchanged') j++;
+          const len = j - start;
+          if (len >= foldThreshold) {
+            // left lines for first and last unchanged entries
+            const firstLeft = ld[start].leftLine;
+            const lastLeft = ld[j - 1].leftLine;
+            const firstRight = ld[start].rightLine;
+            const lastRight = ld[j - 1].rightLine;
+            if (firstLeft && lastLeft && firstLeft < lastLeft) leftRanges.push([firstLeft, lastLeft]);
+            if (firstRight && lastRight && firstRight < lastRight) rightRanges.push([firstRight, lastRight]);
+          }
+          i = j;
+        } else {
+          i++;
+        }
+      }
+
+      // 将折叠范围发送到 DiffTextView
+      try {
+        await nextTick();
+        if (diffTextRef.value && typeof diffTextRef.value.foldRanges === 'function') {
+          diffTextRef.value.foldRanges({ left: leftRanges, right: rightRanges });
+          folded.value = (leftRanges.length || rightRanges.length) > 0;
+        }
+      } catch (e) {
+        // ignore
+      }
+    } catch (e) {
+      // ignore line diff errors
+    }
   } catch (e) {
     notify.error('对比失败: ' + e.message);
   }
 }
 
+onMounted(() => {
+  // 自动在组件挂载或 props 变化时触发一次对比，使 DiffTextView 能立即显示装饰与折叠
+  try { compareDiffs(); } catch (e) {}
+});
+
+watch(() => [props.leftContent, props.rightContent], () => {
+  try { compareDiffs(); } catch (e) {}
+});
+
 function openTextView(path = null) {
   selectedPath.value = path;
-  mode.value = 'line';
 
   nextTick(() => {
     if (!diffTextRef.value) return;
     if (!path) return;
-    const leftPretty = pretty(getSubContent(path, props.leftContent));
-    const rightPretty = pretty(getSubContent(path, props.rightContent));
+    const leftPretty = pretty(displayedLeft.value);
+    const rightPretty = pretty(displayedRight.value);
     const origLine = findLineForPath(leftPretty, path);
     const modLine = findLineForPath(rightPretty, path);
     if (origLine) {
@@ -93,15 +187,47 @@ function openTextView(path = null) {
     }
   });
 }
+
+function trimSnippet(s, len = 80) {
+  try {
+    const str = String(s || '').trim().replace(/\s+/g, ' ');
+    if (str.length <= len) return str;
+    return str.slice(0, len - 1) + '…';
+  } catch (e) {
+    return '';
+  }
+}
+
+function jumpToLine(d) {
+  try {
+    if (!diffTextRef.value) return;
+    if (d.type === 'removed' && d.leftLine) {
+      diffTextRef.value.revealOriginalLine(d.leftLine);
+    } else if (d.type === 'added' && d.rightLine) {
+      diffTextRef.value.revealModifiedLine(d.rightLine);
+    } else if (d.type === 'unchanged') {
+      if (d.leftLine) diffTextRef.value.revealOriginalLine(d.leftLine);
+      if (d.rightLine) diffTextRef.value.revealModifiedLine(d.rightLine);
+    } else {
+      // value-change or others: try both
+      if (d.leftLine) diffTextRef.value.revealOriginalLine(d.leftLine);
+      if (d.rightLine) diffTextRef.value.revealModifiedLine(d.rightLine);
+    }
+  } catch (e) {
+    // ignore
+  }
+}
 </script>
 
 <template>
   <div class="diff-view">
     <div class="toolbar">
       <button @click="compareDiffs" class="diff-btn">对比</button>
-      <div class="view-toggle">
-        <button :class="{ active: mode === 'tree' }" @click="mode = 'tree'">折叠视图</button>
-        <button :class="{ active: mode === 'line' }" @click="mode = 'line'">行级文本对比</button>
+      <div style="margin-left:auto;">
+        <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" v-model="onlyDiffs" />
+          <span>只显示差异</span>
+        </label>
       </div>
     </div>
 
@@ -113,27 +239,38 @@ function openTextView(path = null) {
       <p v-if="summary.valueChanges">🔄 值变化: {{ summary.valueChanges }}</p>
     </div>
 
-    <div v-if="mode === 'line'" class="text-area">
+    <div class="list-area" style="margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <strong>行级差异</strong>
+        <button class="diff-btn" @click="compareDiffs">刷新</button>
+        <button class="diff-btn" @click="() => { if (diffTextRef.value && diffTextRef.value.clearFold) diffTextRef.value.clearFold(); folded.value=false; }">展开全部</button>
+        <button class="diff-btn" v-if="folded" @click="() => { if (diffTextRef.value && diffTextRef.value.clearFold) diffTextRef.value.clearFold(); folded.value=false; }">取消折叠</button>
+      </div>
+      <ul class="diff-list" style="margin-top:8px;max-height:120px;overflow:auto;">
+        <li v-for="(d, idx) in lineDiffs" :key="idx">
+          <button @click="jumpToLine(d)" style="background:none;border:none;cursor:pointer;font-family:monospace;">
+            <span v-if="d.type==='added'">➕</span>
+            <span v-else-if="d.type==='removed'">➖</span>
+            <span v-else>·</span>
+            <span style="margin-left:8px;color:var(--color-text-primary);font-size:13px;">
+              {{ d.leftLine ? ('L:' + d.leftLine) : '' }} {{ d.rightLine ? (' R:' + d.rightLine) : '' }}
+            </span>
+            <span class="type" style="margin-left:12px;">{{ d.type }}</span>
+            <span style="margin-left:8px;color:var(--color-text-tertiary)">{{ trimSnippet(d.left || d.right || '') }}</span>
+          </button>
+        </li>
+      </ul>
+    </div>
+
+    <div class="text-area">
       <DiffTextView
         ref="diffTextRef"
-        :left="getSubContent(selectedPath, props.leftContent)"
-        :right="getSubContent(selectedPath, props.rightContent)"
+        :left="displayedLeftString"
+        :right="displayedRightString"
+        :language="'json'"
       />
     </div>
 
-    <div v-if="mode === 'tree'" class="list-area">
-      <pre v-if="differences.length" class="diff-content">{{ diffContent }}</pre>
-
-      <div v-if="differences.length" class="diff-actions">
-        <p>点击路径以在文本对比中定位：</p>
-        <ul class="diff-list">
-          <li v-for="d in differences" :key="d.path">
-            <button @click="openTextView(d.path)">{{ d.path }}</button>
-            <span class="type"> - {{ d.type }}</span>
-          </li>
-        </ul>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -147,6 +284,7 @@ function openTextView(path = null) {
 .diff-list li { margin:6px 0; }
 .diff-list button { background:none; border:none; color:#0b69ff; cursor:pointer; padding:0; font-family:monospace; }
 .type { margin-left:8px; color:#666; font-size:12px; }
-.text-area { flex:1; min-height:200px; height:100%; }
-.list-area { flex:1; overflow:auto; }
+.text-area { flex:1; min-height:0; }
+.list-area { flex: none; overflow:auto; }
+/* small snippet filter for list */
 </style>

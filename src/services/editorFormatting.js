@@ -297,20 +297,33 @@ export function _resetProviderRegistration() {
 export async function runEditorFormat(editor, { fallbackFormatter, reason = 'manual', allowFallback = true, monacoInstance = null, actionTimeoutMs = 3000 } = {}) {
   let timedOut = false;
 
-  // Try Monaco action first with timeout
+  // Try Monaco action first with timeout.
+  // NOTE: skip Monaco's built-in format action for JSON documents because it may trigger
+  // worker loadForeignModule behavior in some bundling setups. Prefer the registered
+  // provider or our fallback incremental edits for JSON.
   try {
-    if (editor && typeof editor.getAction === 'function') {
-      const action = editor.getAction('editor.action.formatDocument');
-      if (action && typeof action.run === 'function') {
-        await Promise.race([
-          action.run(),
-          new Promise((_, reject) => setTimeout(() => {
-            timedOut = true;
-            reject(new Error('monaco-action-timeout'));
-          }, Number(actionTimeoutMs))
-        )]);
-        return { status: 'applied', method: 'monaco' };
+    const model = editor && typeof editor.getModel === 'function' ? editor.getModel() : null;
+    const lang = model && typeof model.getLanguageId === 'function'
+      ? model.getLanguageId()
+      : (model && model.language) || null;
+
+    if (lang !== 'json') {
+      if (editor && typeof editor.getAction === 'function') {
+        const action = editor.getAction('editor.action.formatDocument');
+        if (action && typeof action.run === 'function') {
+          await Promise.race([
+            action.run(),
+            new Promise((_, reject) => setTimeout(() => {
+              timedOut = true;
+              reject(new Error('monaco-action-timeout'));
+            }, Number(actionTimeoutMs))
+          )]);
+          return { status: 'applied', method: 'monaco' };
+        }
       }
+    } else {
+      // For JSON, avoid calling the Monaco action to prevent worker attempting to load foreign modules.
+      // Fall through to fallback logic below which uses our safe provider / incremental edits.
     }
   } catch (e) {
     // If Monaco action throws or times out, fall through to fallback
