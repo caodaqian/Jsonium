@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, nextTick, watch, onMounted } from 'vue';
-import { getDifferences, generateDiffSummary, findLineForPath as engineFindLineForPath, getValueAtPath, extractOnlyDifferences, buildLineDiffs } from '../services/diffEngine.js';
+import { getDifferences, generateDiffSummary, findLineForPath as engineFindLineForPath, getValueAtPath, extractOnlyDifferences, buildLineDiffs, computeDiffStats } from '../services/diffEngine.js';
 import DiffTextView from './DiffTextView.vue';
 import notify from '../services/notify.js';
 
@@ -15,8 +15,20 @@ const selectedPath = ref(null);
 const diffTextRef = ref(null);
 const onlyDiffs = ref(false);
 const lineDiffs = ref([]);
+const filteredLineDiffs = computed(() => (lineDiffs.value || []).filter(d => d && d.type !== 'unchanged'));
 const folded = ref(false);
 const foldThreshold = 5; // 连续相同行超过此值则可折叠
+const currentTab = ref('line');
+const treeRoot = ref(null);
+const treeStats = ref({ added:0, removed:0, changed:0, unchanged:0 });
+const treeError = ref('');
+const expandAllFlag = ref(null);
+
+function expandAllNodes(val) {
+  expandAllFlag.value = !!val;
+  // reset after a tick so subsequent toggles work
+  setTimeout(() => { expandAllFlag.value = null; }, 100);
+}
 
 const displayedLeft = computed(() => {
   try {
@@ -109,6 +121,34 @@ async function compareDiffs() {
       differences.value = result.differences;
       summary.value = generateDiffSummary(result.differences);
     }
+    // 同时为树形对比准备数据（用于 tree tab）
+    try {
+      const sortedLeft = (typeof props.leftContent === 'string') ? props.leftContent : JSON.stringify(props.leftContent);
+      const sortedRight = (typeof props.rightContent === 'string') ? props.rightContent : JSON.stringify(props.rightContent);
+      const treeRes = (await import('../services/diffEngine.js')).buildTreeDiff(sortedLeft, sortedRight);
+      // prune unchanged-only branches from the tree so UI doesn't show irrelevant unchanged nodes
+      function prune(node) {
+        if (!node) return null;
+        if (node.children && node.children.length) {
+          const children = node.children.map(prune).filter(Boolean);
+          node.children = children;
+        }
+        // if node is unchanged and has no children after pruning, remove it
+        if (node.type === 'unchanged' && (!node.children || node.children.length === 0)) return null;
+        return node;
+      }
+
+      const pruned = prune(treeRes.tree);
+      treeRoot.value = pruned || null;
+      // recompute stats from pruned tree
+      if (pruned) treeStats.value = computeDiffStats(pruned);
+      else treeStats.value = { added:0, removed:0, changed:0, unchanged:0 };
+      treeError.value = '';
+    } catch (e) {
+      treeRoot.value = null;
+      treeStats.value = { added:0, removed:0, changed:0, unchanged:0 };
+      treeError.value = '生成树形对比失败: ' + (e && e.message ? e.message : String(e));
+    }
 
     // 生成行级 diff 并触发 DiffTextView 装饰与折叠计算
     try {
@@ -169,23 +209,33 @@ watch(() => [props.leftContent, props.rightContent], () => {
   try { compareDiffs(); } catch (e) {}
 });
 
-function openTextView(path = null) {
+async function openTextView(path = null) {
   selectedPath.value = path;
 
-  nextTick(() => {
-    if (!diffTextRef.value) return;
-    if (!path) return;
-    const leftPretty = pretty(displayedLeft.value);
-    const rightPretty = pretty(displayedRight.value);
-    const origLine = findLineForPath(leftPretty, path);
-    const modLine = findLineForPath(rightPretty, path);
-    if (origLine) {
-      try { diffTextRef.value.revealOriginalLine(origLine); } catch (e) {}
+  // 切回行级对比 tab，确保编辑器被渲染和初始化
+  currentTab.value = 'line';
+  await nextTick();
+
+  if (!path) return;
+  const leftPretty = pretty(displayedLeft.value);
+  const rightPretty = pretty(displayedRight.value);
+  const origLine = findLineForPath(leftPretty, path);
+  const modLine = findLineForPath(rightPretty, path);
+
+  // 尝试在 editor 准备好后定位，最多重试若干次以避免 race
+  const tryReveal = (attempt = 0) => {
+    try {
+      if (!diffTextRef.value) throw new Error('no diffTextRef');
+      // rely on the exposed methods; if editor not ready these may be no-ops
+      if (origLine) diffTextRef.value.revealOriginalLine(origLine);
+      if (modLine) diffTextRef.value.revealModifiedLine(modLine);
+    } catch (e) {
+      if (attempt < 6) {
+        setTimeout(() => tryReveal(attempt + 1), 150);
+      }
     }
-    if (modLine) {
-      try { diffTextRef.value.revealModifiedLine(modLine); } catch (e) {}
-    }
-  });
+  };
+  tryReveal();
 }
 
 function trimSnippet(s, len = 80) {
@@ -222,7 +272,10 @@ function jumpToLine(d) {
 <template>
   <div class="diff-view">
     <div class="toolbar">
-      <button @click="compareDiffs" class="diff-btn">对比</button>
+      <div class="tabs">
+        <button :class="['tab-btn', { active: currentTab==='line' }]" @click="currentTab='line'">行级对比</button>
+        <button :class="['tab-btn', { active: currentTab==='tree' }]" @click="currentTab='tree'">diff 树状对比</button>
+      </div>
       <div style="margin-left:auto;">
         <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
           <input type="checkbox" v-model="onlyDiffs" />
@@ -239,7 +292,7 @@ function jumpToLine(d) {
       <p v-if="summary.valueChanges">🔄 值变化: {{ summary.valueChanges }}</p>
     </div>
 
-    <div class="list-area" style="margin-bottom:8px;">
+    <div class="list-area" style="margin-bottom:8px;" v-if="currentTab === 'line'">
       <div style="display:flex;align-items:center;gap:8px;">
         <strong>行级差异</strong>
         <button class="diff-btn" @click="compareDiffs">刷新</button>
@@ -247,7 +300,7 @@ function jumpToLine(d) {
         <button class="diff-btn" v-if="folded" @click="() => { if (diffTextRef.value && diffTextRef.value.clearFold) diffTextRef.value.clearFold(); folded.value=false; }">取消折叠</button>
       </div>
       <ul class="diff-list" style="margin-top:8px;max-height:120px;overflow:auto;">
-        <li v-for="(d, idx) in lineDiffs" :key="idx">
+        <li v-for="(d, idx) in filteredLineDiffs" :key="idx">
           <button @click="jumpToLine(d)" style="background:none;border:none;cursor:pointer;font-family:monospace;">
             <span v-if="d.type==='added'">➕</span>
             <span v-else-if="d.type==='removed'">➖</span>
@@ -262,13 +315,35 @@ function jumpToLine(d) {
       </ul>
     </div>
 
-    <div class="text-area">
+    <div v-if="currentTab === 'line'" class="text-area">
       <DiffTextView
         ref="diffTextRef"
         :left="displayedLeftString"
         :right="displayedRightString"
         :language="'json'"
       />
+    </div>
+
+    <div v-if="currentTab === 'tree'" class="tree-area" style="display:flex;flex-direction:column;height:100%;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <button class="diff-btn" @click="compareDiffs">刷新</button>
+        <button class="diff-btn" @click="expandAllNodes(true)">展开全部</button>
+        <button class="diff-btn" @click="expandAllNodes(false)">折叠全部</button>
+        <button class="diff-btn" @click="() => { currentTab='line'; }">切回 行级对比</button>
+      </div>
+      <div class="tree-root" style="overflow:auto;flex:1;padding:8px;border:1px solid var(--color-divider);border-radius:4px;">
+        <div v-if="treeError" class="error-hint">{{ treeError }}</div>
+        <div v-else-if="!treeRoot">暂无树形结果，请先点击刷新</div>
+        <div v-else>
+          <div style="display:flex;gap:12px;margin-bottom:8px;">
+            <div>新增: {{ treeStats.added }}</div>
+            <div>删除: {{ treeStats.removed }}</div>
+            <div>变化: {{ treeStats.changed }}</div>
+            <div>相同: {{ treeStats.unchanged }}</div>
+          </div>
+          <DiffTreeNode :node="treeRoot" :expandAll="expandAllFlag" @select="openTextView" />
+        </div>
+      </div>
     </div>
 
   </div>

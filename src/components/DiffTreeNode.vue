@@ -1,14 +1,23 @@
 <script setup>
 defineOptions({ name: 'DiffTreeNode' });
 
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
   node: { type: Object, required: true },
-  filter: { type: String, default: 'all' }
+  filter: { type: String, default: 'all' },
+  expandAll: { type: Boolean, default: null }
 });
 
 const expanded = ref(props.node.type !== 'unchanged');
+
+// 支持外部控制全部展开/收起
+const emit = defineEmits(['select']);
+
+// 监视 expandAll，如果传入布尔值则覆盖本节点的 expanded
+watch(() => props.expandAll, (v) => {
+  if (typeof v === 'boolean') expanded.value = v;
+});
 
 const visibleByFilter = computed(() => {
   if (!props.filter || props.filter === 'all') return true;
@@ -28,12 +37,17 @@ const valueSummary = computed(() => {
 function toggle() {
   expanded.value = !expanded.value;
 }
+
+function onSelect() {
+  // 点击节点（除了 toggle 按钮）触发 select 事件，父组件可据此跳转
+  try { emit('select', props.node.path); } catch (e) {}
+}
 </script>
 
 <template>
   <div v-if="visibleByFilter" class="tree-node">
-    <div class="node-line" :class="node.type">
-      <button v-if="node.children && node.children.length" class="toggle-btn" @click="toggle">
+    <div class="node-line" :class="node.type" @click="onSelect">
+      <button v-if="node.children && node.children.length" class="toggle-btn" @click.stop="toggle">
         {{ expanded ? '▾' : '▸' }}
       </button>
       <span v-else class="toggle-placeholder"></span>
@@ -48,6 +62,7 @@ function toggle() {
         :key="c.path + '-' + idx"
         :node="c"
         :filter="filter"
+        :expandAll="props.expandAll"
       />
     </div>
   </div>

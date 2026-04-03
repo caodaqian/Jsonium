@@ -71,15 +71,64 @@
       // 尽早注入 MonacoEnvironment.getWorker，确保 worker 创建使用 ESM worker 路径，避免 loadForeignModule / Unexpected usage
       try {
         if (typeof window !== 'undefined') {
+          // Inject a robust MonacoEnvironment.getWorker that prefers any helper
+          // provided by the bundler/plugin (getWorkerUrl/getWorker). If not
+          // available, attempt the following fallbacks in order:
+          // 1. ESM module worker via new Worker(new URL(..., import.meta.url), { type: 'module' })
+          // 2. Blob-based module import that imports the real worker module
+          // 3. Classic importScripts-based worker via Blob (last resort)
           window.MonacoEnvironment = window.MonacoEnvironment || {};
-window.MonacoEnvironment.getWorker = function (moduleId, label) {
-  if (label === 'json') {
-    return new Worker(new URL('monaco-editor/esm/vs/language/json/json.worker', import.meta.url), { type: 'module' });
-  }
-  return new Worker(new URL('monaco-editor/esm/vs/editor/editor.worker', import.meta.url), { type: 'module' });
-};
+          window.MonacoEnvironment.getWorker = function (moduleId, label) {
+            try {
+              const env = window.MonacoEnvironment || {};
+              if (typeof env.getWorkerUrl === 'function') {
+                try {
+                  const url = env.getWorkerUrl(moduleId, label);
+                  return new Worker(url);
+                } catch (e) {
+                  // fall through to other strategies
+                }
+              }
+              if (typeof env.getWorker === 'function') {
+                try { return env.getWorker(moduleId, label); } catch (_) { /* fallthrough */ }
+              }
+            } catch (_) {}
+
+            const makeUrl = (p) => {
+              try { return new URL(p, import.meta.url).toString(); } catch (_) { return p; }
+            };
+
+            const jsonPath = 'monaco-editor/esm/vs/language/json/json.worker.js';
+            const editorPath = 'monaco-editor/esm/vs/editor/editor.worker.js';
+
+            try {
+              if (label === 'json') {
+                return new Worker(new URL(jsonPath, import.meta.url), { type: 'module' });
+              }
+              return new Worker(new URL(editorPath, import.meta.url), { type: 'module' });
+            } catch (err) {
+              // fallback: try creating a module worker from a blob that imports the real worker module
+              try {
+                const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
+                const blob = new Blob([`import("${url}");`], { type: 'application/javascript' });
+                const blobUrl = URL.createObjectURL(blob);
+                return new Worker(blobUrl, { type: 'module' });
+              } catch (e) {
+                // last resort: classic worker using importScripts (may or may not work depending on packaging)
+                try {
+                  const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
+                  const blob = new Blob([`self.importScripts("${url}");`], { type: 'application/javascript' });
+                  const b = URL.createObjectURL(blob);
+                  return new Worker(b);
+                } catch (e2) {
+                  // rethrow original error to surface failure
+                  throw err;
+                }
+              }
+            }
+          };
         }
-      } catch (_) { /* ignore */ }
+      } catch (e) { /* ignore injection failures */ }
 
       // 加载 Monaco CSS（容错）
       try { await import('monaco-editor/min/vs/editor/editor.main.css'); } catch (_) { /* ignore */ }

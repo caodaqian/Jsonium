@@ -16,6 +16,12 @@ let diffEditor = null;
 let leftModel = null;
 let rightModel = null;
 const monacoAvailable = ref(false);
+const monacoLoadError = ref('');
+const monacoLoading = ref(true);
+
+// When foldRanges is called before Monaco is ready, cache the ranges and
+// apply them once Monaco becomes available.
+const pendingFoldRanges = ref([]);
 
 onMounted(async () => {
   try {
@@ -32,12 +38,60 @@ onMounted(async () => {
 
     // 尽早注入 MonacoEnvironment.getWorker，保证 Worker 使用 ESM 路径，避免 loadForeignModule/Unexpected usage
     try {
-      window.MonacoEnvironment = window.MonacoEnvironment || {};
+window.MonacoEnvironment = window.MonacoEnvironment || {};
+// Robust getWorker that tries ESM worker first, then falls back to a module blob worker
+// and finally to a classic importScripts-based worker. This helps environments
+// (like some Electron/uTools hosts) that don't support new Worker(new URL(..., import.meta.url)).
 window.MonacoEnvironment.getWorker = function (moduleId, label) {
-  if (label === 'json') {
-    return new Worker(new URL('monaco-editor/esm/vs/language/json/json.worker', import.meta.url), { type: 'module' });
+  // If the environment already provides a getWorkerUrl/getWorker helper (e.g. injected by vite-plugin-monaco-editor),
+  // prefer using it — it will return a proper worker URL or blob URL that is safe to instantiate.
+  try {
+    const env = window.MonacoEnvironment || {};
+    if (typeof env.getWorkerUrl === 'function') {
+      try {
+        const url = env.getWorkerUrl(moduleId, label);
+        return new Worker(url);
+      } catch (e) {
+        // fallthrough to other strategies
+      }
+    }
+    if (typeof env.getWorker === 'function') {
+      // some setups may provide getWorker directly
+      try { return env.getWorker(moduleId, label); } catch (_) {}
+    }
+  } catch (_) {}
+
+  const makeUrl = (p) => {
+    try { return new URL(p, import.meta.url).toString(); } catch (_) { return p; }
+  };
+  const jsonPath = 'monaco-editor/esm/vs/language/json/json.worker.js';
+  const editorPath = 'monaco-editor/esm/vs/editor/editor.worker.js';
+
+  try {
+    if (label === 'json') {
+      return new Worker(new URL(jsonPath, import.meta.url), { type: 'module' });
+    }
+    return new Worker(new URL(editorPath, import.meta.url), { type: 'module' });
+  } catch (err) {
+    // fallback: try creating a module worker from a blob that imports the real worker module
+    try {
+      const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
+      const blob = new Blob([`import("${url}");`], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      return new Worker(blobUrl, { type: 'module' });
+    } catch (e) {
+      // last resort: classic worker using importScripts (may or may not work depending on packaging)
+      try {
+        const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
+        const blob = new Blob([`self.importScripts("${url}");`], { type: 'application/javascript' });
+        const b = URL.createObjectURL(blob);
+        return new Worker(b);
+      } catch (e2) {
+        // rethrow original error to surface failure
+        throw err;
+      }
+    }
   }
-  return new Worker(new URL('monaco-editor/esm/vs/editor/editor.worker', import.meta.url), { type: 'module' });
 };
     } catch (e) {
       // ignore injection failure
@@ -133,10 +187,51 @@ window.MonacoEnvironment.getWorker = function (moduleId, label) {
     });
   }
 
-  await _waitForGlobalMonaco(3000, 50);
-  await nextTick();
-  initDiffEditor();
+  // 强制使用 Monaco：封装为可重试的加载流程。尽量拾取多种导入/注入方式，
+  // 若最终失败则设置 monacoLoadError，并由 UI 提供重试按钮。
+  async function loadMonacoWithAttempts() {
+    monacoLoading.value = true;
+    monacoLoadError.value = '';
+    // try to reuse any already-imported monaco first
+    try {
+      if (monaco && monaco.editor) {
+        // already have it
+      } else if (typeof window !== 'undefined' && window.monaco && window.monaco.editor) {
+        monaco = window.monaco;
+      } else {
+        // attempt a few times waiting for window.monaco injection
+        let attempts = 0;
+        const maxAttempts = 5;
+        while (attempts < maxAttempts) {
+          await _waitForGlobalMonaco(1000, 50);
+          if (monaco && monaco.editor) break;
+          attempts++;
+        }
+      }
+    } catch (e) {
+      // swallow
+    }
+
+    await nextTick();
+    try {
+      initDiffEditor();
+      if (!monacoAvailable.value) {
+        monacoLoadError.value = 'Monaco 编辑器加载失败，请确保 monaco-editor 已正确安装并可用。';
+      }
+    } catch (e) {
+      monacoLoadError.value = '初始化 Monaco 编辑器出错: ' + (e && e.message ? e.message : String(e));
+    }
+    monacoLoading.value = false;
+  }
+
+  // initial load
+  await loadMonacoWithAttempts();
 });
+
+// expose a retry function that can be called from the template
+async function retryLoadMonaco() {
+  await loadMonacoWithAttempts();
+}
 
 onBeforeUnmount(() => {
   try { diffEditor?.dispose && diffEditor.dispose(); } catch (e) {}
@@ -169,6 +264,22 @@ function initDiffEditor() {
 
     monacoAvailable.value = true;
     try { console.info('[DiffTextView] monacoAvailable=true'); } catch (e) {}
+
+    // 回放在 Monaco 未就绪时缓存的折叠区间（如果有）
+    try {
+      const replay = () => {
+        try {
+          if (pendingFoldRanges && pendingFoldRanges.value && pendingFoldRanges.value.length) {
+            for (const r of pendingFoldRanges.value) {
+              try { exportsApplyFold(r); } catch (e) {}
+            }
+            pendingFoldRanges.value = [];
+          }
+        } catch (e) {}
+      };
+      // 延迟执行以保证内部 editors 已经渲染
+      setTimeout(replay, 50);
+    } catch (e) {}
 
     // 立即设置模型语言（已确保 monaco 可用）
       try {
@@ -316,8 +427,9 @@ const highlightedLeftHtml = computed(() => {
     const parts = [];
     for (let i = 0; i < diffs.length; i++) {
       const d = diffs[i];
+      // skip unchanged lines in fallback HTML to avoid redundant display
       if (d.type === 'unchanged') {
-        parts.push('<div class="line unchanged">' + escapeHtml(d.left || '') + '</div>');
+        continue;
       } else if (d.type === 'removed') {
         // try inline with next added
         const next = diffs[i + 1];
@@ -351,8 +463,9 @@ const highlightedRightHtml = computed(() => {
     const parts = [];
     for (let i = 0; i < diffs.length; i++) {
       const d = diffs[i];
+      // skip unchanged lines in fallback HTML
       if (d.type === 'unchanged') {
-        parts.push('<div class="line unchanged">' + escapeHtml(d.right || '') + '</div>');
+        continue;
       } else if (d.type === 'added') {
         const prev = diffs[i - 1];
         if (prev && prev.type === 'removed' && typeof prev.left === 'string' && typeof d.right === 'string') {
@@ -403,20 +516,13 @@ defineExpose({
     } catch (e) {}
   },
   foldRanges: (ranges) => {
-    if (!diffEditor || !monaco) return;
+    // if Monaco not ready, cache ranges to apply once available
+    if (!diffEditor || !monaco) {
+      try { pendingFoldRanges.value = pendingFoldRanges.value || []; pendingFoldRanges.value.push(ranges); } catch (e) {}
+      return;
+    }
     try {
-      const orig = diffEditor.getOriginalEditor();
-      const mod = diffEditor.getModifiedEditor();
-      if (Array.isArray(ranges)) {
-        const r = ranges.map(([s, e]) => new monaco.Range(s, 1, e, 1));
-        if (orig && typeof orig.setHiddenAreas === 'function') try { orig.setHiddenAreas(r); } catch (e) {}
-        if (mod && typeof mod.setHiddenAreas === 'function') try { mod.setHiddenAreas(r); } catch (e) {}
-      } else if (ranges && typeof ranges === 'object') {
-        const leftRanges = Array.isArray(ranges.left) ? ranges.left.map(([s, e]) => new monaco.Range(s, 1, e, 1)) : [];
-        const rightRanges = Array.isArray(ranges.right) ? ranges.right.map(([s, e]) => new monaco.Range(s, 1, e, 1)) : [];
-        if (orig && typeof orig.setHiddenAreas === 'function') try { orig.setHiddenAreas(leftRanges); } catch (e) {}
-        if (mod && typeof mod.setHiddenAreas === 'function') try { mod.setHiddenAreas(rightRanges); } catch (e) {}
-      }
+      exportsApplyFold(ranges);
     } catch (e) { /* ignore */ }
   },
   clearFold: () => {
@@ -429,20 +535,48 @@ defineExpose({
     } catch (e) { /* ignore */ }
   }
 });
+
+// helper used internally to actually apply folds (avoids code duplication)
+function exportsApplyFold(ranges) {
+  if (!diffEditor || !monaco) return;
+  try {
+    const orig = diffEditor.getOriginalEditor();
+    const mod = diffEditor.getModifiedEditor();
+    if (Array.isArray(ranges)) {
+      const r = ranges.map(([s, e]) => new monaco.Range(s, 1, e, 1));
+      if (orig && typeof orig.setHiddenAreas === 'function') try { orig.setHiddenAreas(r); } catch (e) {}
+      if (mod && typeof mod.setHiddenAreas === 'function') try { mod.setHiddenAreas(r); } catch (e) {}
+    } else if (ranges && typeof ranges === 'object') {
+      const leftRanges = Array.isArray(ranges.left) ? ranges.left.map(([s, e]) => new monaco.Range(s, 1, e, 1)) : [];
+      const rightRanges = Array.isArray(ranges.right) ? ranges.right.map(([s, e]) => new monaco.Range(s, 1, e, 1)) : [];
+      if (orig && typeof orig.setHiddenAreas === 'function') try { orig.setHiddenAreas(leftRanges); } catch (e) {}
+      if (mod && typeof mod.setHiddenAreas === 'function') try { mod.setHiddenAreas(rightRanges); } catch (e) {}
+    }
+  } catch (e) {}
+}
 </script>
 
 <template>
   <div class="diff-text-wrapper">
-    <div v-if="monacoAvailable" ref="editorContainer" class="diff-editor-container"></div>
-    <div v-else class="diff-fallback">
-      <div class="fallback-side">
-        <div class="fallback-title">左侧</div>
-        <div class="fallback-pre" v-html="highlightedLeftHtml"></div>
+    <!-- 编辑器容器始终渲染，避免因条件渲染导致 init 时拿不到 DOM 引用 -->
+    <div ref="editorContainer" class="diff-editor-container"></div>
+
+    <!-- 覆盖层：加载中提示 -->
+    <div v-if="monacoLoading" class="overlay monaco-loading">
+      <div class="loading-panel">
+        <div class="loading-indicator"></div>
+        <div class="loading-text">正在加载 Monaco 编辑器，请稍候……</div>
       </div>
-      <div class="fallback-side">
-        <div class="fallback-title">右侧</div>
-        <div class="fallback-pre" v-html="highlightedRightHtml"></div>
+    </div>
+
+    <!-- 覆盖层：加载失败时显示明确错误和重试入口（强制使用 Monaco） -->
+    <div v-if="!monacoLoading && !monacoAvailable" class="overlay monaco-error-panel">
+      <div class="error-header">无法加载 Monaco 编辑器</div>
+      <div class="error-message">{{ monacoLoadError || 'Monaco 编辑器不可用。' }}</div>
+      <div class="error-actions">
+        <button class="retry-button" @click="retryLoadMonaco" :disabled="monacoLoading">重试加载 Monaco</button>
       </div>
+      <div class="error-hint">Json 语法高亮与折叠功能需要 Monaco 编辑器。请确保 monaco-editor 已正确安装或刷新页面。</div>
     </div>
   </div>
 </template>
@@ -460,6 +594,21 @@ defineExpose({
 .line-removed { background: rgba(239,68,68,0.06) !important; border-left: 4px solid rgba(239,68,68,0.9); }
 .inline-added { background: rgba(16,185,129,0.20); color: #064e3b; padding: 0 2px; border-radius: 2px; }
 .inline-removed { background: rgba(239,68,68,0.12); color: #7f1d1d; text-decoration: line-through; padding: 0 2px; border-radius: 2px; }
+</style>
+
+<style scoped>
+.monaco-loading { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+.loading-panel { display:flex; flex-direction:column; align-items:center; gap:8px; }
+.loading-indicator { width:28px; height:28px; border-radius:50%; border:3px solid rgba(255,255,255,0.08); border-top-color:var(--color-accent, #6b7280); animation:spin 1s linear infinite; }
+.loading-text { color:var(--color-text-tertiary); font-size:13px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.monaco-error-panel { padding:16px; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+.error-header { font-weight:700; color:var(--color-danger, #f87171); }
+.error-message { color:var(--color-text-primary); }
+.error-actions { margin-top:6px; }
+.retry-button { background:var(--color-accent, #4f46e5); color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; }
+.retry-button:disabled { opacity:0.6; cursor:not-allowed; }
+.error-hint { color:var(--color-text-tertiary); font-size:12px; margin-top:8px; }
 </style>
 
 <style>

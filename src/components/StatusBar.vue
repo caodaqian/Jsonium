@@ -410,92 +410,83 @@ const formatJson = () => {
 
 <template>
   <div class="status-bar">
-    <div class="query-section">
-      <div class="query-input-group">
-        <div class="query-type-selector">
+    <div class="status-bar-row">
+      <!-- 选项卡（带滑动）、输入、执行、所有底部按钮一行化 -->
+      <div class="query-type-segment">
+        <button
+          v-for="type in ['jsonpath', 'jq']"
+          :key="type"
+          :class="['type-seg-btn', { active: queryType === type }]"
+          @click="queryType = type"
+        >
+          {{ type.toUpperCase() }}
+        </button>
+        <span class="type-seg-indicator" :style="{left: queryType==='jsonpath'?'0%':'50%'}"/>
+      </div>
+      <input
+        v-model="queryExpression"
+        :placeholder="queryType === 'jsonpath' ? '例: $.store.book[0].title' : '例: .store.book[].price'"
+        class="query-input"
+        @keydown="handleKeyDown"
+      />
+      <button class="query-btn primary" @click="executeQuery">⚙️</button>
+
+      <div class="actions-inline">
+        <button @click="formatJson" class="action-btn" title="格式化">
+          📐 格式化
+        </button>
+        <div class="action-menu">
           <button
-            v-for="type in ['jsonpath', 'jq']"
-            :key="type"
-            :class="['type-btn', { active: queryType === type }]"
-            @click="queryType = type"
+            ref="copyMenuButtonRef"
+            @click="toggleCopyMenu"
+            class="action-btn"
+            title="复制选项"
           >
-            {{ type.toUpperCase() }}
+            📋 复制
           </button>
         </div>
-        <input
-          v-model="queryExpression"
-          :placeholder="queryType === 'jsonpath' ? '例: $.store.book[0].title' : '例: .store.book[].price'"
-          class="query-input"
-          @keydown="handleKeyDown"
-        />
-        <button class="query-btn primary" @click="executeQuery">⚙️ 执行</button>
-      </div>
-
-      <div v-if="queryError" class="query-error">{{ queryError }}</div>
-    </div>
-
-    <div class="action-bar">
-      <button @click="formatJson" class="action-btn" title="格式化">
-        📐 格式化
-      </button>
-
-      <div class="action-menu">
-        <button
-          ref="copyMenuButtonRef"
-          @click="toggleCopyMenu"
-          class="action-btn"
-          title="复制选项"
-        >
-          📋 复制
+        <button @click="handleCompareClick" class="action-btn" title="对比">
+          ⚖️ 对比
         </button>
-      </div>
-
-      <button @click="handleCompareClick" class="action-btn" title="对比">
-        ⚖️ 对比
-      </button>
-
-      <button @click="toggleAiPanel" class="action-btn" title="AI">
-        🤖 AI
-      </button>
-
-      <button @click="escapeJson" class="action-btn" title="转义">
-        🔒 转义
-      </button>
-
-      <button @click="unescapeJson" class="action-btn" title="反转义">
-        🔓 反转义
-      </button>
-
-      <button @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn" title="设置">
-        ⚙️ 设置
-      </button>
-
-      <!-- Help tooltip on the right -->
-      <div
-        class="help-wrapper"
-        @mouseenter="showHelpTooltip = true"
-        @mouseleave="showHelpTooltip = false"
-        ref="helpTooltipRef"
-        title="帮助"
-      >
-        <div class="help-label">帮助</div>
-        <div v-if="showHelpTooltip" class="help-tooltip">
-          <div class="help-title">支持的功能与快捷键</div>
-          <div class="help-item">格式化：Shift + Alt + F</div>
-          <div class="help-item">单行复制：Shift + Alt + C（备用：Cmd/Ctrl + Shift + C）</div>
-          <div class="help-item">转义字符串复制：Shift + Alt + \（备用：Cmd/Ctrl + Shift + \）</div>
-          <div class="help-item">查询执行：Cmd/Ctrl + Enter（在查询输入框中）</div>
-          <div class="help-item">格式化开关：在设置中控制自动格式化</div>
-          <div class="help-item">关闭当前标签：Cmd/Ctrl + W（在编辑器或标签栏聚焦时）</div>
-          <div class="help-item">新建标签：Cmd/Ctrl + N</div>
-          <div class="help-item">标签右键菜单：关闭此 / 关闭其他 / 关闭左侧 / 关闭所有 / 收藏（收藏项以 🌟 标记并优先保留）</div>
-          <div class="help-item">备注：快捷键在不同平台或输入法下可能有差异，若无响应请尝试切换焦点到编辑器或标签栏。</div>
+        <button @click="toggleAiPanel" class="action-btn" title="AI">
+          🤖 AI
+        </button>
+        <button @click="escapeJson" class="action-btn" title="转义">
+          🔒 转义
+        </button>
+        <button @click="unescapeJson" class="action-btn" title="反转义">
+          🔓 反转义
+        </button>
+        <button @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn" title="设置">
+          ⚙️ 设置
+        </button>
+        <!-- Help tooltip on the right -->
+        <div
+          class="help-wrapper"
+          @mouseenter="showHelpTooltip = true"
+          @mouseleave="showHelpTooltip = false"
+          ref="helpTooltipRef"
+          title="帮助"
+        >
+          <div class="help-label">帮助</div>
+          <div v-if="showHelpTooltip" class="help-tooltip">
+            <div class="help-title">支持的功能与快捷键</div>
+            <div class="help-item">格式化：Shift + Alt + F</div>
+            <div class="help-item">单行复制：Shift + Alt + C（备用：Cmd/Ctrl + Shift + C）</div>
+            <div class="help-item">转义字符串复制：Shift + Alt + \（备用：Cmd/Ctrl + Shift + \）</div>
+            <div class="help-item">查询执行：Cmd/Ctrl + Enter（在查询输入框中）</div>
+            <div class="help-item">格式化开关：在设置中控制自动格式化</div>
+            <div class="help-item">关闭当前标签：Cmd/Ctrl + W（在编辑器或标签栏聚焦时）</div>
+            <div class="help-item">新建标签：Cmd/Ctrl + N</div>
+            <div class="help-item">标签右键菜单：关闭此 / 关闭其他 / 关闭左侧 / 关闭所有 / 收藏（收藏项以 🌟 标记并优先保留）</div>
+            <div class="help-item">备注：快捷键在不同平台或输入法下可能有差异，若无响应请尝试切换焦点到编辑器或标签栏。</div>
+          </div>
         </div>
+        <!-- transient copy error message -->
+        <div v-if="copyErrorMessage" class="copy-error">{{ copyErrorMessage }}</div>
       </div>
-
-      <!-- transient copy error message -->
-      <div v-if="copyErrorMessage" class="copy-error">{{ copyErrorMessage }}</div>
     </div>
+    <div v-if="queryError" class="query-error">{{ queryError }}</div>
 
     <teleport to="body">
       <div
@@ -559,39 +550,62 @@ const formatJson = () => {
   overflow-y: auto;
 }
 
-.query-section {
+.status-bar-row {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.query-input-group {
-  display: flex;
-  gap: var(--spacing-sm);
+  flex-direction: row;
   align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  margin-bottom: 0;
+  flex-wrap: wrap;
 }
-
-.query-type-selector {
+.query-type-segment {
   display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.type-btn {
-  padding: 4px 8px;
+  position: relative;
+  width: 94px;
+  height: 30px;
+  margin-right: 8px;
   background: var(--color-bg-primary);
+  border-radius: 4px;
   border: 1px solid var(--color-border);
+}
+.type-seg-btn {
+  flex: 1 1 50%;
+  padding: 0 0;
+  height: 100%;
+  font-weight: 500;
+  font-size: var(--font-size-xs);
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
   border-radius: 4px;
   cursor: pointer;
-  font-size: var(--font-size-xs);
-  transition: all 0.2s;
-  white-space: nowrap;
+  position: relative;
+  z-index: 2;
+  transition: color .18s;
 }
-
-.type-btn.active {
+.type-seg-btn.active {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+.type-seg-indicator {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  width: 50%;
+  height: 3px;
   background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
+  border-radius: 1.5px;
+  z-index: 1;
+  box-shadow: 0 1px 4px 0 var(--color-primary-alpha,rgba(80,186,255,0.19));
+  transition: left 0.3s;
+}
+.actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .query-input {
@@ -624,12 +638,8 @@ const formatJson = () => {
   font-size: var(--font-size-xs);
 }
 
-.action-bar {
-  display: flex;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
-  align-items: center;
-}
+/* 移除旧 action-bar，让 .actions-inline 生效 */
+
 
 .action-btn {
   padding: 6px 12px;
