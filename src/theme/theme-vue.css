@@ -1,0 +1,102 @@
+/* Vue 风格主题变量
+ * 提供 light/dark 两套
+ * ref: https://github.com/vuejs/theme, element-plus, vue3 官网
+ */
+ 
+html.vue.light-mode {
+  --color-bg-primary: #f6f8fa;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f2f3f5;
+
+  --color-text-primary: #213547;
+  --color-text-secondary: #57606a;
+  --color-text-tertiary: #8b949e;
+
+  --color-primary: #42b883;
+  --color-primary-light: #5fd0b7;
+  --color-primary-lighter: #c8f2e0;
+  --color-primary-dark: #289672;
+  --color-primary-darker: #14785c;
+
+  --color-success: #67c23a;
+  --color-warning: #e6a23c;
+  --color-error: #f56c6c;
+  --color-info: #909399;
+
+  --color-border: #e7eaf1;
+  --color-divider: #eaecef;
+
+  --color-hover-bg: #e8f8f3;
+  --color-active-bg: #e0eeec;
+
+  --shadow-sm: 0 1px 2px 0 rgba(60,107,96,0.05);
+  --shadow-md: 0 4px 12px -2px rgba(66, 184, 131, 0.09);
+  --shadow-lg: 0 10px 16px -4px rgba(66, 184, 131, 0.14);
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 20px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
+
+html.vue.dark-mode {
+  --color-bg-primary: #181c23;
+  --color-bg-secondary: #23272e;
+  --color-bg-tertiary: #21252b;
+
+  --color-text-primary: #e8f3ef;
+  --color-text-secondary: #a6adba;
+  --color-text-tertiary: #8790a1;
+
+  --color-primary: #42d392;
+  --color-primary-light: #63e2b7;
+  --color-primary-lighter: #d1faeb;
+  --color-primary-dark: #177662;
+  --color-primary-darker: #144c3e;
+
+  --color-success: #24c88b;
+  --color-warning: #e2bb4b;
+  --color-error: #ff5656;
+  --color-info: #bfc2cc;
+
+  --color-border: #2a2e39;
+  --color-divider: #23262e;
+
+  --color-hover-bg: #1e2229;
+  --color-active-bg: #202224;
+
+  --shadow-sm: 0 1px 2px 0 rgba(66, 184, 131, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(66, 184, 131, 0.13);
+  --shadow-lg: 0 10px 16px -4px rgba(66, 184, 131, 0.18);
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 20px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}

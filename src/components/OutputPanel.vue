@@ -94,7 +94,7 @@ const switchTab = (tab) => {
 </script>
 
 <template>
-  <div class="output-panel" v-if="store.outputPanel.visible">
+  <div class="output-panel card card-blur" v-if="store.outputPanel.visible">
     <div class="output-header">
       <div class="output-tabs">
         <button

@@ -19,7 +19,8 @@ const emit = defineEmits([
   'escape',
   'unescape',
   'compare',
-  'aiProcess'
+  'aiProcess',
+  'openTableView'
 ]);
 
 const queryExpression = ref('');
@@ -30,6 +31,7 @@ const showCopyMenu = ref(false);
 const copyMenuButtonRef = ref(null);
 const copyMenuRef = ref(null);
 const copyMenuPosition = ref({ top: 0, left: 0, height: 0 });
+let scrollRaf = null;
 
 
 const showAiPanel = computed({
@@ -112,7 +114,14 @@ const handleWindowResize = () => {
   if (showCopyMenu.value) positionCopyMenu();
 };
 const handleWindowScroll = () => {
-  if (showCopyMenu.value) positionCopyMenu();
+  if (!showCopyMenu.value) return;
+  if (scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    try {
+      if (showCopyMenu.value) positionCopyMenu();
+    } catch (_) {}
+    scrollRaf = null;
+  });
 };
 const handleWindowKeyDown = (e) => {
   if (e.key === 'Escape' && showCopyMenu.value) {
@@ -150,8 +159,8 @@ const handleDocumentClick = (event) => {
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick);
   window.addEventListener('resize', handleWindowResize);
-  // use capture to catch scrolls on any scrollable ancestor
-  window.addEventListener('scroll', handleWindowScroll, true);
+  // use capture to catch scrolls on any scrollable ancestor; passive to avoid blocking scroll
+  window.addEventListener('scroll', handleWindowScroll, { capture: true, passive: true });
   window.addEventListener('keydown', handleWindowKeyDown);
   // listen for copy errors from Editor
   try { window.addEventListener('editor-copy-error', handleEditorCopyError); } catch (e) {}
@@ -160,8 +169,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick);
   window.removeEventListener('resize', handleWindowResize);
-  window.removeEventListener('scroll', handleWindowScroll, true);
+  try { window.removeEventListener('scroll', handleWindowScroll, { capture: true, passive: true }); } catch (e) { window.removeEventListener('scroll', handleWindowScroll, true); }
   window.removeEventListener('keydown', handleWindowKeyDown);
+  try { if (typeof scrollRaf === 'number' && scrollRaf) { cancelAnimationFrame(scrollRaf); } } catch (e) {}
   try { window.removeEventListener('editor-copy-error', handleEditorCopyError); } catch (e) {}
   if (copyErrorTimer) {
     try { clearTimeout(copyErrorTimer); } catch (e) {}
@@ -432,34 +442,54 @@ const formatJson = () => {
       <button class="query-btn primary" @click="executeQuery">⚙️</button>
 
       <div class="actions-inline">
-        <button @click="formatJson" class="action-btn" title="格式化">
-          📐 格式化
+        <button @click="formatJson" class="action-btn action-btn--icon action-btn--format" title="格式化" aria-label="格式化 (format)">
+          <span class="action-btn__icon emoji-badge emoji-badge--format" aria-hidden="true">📐</span>
+          <span class="action-btn__text">格式化</span>
         </button>
+
         <div class="action-menu">
           <button
             ref="copyMenuButtonRef"
             @click="toggleCopyMenu"
-            class="action-btn"
+            class="action-btn action-btn--icon action-btn--copy"
             title="复制选项"
+            aria-label="复制 (copy)"
           >
-            📋 复制
+            <span class="action-btn__icon emoji-badge emoji-badge--copy" aria-hidden="true">📋</span>
+            <span class="action-btn__text">复制</span>
           </button>
         </div>
-        <button @click="handleCompareClick" class="action-btn" title="对比">
-          ⚖️ 对比
+
+        <button @click="handleCompareClick" class="action-btn action-btn--icon action-btn--compare" title="对比" aria-label="对比 (compare)">
+          <span class="action-btn__icon emoji-badge emoji-badge--compare" aria-hidden="true">⚖️</span>
+          <span class="action-btn__text">对比</span>
         </button>
-        <button @click="toggleAiPanel" class="action-btn" title="AI">
-          🤖 AI
+
+        <button @click="toggleAiPanel" class="action-btn action-btn--icon action-btn--ai" title="AI" aria-label="AI">
+          <span class="action-btn__icon emoji-badge emoji-badge--ai" aria-hidden="true">🤖</span>
+          <span class="action-btn__text">AI</span>
         </button>
-        <button @click="escapeJson" class="action-btn" title="转义">
-          🔒 转义
+
+        <button @click="escapeJson" class="action-btn action-btn--icon action-btn--escape" title="转义" aria-label="转义 (escape)">
+          <span class="action-btn__icon emoji-badge emoji-badge--escape" aria-hidden="true">🔒</span>
+          <span class="action-btn__text">转</span>
         </button>
-        <button @click="unescapeJson" class="action-btn" title="反转义">
-          🔓 反转义
+
+        <button @click="unescapeJson" class="action-btn action-btn--icon action-btn--unescape" title="反转义" aria-label="反转义 (unescape)">
+          <span class="action-btn__icon emoji-badge emoji-badge--unescape" aria-hidden="true">🗝️</span>
+          <span class="action-btn__text">反</span>
         </button>
-        <button @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn" title="设置">
-          ⚙️ 设置
+
+        <button @click="$emit('openTableView')" class="action-btn action-btn--icon action-btn--table" title="表格视图" aria-label="表格视图 (table view)">
+          <span class="action-btn__icon emoji-badge emoji-badge--table" aria-hidden="true">📊</span>
+          <span class="action-btn__text">表格</span>
         </button>
+
+        <button @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn action-btn--icon action-btn--settings" title="设置" aria-label="设置">
+          <span class="action-btn__icon emoji-badge emoji-badge--settings" aria-hidden="true">⚙️</span>
+          <span class="action-btn__text">设置</span>
+        </button>
+
         <!-- Help tooltip on the right -->
         <div
           class="help-wrapper"
@@ -482,6 +512,7 @@ const formatJson = () => {
             <div class="help-item">备注：快捷键在不同平台或输入法下可能有差异，若无响应请尝试切换焦点到编辑器或标签栏。</div>
           </div>
         </div>
+
         <!-- transient copy error message -->
         <div v-if="copyErrorMessage" class="copy-error">{{ copyErrorMessage }}</div>
       </div>
@@ -541,12 +572,12 @@ const formatJson = () => {
 .status-bar {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
+  gap: var(--spacing-sm);
+  padding: 8px 10px;
   background: var(--color-bg-secondary);
   border-top: 1px solid var(--color-divider);
   font-size: var(--font-size-sm);
-  max-height: 320px;
+  max-height: 260px;
   overflow-y: auto;
 }
 
@@ -554,10 +585,13 @@ const formatJson = () => {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: 8px;
   width: 100%;
   margin-bottom: 0;
+  /* allow wrapping instead of horizontal scrolling */
   flex-wrap: wrap;
+  overflow-x: hidden;
+  overflow-y: hidden;
 }
 .query-type-segment {
   display: flex;
@@ -604,8 +638,12 @@ const formatJson = () => {
 .actions-inline {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
+  min-width: 0;
+  /* allow buttons to wrap to next line when space is limited */
+  flex: 0 1 auto;
+  flex-wrap: wrap;
 }
 
 .query-input {
@@ -642,18 +680,65 @@ const formatJson = () => {
 
 
 .action-btn {
-  padding: 6px 12px;
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
   cursor: pointer;
   font-size: var(--font-size-xs);
-  transition: all 0.2s;
-  white-space: nowrap;
+  transition: background 0.12s, transform 0.12s;
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative; /* for tooltip positioning */
 }
 
 .action-menu {
   position: relative;
+}
+
+.action-btn__icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.action-btn__text {
+  line-height: 1;
+}
+
+/* Tooltip behaviour: hide labels by default, show on hover/focus */
+.action-btn__text {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  padding: 6px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-xs);
+  z-index: 200000;
+  color: var(--color-text-primary);
+}
+.action-btn:hover .action-btn__text,
+.action-btn:focus-visible .action-btn__text {
+  display: block;
+}
+
+@media (min-width: 1100px) {
+  /* on very wide screens, show labels inline */
+  .action-btn__text {
+    display: inline-block;
+    position: static;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    transform: none;
+  }
 }
 
 .panel-btn {
@@ -777,5 +862,39 @@ const formatJson = () => {
   color: var(--color-error);
   border-radius: 6px;
   font-size: var(--font-size-xs);
+}
+
+/* emoji badge styles for better recognizability */
+.emoji-badge {
+  display: inline-block;
+  padding: 0 6px;
+  line-height: 1;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 16px;
+}
+.emoji-badge--escape { /* left as semantic hook for future theming */ }
+.emoji-badge--unescape { }
+.emoji-badge--format { }
+.emoji-badge--copy { }
+.emoji-badge--compare { }
+.emoji-badge--ai { }
+.emoji-badge--table { }
+.emoji-badge--settings { }
+
+/* hover/focus feedback for buttons */
+.action-btn:hover,
+.action-btn:focus-visible {
+  background: var(--color-action-hover, rgba(0,0,0,0.04));
+}
+
+@media (max-width: 900px) {
+  .action-btn__text { display: none; }
+  .action-btn.action-btn--escape .action-btn__text,
+  .action-btn.action-btn--unescape .action-btn__text {
+    display: inline-block;
+    font-size: 11px;
+    margin-left: 6px;
+  }
 }
 </style>

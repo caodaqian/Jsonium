@@ -13,6 +13,7 @@ import OutputPanel from './OutputPanel.vue';
 import ControlPanel from './ControlPanel.vue';
 import DiffSidebar from './DiffSidebar.vue';
 import DiffView from './DiffView.vue';
+import TableView from './TableView.vue';
 import { stringifySortedJson } from '../services/diffEngine.js';
 import notify from '../services/notify.js';
 import { getFormatName } from '../utils/formatNames.js';
@@ -508,6 +509,25 @@ const handleDownload = () => {
   document.body.removeChild(element);
 };
 
+// 表格视图
+const tableViewVisible = computed(() => store.tableView.visible);
+
+const handleOpenTableView = () => {
+  store.showTableView();
+};
+
+const handleApplyTableChanges = (newJsonString) => {
+  if (!activeTab.value) return;
+  store.updateTabContent(activeTab.value.id, newJsonString);
+  try {
+    if (editorRef.value && typeof editorRef.value.setContent === 'function') {
+      editorRef.value.setContent(newJsonString);
+    }
+  } catch (_) {}
+  store.hideTableView();
+  notify.success('表格修改已应用');
+};
+
 // 辅助函数
 onMounted(() => {
   try {
@@ -530,7 +550,13 @@ onMounted(() => {
 
 <template>
   <div class="json-processor">
-    <button class="global-sidebar-toggle" @click="toggleFloatingSidebar" aria-label="侧边栏切换" title="切换对比侧边栏">
+    <button
+      class="global-sidebar-toggle"
+      :class="{ 'is-active': store.diffSidebar.visible && !store.diffSidebar.collapsed }"
+      @click="toggleFloatingSidebar"
+      aria-label="侧边栏切换"
+      title="切换对比侧边栏"
+    >
       <span v-if="store.diffSidebar.visible && !store.diffSidebar.collapsed">◀</span>
       <span v-else>▶</span>
     </button>
@@ -631,6 +657,17 @@ onMounted(() => {
       </div>
     </teleport>
 
+    <!-- 表格视图悬浮面板 -->
+    <teleport to="body">
+      <TableView
+        v-if="tableViewVisible && activeTab"
+        :jsonContent="activeTab.content"
+        :arrayPath="store.tableView.arrayPath"
+        @apply="handleApplyTableChanges"
+        @close="store.hideTableView()"
+      />
+    </teleport>
+
     <!-- 底部状态栏 -->
     <StatusBar
       v-if="activeTab"
@@ -641,6 +678,7 @@ onMounted(() => {
       @unescape="handleBottomUnescape"
       @compare="handleCompare"
       @aiProcess="handleAIProcess"
+      @openTableView="handleOpenTableView"
     />
     
     <div class="processor-empty" v-else>
@@ -758,10 +796,10 @@ onMounted(() => {
 
 /* 控制面板容器宽度 */
 .control-panel-wrapper {
-  width: 300px;
-  min-width: 260px;
-  max-width: 360px;
-  flex: 0 0 300px;
+  width: 340px;
+  min-width: 280px;
+  max-width: 420px;
+  flex: 0 0 340px;
   border-right: 1px solid var(--color-divider);
   overflow: auto;
 }
@@ -892,20 +930,32 @@ onMounted(() => {
   transform: translateY(-50%);
   width: 44px;
   height: 44px;
-  border-radius: 22px;
-  background: rgba(255,255,255,0.85);
-  backdrop-filter: blur(6px);
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--color-divider);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  box-shadow: var(--shadow-sm);
   z-index: 180000;
-  opacity: 0.85;
-  transition: opacity .18s ease, transform .12s ease;
+  opacity: 0.92;
+  transition: opacity .18s ease, transform .12s ease, background .18s ease, border-color .18s ease, color .18s ease;
   color: var(--color-text-primary);
 }
 
-.global-sidebar-toggle:hover { opacity: 1; transform: translateY(-50%) scale(1.04); }
+.global-sidebar-toggle:hover {
+  opacity: 1;
+  transform: translateY(-50%) scale(1.04);
+  background: var(--color-bg-primary);
+  border-color: var(--color-primary-light);
+}
+
+.global-sidebar-toggle.is-active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  box-shadow: 0 8px 24px rgba(198, 160, 246, 0.28);
+}
 </style>

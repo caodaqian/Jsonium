@@ -234,9 +234,70 @@
     }
   }
 
-  function initEditor() {
+function getJsoniumThemeVars(mode = 'light') {
+  // 获取页面根节点的 CSS 变量校准
+  const computed = typeof window !== 'undefined' ? getComputedStyle(document.documentElement) : { getPropertyValue: () => '' };
+  // fallback 颜色
+  if (mode === 'light') {
+    return {
+      bg: computed.getPropertyValue('--color-bg-primary')?.trim() || '#eff1f5',
+      fg: computed.getPropertyValue('--color-text-primary')?.trim() || '#4c4f69'
+    };
+  } else {
+    return {
+      bg: computed.getPropertyValue('--color-bg-primary')?.trim() || '#24273a',
+      fg: computed.getPropertyValue('--color-text-primary')?.trim() || '#cad3f5'
+    };
+  }
+}
+
+function defineAndSetMonacoTheme(monaco, mode) {
+  // mode: 'light' | 'dark'
+  const { bg, fg } = getJsoniumThemeVars(mode);
+  try {
+    if (mode === 'light') {
+      monaco.editor.defineTheme('jsonium-light', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': bg,
+          'editor.foreground': fg,
+          'editor.lineHighlightBackground': '#e3eaff', // 微弱高亮
+          'editor.selectionBackground': '#c6a0f645'    // 柔和主色 alpha
+        }
+      });
+    } else {
+      monaco.editor.defineTheme('jsonium-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': bg,
+          'editor.foreground': fg,
+          'editor.lineHighlightBackground': '#363a4f',
+          'editor.selectionBackground': '#a6da9540'
+        }
+      });
+    }
+    monaco.editor.setTheme(mode === 'light' ? 'jsonium-light' : 'jsonium-dark');
+  } catch (e) {}
+}
+
+function getCurrentThemeMode() {
+  // 返回 light/dark
+  const eff = store.getEffectiveTheme();
+  return eff?.mode === 'dark' ? 'dark' : 'light';
+}
+
+function initEditor() {
     if (!editorContainer.value) return;
     if (!monaco) return; // monaco not available (tests or unsupported env)
+
+    // ---------- 新增：注册主题 ----------
+    const mode = getCurrentThemeMode();
+    defineAndSetMonacoTheme(monaco, mode);
+    // -----------------------------------
 
     const settings = store.getEditorSettings();
 
@@ -269,8 +330,9 @@
     editor = monaco.editor.create(editorContainer.value, {
       value: props.content,
       language: 'json',
-      theme: settings.theme || 'vs-dark',
+      theme: mode === 'dark' ? 'jsonium-dark' : 'jsonium-light', // 启动使用自定义主题
       fontSize: settings.fontSize || 14,
+      fontFamily: settings.fontFamily || undefined,
       minimap: { enabled: settings.minimap !== false },
       folding: settings.folding !== false,
       lineNumbers: settings.lineNumbers !== false ? 'on' : 'off',
@@ -321,6 +383,19 @@
         resizeObserver = new ResizeObserver(() => {
           adjustWrap();
         });
+
+  // ========== 新增：watch 主题切换，动态 setTheme ==========
+  try {
+    watch(
+      () => store.themePreference,
+      () => {
+        const mode = getCurrentThemeMode();
+        defineAndSetMonacoTheme(monaco, mode); // 重新注册并切换
+      },
+      { deep: true }
+    );
+  } catch (_) {}
+  // =====================================================
         resizeObserver.observe(editorContainer.value);
       } else {
         // fallback to window resize
@@ -335,6 +410,9 @@
         watch(() => store.editorSettings.wrapByWidth, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
         watch(() => store.editorSettings.wrapThresholdPx, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
         watch(() => store.editorSettings.wrapColumn, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+        // watch font size / family and apply to editor options
+        watch(() => store.editorSettings.fontSize, (n) => { try { if (editor) editor.updateOptions({ fontSize: n || 14 }); } catch (_) {} });
+        watch(() => store.editorSettings.fontFamily, (f) => { try { if (editor) editor.updateOptions({ fontFamily: f || undefined }); } catch (_) {} });
       } catch (_) {}
     } catch (_) {}
 
@@ -409,11 +487,45 @@
       }
     );
 
+    // editor context menu actions: keep high-frequency operations near the content area
+    try {
+      editor.addAction({
+        id: 'json-format',
+        label: '格式化 JSON',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 1,
+        keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
+        run: () => { try { formatJson('manual'); } catch (e) { /* ignore */ } }
+      });
+    } catch (e) { }
+
+    try {
+      editor.addAction({
+        id: 'json-escape',
+        label: '转义 JSON 字符串',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 2,
+        run: () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
+      });
+    } catch (e) { }
+
+    try {
+      editor.addAction({
+        id: 'json-unescape',
+        label: '反转义 JSON 字符串',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 3,
+        run: () => { try { unescapeSelectionOrContent(); } catch (e) { /* ignore */ } }
+      });
+    } catch (e) { }
+
     // copy actions: prefer addAction with keybindings (more reliable)
     try {
       editor.addAction({
         id: 'copy-singleline',
-        label: 'Copy as single line',
+        label: '复制为单行',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 4,
         keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyC],
         run: () => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
       });
@@ -422,7 +534,9 @@
     try {
       editor.addAction({
         id: 'copy-escaped',
-        label: 'Copy as escaped string',
+        label: '复制为转义字符串',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 5,
         keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.Backslash],
         run: () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
       });
@@ -768,6 +882,52 @@
       const ok = await copyToClipboard(out);
       // eslint-disable-next-line no-console
       console.debug('[Editor] copyAsEscapedString', { txtSample: String(txt).slice(0, 200), outSample: String(out).slice(0, 200), ok });
+    } finally {
+      copyingLock = false;
+    }
+  }
+
+  async function unescapeSelectionOrContent() {
+    if (copyingLock) {
+      // eslint-disable-next-line no-console
+      console.debug('[Editor] unescapeSelectionOrContent aborted due to copyingLock');
+      return;
+    }
+    copyingLock = true;
+    try {
+      let txt = '';
+      try {
+        const model = editor && editor.getModel && editor.getModel();
+        const sel = editor && editor.getSelection && editor.getSelection();
+        if (model && sel && typeof sel.isEmpty === 'function' && !sel.isEmpty() && typeof model.getValueInRange === 'function') {
+          txt = model.getValueInRange(sel);
+        } else if (model && typeof model.getValue === 'function') {
+          txt = model.getValue();
+        } else if (editor && typeof editor.getValue === 'function') {
+          txt = editor.getValue();
+        } else {
+          txt = getSelectionOrFull() || '';
+        }
+      } catch (e) {
+        txt = getSelectionOrFull() || '';
+      }
+
+      let out = txt;
+      try {
+        const parsed = JSON.parse(String(txt));
+        out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        try {
+          const parsed = JSON.parse(JSON.parse(String(txt)));
+          out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+        } catch (_) {
+          out = String(txt);
+        }
+      }
+
+      const ok = await copyToClipboard(out);
+      // eslint-disable-next-line no-console
+      console.debug('[Editor] unescapeSelectionOrContent', { txtSample: String(txt).slice(0, 200), outSample: String(out).slice(0, 200), ok });
     } finally {
       copyingLock = false;
     }

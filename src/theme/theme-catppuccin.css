@@ -1,0 +1,96 @@
+/* Catppuccin 主题变量（light: Latte，dark: Macchiato），完全独立，主文件仅留 reset 结构 */
+html.catppuccin.light-mode {
+  --color-bg-primary: #eff1f5;
+  --color-bg-secondary: #e6e9f0;
+  --color-bg-tertiary: #dce0e8;
+  --color-text-primary: #4c4f69;
+  --color-text-secondary: #5c5f77;
+  --color-text-tertiary: #6c6f85;
+
+  --color-primary: #c6a0f6;
+  --color-primary-light: #d8b4fe;
+  --color-primary-lighter: #e5d5ff;
+  --color-primary-dark: #b47fd6;
+  --color-primary-darker: #a267c6;
+
+  --color-success: #a6da95;
+  --color-warning: #f5a24e;
+  --color-error: #e78284;
+  --color-info: #85c1dc;
+
+  --color-border: #bcc0cc;
+  --color-divider: #acb0be;
+
+  --color-hover-bg: #dfe1ea;
+  --color-active-bg: #d0d3e0;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
+
+html.catppuccin.dark-mode {
+  --color-bg-primary: #24273a;
+  --color-bg-secondary: #363a4f;
+  --color-bg-tertiary: #494d64;
+  --color-text-primary: #cad3f5;
+  --color-text-secondary: #b8c5d6;
+  --color-text-tertiary: #a5adce;
+
+  --color-primary: #c6a0f6;
+  --color-primary-light: #d8b4fe;
+  --color-primary-lighter: #e5d5ff;
+  --color-primary-dark: #b47fd6;
+  --color-primary-darker: #a267c6;
+
+  --color-success: #a6da95;
+  --color-warning: #f5a24e;
+  --color-error: #e78284;
+  --color-info: #85c1dc;
+
+  --color-border: #5b6078;
+  --color-divider: #49506e;
+
+  --color-hover-bg: #494d64;
+  --color-active-bg: #565b73;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}

@@ -76,6 +76,26 @@ export const useJsonStore = defineStore('json', () => {
     history: []
   });
   
+  // ========= 表格视图状态 begin =========
+  const tableView = reactive({
+    visible: false,
+    arrayPath: null,   // null 表示根数组
+    columns: [],
+    pageSize: 50
+  });
+
+  const showTableView = (arrayPath = null) => {
+    tableView.visible = true;
+    tableView.arrayPath = arrayPath;
+  };
+  const hideTableView = () => {
+    tableView.visible = false;
+  };
+  const updateTableColumns = (columns) => {
+    tableView.columns = columns;
+  };
+  // ========= 表格视图状态 end =========
+
   const diffSidebar = reactive({
     visible: false,
     collapsed: false,
@@ -91,6 +111,80 @@ export const useJsonStore = defineStore('json', () => {
     error: ''
   });
   
+  // ========= 主题系统 begin =========
+  const themePreference = ref({
+    theme: 'catppuccin', // 'catppuccin' | 'vue'
+    mode: 'auto',        // 'auto' | 'light' | 'dark'
+  });
+
+  // 获取主题偏好（持久化/默认）
+  const getThemePreference = () => ({ ...themePreference.value });
+
+  // 计算当前应生效的主题，根据偏好/utools/系统
+  const getEffectiveTheme = () => {
+    // 1. 用户自定义优先
+    let theme = themePreference.value.theme || 'catppuccin';
+    let mode = themePreference.value.mode || 'auto';
+    // 2. 自动判断明暗
+    if (mode === 'auto') {
+      // 检测 utools/系统
+      try {
+        if (typeof window !== 'undefined') {
+          // 优先 utools
+          if (window.isDarkColors && typeof window.isDarkColors === 'function') {
+            mode = window.isDarkColors() ? 'dark' : 'light';
+          } else if (window.utools && window.utools.isDarkColors) {
+            // 某些版本在 utools 下定义
+            mode = window.utools.isDarkColors() ? 'dark' : 'light';
+          } else if (window.matchMedia) {
+            const m = window.matchMedia('(prefers-color-scheme: dark)');
+            mode = m && m.matches ? 'dark' : 'light';
+          }
+        }
+      } catch(_) {}
+    }
+    return { theme, mode };
+  };
+
+  // 设置主题偏好
+  const setThemePreference = (theme, mode) => {
+    themePreference.value = { theme, mode };
+    saveThemePreference();
+  };
+
+  // 本地存储与加载
+  const THEME_KEY = 'json_theme_pref_v1';
+  const saveThemePreference = () => {
+    try {
+      const payload = JSON.stringify(themePreference.value);
+      if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.setItem === 'function') {
+        window.utools.dbStorage.setItem(THEME_KEY, payload);
+      } else if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(THEME_KEY, payload);
+      }
+    } catch(_) {}
+  };
+  const loadThemePreference = () => {
+    try {
+      let raw = null;
+      if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.getItem === 'function') {
+        raw = window.utools.dbStorage.getItem(THEME_KEY);
+      } else if (typeof localStorage !== 'undefined') {
+        raw = localStorage.getItem(THEME_KEY);
+      }
+      if (!raw) return;
+      try {
+        const loaded = JSON.parse(raw);
+        if (loaded && typeof loaded === 'object') {
+          themePreference.value = Object.assign({}, themePreference.value, loaded);
+        }
+      } catch(_) {}
+    } catch(_) {}
+  };
+  // 启动时自动加载
+  loadThemePreference();
+  // ========= 主题系统 end =========
+
   const editorSettings = reactive({
     autoFormat: true,
     // 兼容旧配置：保留 debounceMs 但引入更语义化的 idleDelayMs
@@ -110,6 +204,7 @@ export const useJsonStore = defineStore('json', () => {
     lineNumbers: true,
     wordWrap: 'off',
     fontSize: 14,
+    fontFamily: "'Cascadia Code NF', 'JetBrains Mono','Fira Code Retina', Consolas, 'Source Code Pro', 'Menlo', 'Courier New', monospace, 'Source Han Sans VF', '思源黑体'",
     theme: 'vs-dark',
     // 新增：基于宽度的自动换行控制（默认开启）
     wrapEnabled: true,
@@ -466,7 +561,14 @@ export const useJsonStore = defineStore('json', () => {
     }
   };
   
-  return {
+      return {
+        // ========= 主题系统 =========
+        themePreference,
+        getThemePreference,
+        setThemePreference,
+        getEffectiveTheme,
+        saveThemePreference,
+        loadThemePreference,
     // State
     tabs,
     activeTabId,
@@ -476,6 +578,7 @@ export const useJsonStore = defineStore('json', () => {
     editorSettings,
     outputPanel,
     diffSidebar,
+    tableView,
     
     // Tab 管理
     addTab,
@@ -530,6 +633,11 @@ export const useJsonStore = defineStore('json', () => {
     
     // Settings persistence
     saveSettingsState,
-    loadSettingsState
+    loadSettingsState,
+
+    // TableView 操作
+    showTableView,
+    hideTableView,
+    updateTableColumns
   };
 });

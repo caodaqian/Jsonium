@@ -1,6 +1,15 @@
 /* Jsonium - 主题系统 */
 
 :root {
+  /* ======= Modern UI 全局圆角卡片变量 by frontend-design ======= */
+  --radius-card: 18px;
+  --radius-btn: 11px;
+  --radius-field: 8px;
+  --card-blur: blur(10px);
+  --card-shadow: 0 6px 28px 0 rgba(80, 78, 143, 0.18), 0 1.5px 4px 0 rgba(0,0,0,0.10);
+  --nav-blur: blur(8px);
+  --transition-main: background 0.26s cubic-bezier(.4,.2,.3,1), color 0.22s, box-shadow .12s;
+  /* ======= End Modern UI variables ======= */
   /* 浅色模式 - Catppuccin Latte */
   --color-bg-primary: #eff1f5;
   --color-bg-secondary: #e6e9f0;
@@ -147,13 +156,21 @@ button {
   font-size: inherit;
   cursor: pointer;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-btn, 11px);
   padding: var(--spacing-sm) var(--spacing-md);
   background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
-  transition: all 0.2s ease;
+  box-shadow: 0 1.5px 6px rgba(76,78,120,0.08);
+  transition: 
+    background-color 0.18s, 
+    border-color 0.18s, 
+    color 0.18s, 
+    box-shadow 0.16s cubic-bezier(.2,.7,.3,1.1);
   font-weight: var(--font-weight-medium);
+  outline: none;
+  position: relative;
+  overflow: hidden;
 }
 
 button:hover {
@@ -173,9 +190,12 @@ button:disabled {
 }
 
 button.primary {
-  background-color: var(--color-primary);
-  color: #ffffff;
+  background: linear-gradient(95deg, var(--color-primary-light) 0%, var(--color-primary) 100%);
+  color: #fff;
   border-color: var(--color-primary);
+  box-shadow: 0 3px 14px -2px var(--color-primary-light, #d8b4fe);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
 }
 
 button.primary:hover {
@@ -194,10 +214,11 @@ input, textarea, select {
   font-size: var(--font-size-base);
   padding: var(--spacing-sm);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-field, 8px);
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
-  transition: all 0.2s ease;
+  transition: box-shadow 0.16s, border-color 0.16s, background-color .22s;
+  box-shadow: 0 1.5px 6px rgba(76,78,120,0.065);
 }
 
 input:focus, textarea:focus, select:focus {
@@ -265,7 +286,7 @@ textarea {
 }
 
 .rounded {
-  border-radius: 6px;
+  border-radius: var(--radius-card, 18px) !important;
 }
 
 .shadow-sm {
@@ -301,3 +322,161 @@ textarea {
 .font-medium { font-weight: var(--font-weight-medium); }
 .font-semibold { font-weight: var(--font-weight-semibold); }
 .font-bold { font-weight: var(--font-weight-bold); }
+
+/* Modern 卡片/毛玻璃/浮层工具类 by frontend-design */
+.card,
+.card-blur {
+  background: rgba(30,31,51,0.42);
+  border-radius: var(--radius-card, 18px);
+  box-shadow: var(--card-shadow);
+  backdrop-filter: var(--card-blur);
+  -webkit-backdrop-filter: var(--card-blur);
+  border: 1.2px solid var(--color-divider);
+  transition: var(--transition-main);
+  overflow: hidden;
+}
+
+.card-blur-light {
+  background: rgba(250,250,255,0.65);
+  color: #353351;
+  backdrop-filter: blur(8px);
+}
+
+.field-deck {
+  background: rgba(34,34,47,.22);
+  border-radius: var(--radius-field, 8px);
+  box-shadow: 0 2.5px 10px -2px rgba(70,77,122,0.12);
+  transition: var(--transition-main);
+}
+
+.shadow-pop {
+  box-shadow: 0 6px 17px 0 rgba(80, 78, 143, 0.11);
+}
+.shadow-up {
+  box-shadow: 0 -2px 12px 0 rgba(80, 78, 143, 0.13);
+}
+.blur-nav {
+  backdrop-filter: var(--nav-blur, blur(8px));
+  -webkit-backdrop-filter: var(--nav-blur, blur(8px));
+  background: rgba(31,31,54,0.54);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 4px 24px 0 rgba(25,23,53,0.17);
+}
+
+/* === 表单 & 控件统一风格 (frontend-design) === */
+
+/* Radio/checkbox 通用（自动根据 --color-primary 适配亮暗主题） */
+input[type="radio"], input[type="checkbox"] {
+  accent-color: var(--color-primary, #c6a0f6);
+  width: 1.18em;
+  height: 1.18em;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: text-bottom;
+  transition: accent-color .21s;
+}
+input[type="checkbox"] {
+  border-radius: 7px;
+}
+
+/* 单选组/标签风格 */
+.radio-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  padding: 3px 0;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+.radio-label input[type="radio"],
+.radio-label input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+/* Theme radio 颜色细分（用于亮/暗分区时分别取主色/Success 色，不强制覆盖，仅作为兼容 */
+.radio-theme input[type="radio"] { accent-color: var(--color-primary, #c6a0f6); }
+.radio-mode input[type="radio"] { accent-color: var(--color-success, #a6da95); }
+
+/* 开关 toggle（带圆角滑块） */
+.input-toggle {
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  position: relative;
+  margin-right: 8px;
+}
+.input-toggle input[type="checkbox"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.input-toggle .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: var(--color-border, #bcc0cc);
+  border-radius: 22px;
+  transition: background .24s;
+}
+.input-toggle input[type="checkbox"]:checked + .slider {
+  background-color: var(--color-primary, #c6a0f6);
+}
+.input-toggle .slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  top: 3px;
+  background-color: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(76,78,120,0.11);
+  transition: transform .24s, background .21s;
+}
+.input-toggle input[type="checkbox"]:checked + .slider:before {
+  transform: translateX(16px);
+  background-color: #fff;
+}
+
+/* 面板按钮通用（左侧panel/抽屉/设置统一化） */
+.panel-btn {
+  padding: 7px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: var(--radius-btn, 11px);
+  border: 1px solid var(--color-primary, #c6a0f6);
+  background: linear-gradient(90deg, #ececff 70%, var(--color-primary-light, #d8b4fe) 100%);
+  color: var(--color-primary-darker, #a267c6);
+  margin-right: 8px;
+  margin-top: 3px;
+  margin-bottom: 3px;
+  box-shadow: 0 1.5px 6px rgba(76,78,120,0.05), 0 1.5px 6px rgba(198,160,246,0.07);
+  transition: background .18s, border .18s, color .17s, box-shadow .14s;
+}
+.panel-btn.primary {
+  background: linear-gradient(92deg, var(--color-primary-light, #d8b4fe), var(--color-primary, #c6a0f6));
+  color: #fff;
+  border-color: var(--color-primary, #c6a0f6);
+  box-shadow: 0 3px 14px -2px var(--color-primary-light, #d8b4fe);
+}
+.panel-btn:hover,
+.panel-btn:focus {
+  background: var(--color-hover-bg, #dfe1ea);
+  color: var(--color-primary-darker, #a267c6);
+  border-color: var(--color-primary, #c6a0f6);
+}
+.panel-btn.primary:hover,
+.panel-btn.primary:focus {
+  background: var(--color-primary-light, #d8b4fe);
+  color: #fff;
+}
