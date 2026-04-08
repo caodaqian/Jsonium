@@ -26,8 +26,11 @@ export default defineConfig({
     }
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
+    // Use array form so we can add a test-time alias for monaco-editor.
+    alias: [
+      // Redirect all monaco-editor imports to a lightweight stub during tests.
+      { find: /^monaco-editor(\/.*)?$/, replacement: path.resolve(__dirname, 'src/test-utils/monaco-stub.js') },
+      { find: '@', replacement: path.resolve(__dirname, './src') }
+    ]
   }
 });
