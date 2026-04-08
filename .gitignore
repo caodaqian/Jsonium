@@ -81,7 +81,7 @@ temp/
 # Misc
 *.local
 *.swp
-*~ 
+*~
 **/.DS_Store
 **/Thumbs.db
 
@@ -89,3 +89,7 @@ temp/
 plugin.zip
 release/
 dist-plugin/
+
+# AI
+.clinerules/
+.kilo/
