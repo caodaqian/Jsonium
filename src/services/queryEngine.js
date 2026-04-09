@@ -6,6 +6,35 @@ import { getValueAtJsonPath, toJsonPath } from '../utils/pathUtils.js';
  */
 
 /**
+ * 自动检测查询表达式类型
+ * @param {string} expression - 查询表达式
+ * @returns {string} 'jsonpath' 或 'jq'
+ */
+export function detectQueryType(expression) {
+  if (!expression || typeof expression !== 'string') {
+    return 'jsonpath'; // 默认
+  }
+
+  const trimmed = expression.trim();
+
+  // JSONPath 特征
+  if (trimmed.startsWith('$')) return 'jsonpath';
+  if (trimmed.includes('@.') || trimmed.includes('@[') || trimmed.includes('@(')) return 'jsonpath'; // 过滤器
+  if (trimmed.includes('..')) return 'jsonpath'; // 递归下降
+
+  // jq 特征
+  if (trimmed.startsWith('.')) return 'jq';
+  if (trimmed === '.' || trimmed === '.[]') return 'jq';
+  if (trimmed.includes('|')) return 'jq'; // 管道符
+  
+  // 如果都不符合，尝试检查括号形式
+  if (trimmed.startsWith('[') && !trimmed.includes('..')) return 'jq'; // jq 风格的数组索引
+
+  // 默认返回 jsonpath
+  return 'jsonpath';
+}
+
+/**
  * JSONPath 查询
  * 例: $.store.book[0].title
  */

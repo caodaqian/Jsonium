@@ -669,17 +669,17 @@ onMounted(() => {
     </teleport>
 
     <!-- 底部状态栏 -->
-    <StatusBar
-      v-if="activeTab"
-      :content="activeTab.content"
-      @copy="handleCopyToClipboard"
-      @format="handleBottomFormat"
-      @escape="handleBottomEscape"
-      @unescape="handleBottomUnescape"
-      @compare="handleCompare"
-      @aiProcess="handleAIProcess"
-      @openTableView="handleOpenTableView"
-    />
+      <StatusBar
+        v-if="activeTab"
+        :content="activeTab.content"
+        @copy="handleCopyToClipboard"
+        @format="handleBottomFormat"
+        @escape="handleBottomEscape"
+        @unescape="handleBottomUnescape"
+        @compare="handleCompare"
+        @aiProcess="handleAIProcess"
+        @openTableView="handleOpenTableView"
+      />
     
     <div class="processor-empty" v-else>
       <p>没有打开的标签页，请新建或导入文件</p>

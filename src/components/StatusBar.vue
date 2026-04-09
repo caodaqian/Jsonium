@@ -1,6 +1,6 @@
 <script setup>
-import { computed, reactive, ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { queryJsonPath, queryJq, validateQuery } from '../services/queryEngine.js';
+import { computed, reactive, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import { queryJsonPath, queryJq, validateQuery, detectQueryType } from '../services/queryEngine.js';
 import { useJsonStore } from '../store/index.js';
 import { fetchUtoolsModels } from '../services/aiProcessor.js';
 import notify from '../services/notify.js';
@@ -15,22 +15,24 @@ const props = defineProps({
 });
 
 const emit = defineEmits([
-  'format',
   'escape',
   'unescape',
   'compare',
   'aiProcess',
-  'openTableView'
+  'openTableView',
+  'format'
 ]);
 
 const queryExpression = ref('');
 const queryType = ref('jsonpath');
+const detectedQueryType = ref('jsonpath'); // 自动识别的类型
 const queryResult = ref(null);
 const queryError = ref('');
 const showCopyMenu = ref(false);
 const copyMenuButtonRef = ref(null);
 const copyMenuRef = ref(null);
 const copyMenuPosition = ref({ top: 0, left: 0, height: 0 });
+const typeOverride = ref(false); // 用户是否手动覆盖了类型
 let scrollRaf = null;
 
 
@@ -51,6 +53,14 @@ const aiSelectedModel = computed({
 const aiModels = computed(() => store.aiComposer.models);
 const aiLoadingModels = computed(() => store.aiComposer.loadingModels);
 const aiModelLoadError = computed(() => store.aiComposer.modelLoadError);
+
+// 监听查询表达式变化，自动检测类型
+watch(queryExpression, (newExpr) => {
+  if (!typeOverride.value) {
+    detectedQueryType.value = detectQueryType(newExpr);
+    queryType.value = detectedQueryType.value;
+  }
+}, { immediate: true });
 
 // UI: help tooltip & copy error feedback
 const showHelpTooltip = ref(false);
@@ -156,6 +166,12 @@ const handleDocumentClick = (event) => {
   showCopyMenu.value = false;
 };
 
+// 切换查询类型（用户手动切换）
+const toggleQueryType = () => {
+  typeOverride.value = true;
+  queryType.value = queryType.value === 'jsonpath' ? 'jq' : 'jsonpath';
+};
+
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick);
   window.addEventListener('resize', handleWindowResize);
@@ -165,6 +181,37 @@ onMounted(() => {
   // listen for copy errors from Editor
   try { window.addEventListener('editor-copy-error', handleEditorCopyError); } catch (e) {}
 });
+
+// no automatic collapse: prefer single-line horizontal scrolling so labels remain visible
+
+// helper for More menu: convert id to readable text
+const humanizeActionId = (id) => {
+  const map = {
+    copy: '复制',
+    compare: '对比',
+    ai: 'AI',
+    table: '表格',
+    escape: '转义',
+    unescape: '反转义',
+    settings: '设置'
+  };
+  return map[id] || id;
+};
+
+// handle clicks coming from the More menu
+const handleMoreAction = (id) => {
+  showMoreMenu.value = false;
+  switch (id) {
+    case 'copy': toggleCopyMenu({ currentTarget: copyMenuButtonRef.value, stopPropagation: () => {} }); break;
+    case 'compare': handleCompareClick(); break;
+    case 'ai': toggleAiPanel(); break;
+    case 'table': emit('openTableView'); break;
+    case 'escape': escapeJson(); break;
+    case 'unescape': unescapeJson(); break;
+    case 'settings': store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible; break;
+    default: break;
+  }
+};
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick);
@@ -405,11 +452,7 @@ const unescapeJson = () => {
   }
 };
 
-const formatJson = () => {
-  // 委托给 Editor 的统一格式化入口，由上层组件处理（emit 触发）
-  emit('format');
-  showCopyMenu.value = false;
-};
+// format button moved to editor context menu; keep help tooltip but remove bottom-bar emit
 
 
 
@@ -421,35 +464,34 @@ const formatJson = () => {
 <template>
   <div class="status-bar">
     <div class="status-bar-row">
-      <!-- 选项卡（带滑动）、输入、执行、所有底部按钮一行化 -->
-      <div class="query-type-segment">
-        <button
-          v-for="type in ['jsonpath', 'jq']"
-          :key="type"
-          :class="['type-seg-btn', { active: queryType === type }]"
-          @click="queryType = type"
-        >
-          {{ type.toUpperCase() }}
-        </button>
-        <span class="type-seg-indicator" :style="{left: queryType==='jsonpath'?'0%':'50%'}"/>
-      </div>
+      <!-- 移除 query-type-segment 按钮，改用类型徽章 -->
       <input
         v-model="queryExpression"
         :placeholder="queryType === 'jsonpath' ? '例: $.store.book[0].title' : '例: .store.book[].price'"
         class="query-input"
         @keydown="handleKeyDown"
       />
+      
+      <!-- 类型徽章：显示检测到的类型，可点击切换 -->
+      <button
+        class="query-type-badge"
+        :class="{ override: typeOverride }"
+        @click="toggleQueryType"
+        :title="`当前: ${queryType.toUpperCase()}${typeOverride ? ' (已手动切换)' : ' (自动识别)'}`"
+      >
+        <span class="badge-text">{{ queryType.toUpperCase() }}</span>
+        <span class="badge-hint" v-if="!typeOverride">🤖</span>
+      </button>
+
       <button class="query-btn primary" @click="executeQuery">⚙️</button>
 
-      <div class="actions-inline">
-        <button @click="formatJson" class="action-btn action-btn--icon action-btn--format" title="格式化" aria-label="格式化 (format)">
-          <span class="action-btn__icon emoji-badge emoji-badge--format" aria-hidden="true">📐</span>
-          <span class="action-btn__text">格式化</span>
-        </button>
+      <div class="actions-inline" ref="actionsInlineRef">
+        <!-- Format button removed: use editor context menu / Shift+Alt+F -->
 
         <div class="action-menu">
           <button
             ref="copyMenuButtonRef"
+            data-action-id="copy"
             @click="toggleCopyMenu"
             class="action-btn action-btn--icon action-btn--copy"
             title="复制选项"
@@ -460,35 +502,44 @@ const formatJson = () => {
           </button>
         </div>
 
-        <button @click="handleCompareClick" class="action-btn action-btn--icon action-btn--compare" title="对比" aria-label="对比 (compare)">
+        <!-- Format button: visible and compact so users always have access -->
+        <button data-action-id="format" @click="$emit('format')" class="action-btn action-btn--icon action-btn--format" title="格式化" aria-label="格式化">
+          <span class="action-btn__icon emoji-badge emoji-badge--format" aria-hidden="true">📐</span>
+          <span class="action-btn__text">格式化</span>
+        </button>
+
+        <button data-action-id="compare" @click="handleCompareClick" class="action-btn action-btn--icon action-btn--compare" title="对比" aria-label="对比 (compare)">
           <span class="action-btn__icon emoji-badge emoji-badge--compare" aria-hidden="true">⚖️</span>
           <span class="action-btn__text">对比</span>
         </button>
 
-        <button @click="toggleAiPanel" class="action-btn action-btn--icon action-btn--ai" title="AI" aria-label="AI">
+        <button data-action-id="ai" @click="toggleAiPanel" class="action-btn action-btn--icon action-btn--ai" title="AI" aria-label="AI">
           <span class="action-btn__icon emoji-badge emoji-badge--ai" aria-hidden="true">🤖</span>
           <span class="action-btn__text">AI</span>
         </button>
 
-        <button @click="escapeJson" class="action-btn action-btn--icon action-btn--escape" title="转义" aria-label="转义 (escape)">
+        <button data-action-id="escape" @click="escapeJson" class="action-btn action-btn--icon action-btn--escape" title="转义" aria-label="转义 (escape)">
           <span class="action-btn__icon emoji-badge emoji-badge--escape" aria-hidden="true">🔒</span>
-          <span class="action-btn__text">转</span>
+          <span class="action-btn__text">转义</span>
         </button>
 
-        <button @click="unescapeJson" class="action-btn action-btn--icon action-btn--unescape" title="反转义" aria-label="反转义 (unescape)">
+        <button data-action-id="unescape" @click="unescapeJson" class="action-btn action-btn--icon action-btn--unescape" title="反转义" aria-label="反转义 (unescape)">
           <span class="action-btn__icon emoji-badge emoji-badge--unescape" aria-hidden="true">🗝️</span>
-          <span class="action-btn__text">反</span>
+          <span class="action-btn__text">反转义</span>
         </button>
 
-        <button @click="$emit('openTableView')" class="action-btn action-btn--icon action-btn--table" title="表格视图" aria-label="表格视图 (table view)">
+        <button data-action-id="table" @click="$emit('openTableView')" class="action-btn action-btn--icon action-btn--table" title="表格视图" aria-label="表格视图 (table view)">
           <span class="action-btn__icon emoji-badge emoji-badge--table" aria-hidden="true">📊</span>
           <span class="action-btn__text">表格</span>
         </button>
 
-        <button @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn action-btn--icon action-btn--settings" title="设置" aria-label="设置">
+        <button data-action-id="settings" @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn action-btn--icon action-btn--settings" title="设置" aria-label="设置">
           <span class="action-btn__icon emoji-badge emoji-badge--settings" aria-hidden="true">⚙️</span>
           <span class="action-btn__text">设置</span>
         </button>
+
+        <!-- overflow More menu (shown when adjustActions hides labels) -->
+        <!-- no automatic collapse: rely on horizontal scrolling to keep all actions visible on one line -->
 
         <!-- Help tooltip on the right -->
         <div
@@ -579,6 +630,10 @@ const formatJson = () => {
   font-size: var(--font-size-sm);
   max-height: 260px;
   overflow-y: auto;
+  /* add right safe padding so floating controls (global toggle) don't cover buttons */
+  padding-right: calc(96px + env(safe-area-inset-right));
+  position: relative;
+  z-index: 120000; /* above many app elements but below global modals */
 }
 
 .status-bar-row {
@@ -588,21 +643,56 @@ const formatJson = () => {
   gap: 8px;
   width: 100%;
   margin-bottom: 0;
-  /* allow wrapping instead of horizontal scrolling */
-  flex-wrap: wrap;
-  overflow-x: hidden;
+  /* prefer single-line layout; allow horizontal scroll instead of wrapping so buttons remain visible */
+  flex-wrap: nowrap;
+  overflow-x: auto;
   overflow-y: hidden;
 }
+
+/* 移除旧的 query-type-segment 样式，改用新的徽章 */
 .query-type-segment {
-  display: flex;
-  position: relative;
-  width: 94px;
-  height: 30px;
-  margin-right: 8px;
-  background: var(--color-bg-primary);
-  border-radius: 4px;
-  border: 1px solid var(--color-border);
+  display: none; /* 隐藏旧的类型切换按钮 */
 }
+
+.query-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.query-type-badge:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-hover-bg);
+}
+
+.query-type-badge.override {
+  background: rgba(79, 172, 254, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.badge-text {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge-hint {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
 .type-seg-btn {
   flex: 1 1 50%;
   padding: 0 0;
@@ -641,14 +731,19 @@ const formatJson = () => {
   gap: 6px;
   margin-left: auto;
   min-width: 0;
-  /* allow buttons to wrap to next line when space is limited */
-  flex: 0 1 auto;
-  flex-wrap: wrap;
+  /* prefer single line; allow horizontal scroll when space is constrained */
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 8px; /* give internal breathing room for scroll/clip */
 }
 
-.query-input {
-  flex: 1;
-  padding: 6px 8px;
+  .query-input {
+    /* prefer to give the query input space but prevent it from pushing action buttons off-screen */
+    flex: 1 1 360px;
+    min-width: 120px;
+    padding: 6px 8px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
   background: var(--color-bg-primary);
@@ -729,8 +824,11 @@ const formatJson = () => {
   display: block;
 }
 
-@media (min-width: 1100px) {
-  /* on very wide screens, show labels inline */
+  .action-btn.show-text .action-btn__text { display: inline-block; position: static; padding: 0; border: none; box-shadow: none; transform: none; }
+
+/* Show labels inline earlier and make the action area horizontally scroll when needed.
+   This keeps the bar compact on narrow screens while making buttons readable on larger screens. */
+@media (min-width: 900px) {
   .action-btn__text {
     display: inline-block;
     position: static;
@@ -738,6 +836,83 @@ const formatJson = () => {
     border: none;
     box-shadow: none;
     transform: none;
+  }
+
+  .actions-inline {
+    /* keep actions on a single row when possible, but allow horizontal scroll if space is constrained */
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* small, unobtrusive scrollbar styling for webkit browsers */
+  .actions-inline::-webkit-scrollbar { height: 8px; }
+  .actions-inline::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 999px; }
+}
+
+/* Large-screen: pin the status bar to the bottom and prefer a single-line actions area.
+    This prevents parent overflow from clipping the action buttons on very wide windows. */
+@media (min-width: 1400px) {
+  .status-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 10px 20px 12px calc(12px + env(safe-area-inset-left));
+    background: linear-gradient(180deg, var(--color-bg-secondary), rgba(0,0,0,0));
+    box-shadow: 0 -6px 18px rgba(0,0,0,0.06);
+    max-height: none;
+  }
+
+  .status-bar-row {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 12px;
+    overflow: visible;
+  }
+
+  .query-input {
+    /* limit input width so actions have dedicated space on the right */
+    flex: 1 1 640px;
+    max-width: calc(100% - 560px);
+    min-width: 220px;
+  }
+
+  /* 大屏幕：显示徽章并清晰显示所有按钮文本 */
+  .query-type-badge {
+    padding: 6px 10px;
+    font-size: var(--font-size-xs);
+  }
+
+  .actions-inline {
+    flex: 0 0 auto;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 12px;
+    background: transparent;
+  }
+}
+
+/* 中等屏幕优化 (900px - 1400px) */
+@media (min-width: 900px) and (max-width: 1399px) {
+  .query-input {
+    flex: 1 1 400px;
+    max-width: calc(100% - 400px);
+    min-width: 150px;
+  }
+
+  .query-type-badge {
+    padding: 6px 10px;
+    font-size: var(--font-size-xs);
+  }
+
+  .actions-inline {
+    gap: 6px;
   }
 }
 
@@ -889,12 +1064,44 @@ const formatJson = () => {
 }
 
 @media (max-width: 900px) {
+  /* 小屏幕：隐藏按钮文本，让按钮浮动填满右侧 */
   .action-btn__text { display: none; }
   .action-btn.action-btn--escape .action-btn__text,
   .action-btn.action-btn--unescape .action-btn__text {
     display: inline-block;
     font-size: 11px;
     margin-left: 6px;
+  }
+
+  /* 小屏幕优化：按钮组动态占满右侧空间 */
+  .actions-inline {
+    flex: 1 1 auto;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+
+  .query-input {
+    flex: 1 1 120px;
+    min-width: 80px;
+    max-width: 60%;
+  }
+
+  /* 缩小徽章尺寸以节省空间 */
+  .query-type-badge {
+    padding: 5px 8px;
+    font-size: 11px;
+    min-width: fit-content;
+  }
+
+  /* 缩小按钮 padding 以紧凑排列 */
+  .action-btn {
+    padding: 5px;
+    gap: 4px;
+  }
+
+  /* 缩小 emoji 尺寸 */
+  .action-btn__icon {
+    font-size: 13px;
   }
 }
 </style>
