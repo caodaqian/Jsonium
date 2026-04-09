@@ -56,6 +56,11 @@ const aiModelLoadError = computed(() => store.aiComposer.modelLoadError);
 
 // 监听查询表达式变化，自动检测类型
 watch(queryExpression, (newExpr) => {
+  // 当表达式为空时，重置override标记以允许自动检测
+  if (!newExpr || newExpr.trim() === '') {
+    typeOverride.value = false;
+  }
+  
   if (!typeOverride.value) {
     detectedQueryType.value = detectQueryType(newExpr);
     queryType.value = detectedQueryType.value;
