@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, watch } from 'vue';
+  import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Hello from './Hello/index.vue';
 import JsonProcessor from './components/JsonProcessor.vue';
 import Toast from './components/Toast.vue';
@@ -7,13 +7,16 @@ import Toast from './components/Toast.vue';
 import { useJsonStore } from './store';
 
 // 新增主题资源
+  import './main.css';
 import './theme/theme-catppuccin.css';
-import './theme/theme-vue.css';
-import './main.css';
+  import './theme/theme-vue.css';
 
 const route = ref('process');
 const enterAction = ref({});
 /* const settingsVisible = ref(false); // 移除右上角设置弹窗入口 */
+
+  let _mq = null;
+  let _themeUpdateListener = null;
 
 const store = useJsonStore();
 
@@ -30,18 +33,6 @@ function syncHtmlThemeClass(theme, mode) {
   html.classList.add(theme, mode === 'dark' ? 'dark-mode' : 'light-mode');
 }
 
-/*
-// Settings 弹窗 emits（已迁移到 ControlPanel，入口移除）
-function handleThemeChange({ theme, mode }) {
-  store.setThemePreference(theme, mode);
-  // settings 事件已自动保存，再手动刷新
-  applyTheme();
-}
-function handleSettingsClose() {
-  settingsVisible.value = false;
-}
-*/
-
 // 推送当前设置页需要的值
 function getThemeBinding() {
   const pref = store.getThemePreference();
@@ -56,24 +47,34 @@ function applyTheme() {
   const { theme, mode } = store.getEffectiveTheme();
   themeState.value = { theme, mode };
   syncHtmlThemeClass(theme, mode);
+  try {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('jsonium-theme-applied', { detail: { theme, mode } }));
+    }
+  } catch (_) { }
 }
 
 onMounted(() => {
   // 1. 初次同步主题
   applyTheme();
-
-  // 2. 监听系统主题变化、uTools 主题全局变更
-  const updateListener = () => { if (store.getThemePreference().mode === 'auto') applyTheme(); };
   try {
     if (typeof window !== 'undefined') {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      mq.addEventListener('change', updateListener);
+      window.applyTheme = applyTheme;
+    }
+  } catch (_) { }
+
+  // 2. 监听系统主题变化、uTools 主题全局变更
+  _themeUpdateListener = () => { if (store.getThemePreference().mode === 'auto') applyTheme(); };
+  try {
+    if (typeof window !== 'undefined') {
+      _mq = window.matchMedia('(prefers-color-scheme: dark)');
+      try { _mq.addEventListener('change', _themeUpdateListener); } catch (e) { }
       if (window.utools && window.utools.onPluginEnter) {
         window.utools.onPluginEnter(() => applyTheme());
       }
     }
   } catch(_) {}
-  
+
   // 3. 设置路由、指令等事件监听
   // ...保留原逻辑
 });
@@ -98,6 +99,16 @@ onMounted(() => {
   // 路由和剪贴板相关处理（原 onMounted 代码保留）
   // ...（省略, 按旧代码展开即可）
 });
+
+  onBeforeUnmount(() => {
+    try { if (_mq && typeof _mq.removeEventListener === 'function' && _themeUpdateListener) _mq.removeEventListener('change', _themeUpdateListener); } catch (e) { }
+    _themeUpdateListener = null;
+    try {
+      if (typeof window !== 'undefined' && window.applyTheme === applyTheme) {
+        window.applyTheme = null;
+      }
+    } catch (_) { }
+  });
 </script>
 
 <template>
@@ -146,38 +157,5 @@ onMounted(() => {
   color: var(--color-text-primary);
   transition: background-color 0.3s ease, color 0.3s ease;
   position: relative;
-}
-
-/* .settings-btn 相关样式移除（入口已统一到侧栏 Appearance）
-.settings-btn {
-  position: absolute;
-  top: 22px;
-  right: 22px;
-  width: 38px;
-  height: 38px;
-  background: var(--color-bg-secondary, #fff);
-  border: 1.5px solid var(--color-primary, #c6a0f6);
-  border-radius: 50%;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.09);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1500;
-  cursor: pointer;
-  transition: box-shadow 0.16s;
-  padding: 0;
-}
-.settings-btn:hover {
-  box-shadow: var(--shadow-md);
-}
-
-@media (max-width: 600px) {
-  .settings-btn {
-    top: 12px;
-    right: 12px;
-    width: 34px;
-    height: 34px;
   }
-}
-*/
 </style>

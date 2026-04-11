@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const emit = defineEmits(['themeChange', 'close']);
 const props = defineProps({
@@ -14,7 +14,7 @@ const themes = [
   { value: 'vue', label: 'Vue 官方风格' }
 ];
 const modes = [
-  { value: 'auto', label: '自动跟随系统/utools' },
+  { value: 'auto', label: '跟随系统' },
   { value: 'light', label: '亮色 Light' },
   { value: 'dark', label: '暗色 Dark' }
 ];
@@ -37,6 +37,10 @@ const onKeydown = (e) => {
 };
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
+});
+
+onBeforeUnmount(() => {
+  try { window.removeEventListener('keydown', onKeydown); } catch (e) { }
 });
 </script>
 

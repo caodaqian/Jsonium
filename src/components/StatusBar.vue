@@ -1,10 +1,10 @@
 <script setup>
-import { computed, reactive, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
-import { queryJsonPath, queryJq, validateQuery, detectQueryType } from '../services/queryEngine.js';
-import { useJsonStore } from '../store/index.js';
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { fetchUtoolsModels } from '../services/aiProcessor.js';
+import { jsonToGoStruct, jsonToJavaClass, jsonToJavaScript, jsonToPython, jsonToTypeScript } from '../services/converter.js';
 import notify from '../services/notify.js';
-import { jsonToGoStruct, jsonToJavaClass, jsonToPython, jsonToTypeScript, jsonToJavaScript } from '../services/converter.js';
+import { detectQueryType, queryJq, queryJsonPath, validateQuery } from '../services/queryEngine.js';
+import { useJsonStore } from '../store/index.js';
 
 const store = useJsonStore();
 const props = defineProps({
@@ -60,7 +60,7 @@ watch(queryExpression, (newExpr) => {
   if (!newExpr || newExpr.trim() === '') {
     typeOverride.value = false;
   }
-  
+
   if (!typeOverride.value) {
     detectedQueryType.value = detectQueryType(newExpr);
     queryType.value = detectedQueryType.value;
@@ -283,7 +283,9 @@ const executeQuery = () => {
 };
 
 const handleKeyDown = (e) => {
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+  // 扩展：支持直接按 Enter 执行查询（保留原有 Ctrl/Cmd+Enter 兼容）
+  if (e.key === 'Enter') {
+    try { e.preventDefault(); } catch (_) {}
     executeQuery();
   }
 };
@@ -476,7 +478,7 @@ const unescapeJson = () => {
         class="query-input"
         @keydown="handleKeyDown"
       />
-      
+
       <!-- 类型徽章：显示检测到的类型，可点击切换 -->
       <button
         class="query-type-badge"
@@ -552,12 +554,18 @@ const unescapeJson = () => {
           @mouseenter="showHelpTooltip = true"
           @mouseleave="showHelpTooltip = false"
           ref="helpTooltipRef"
-          title="帮助"
-        >
-          <div class="help-label">帮助</div>
+>
+          <button class="help-toggle" type="button"
+title="帮助"
+aria-label="帮助"
+            @click="showHelpTooltip = !showHelpTooltip" @blur="showHelpTooltip = false"
+>
+            <span class="help-icon" aria-hidden="true">?</span>
+          </button>
           <div v-if="showHelpTooltip" class="help-tooltip">
             <div class="help-title">支持的功能与快捷键</div>
-            <div class="help-item">格式化：Shift + Alt + F</div>
+            <div class="help-item">格式化：Shift + Alt + F（备用：Cmd/Ctrl + Shift + F）</div>
+            <div class="help-item">复制当前 JSON：Shift + Alt + J（备用：Cmd/Ctrl + Shift + J）</div>
             <div class="help-item">单行复制：Shift + Alt + C（备用：Cmd/Ctrl + Shift + C）</div>
             <div class="help-item">转义字符串复制：Shift + Alt + \（备用：Cmd/Ctrl + Shift + \）</div>
             <div class="help-item">查询执行：Cmd/Ctrl + Enter（在查询输入框中）</div>
@@ -636,8 +644,9 @@ const unescapeJson = () => {
   max-height: 260px;
   overflow-y: auto;
   /* add right safe padding so floating controls (global toggle) don't cover buttons */
-  padding-right: calc(96px + env(safe-area-inset-right));
-  position: relative;
+    /* reserve only the space needed for the floating help button */
+    padding-right: calc(44px + env(safe-area-inset-right));
+
   z-index: 120000; /* above many app elements but below global modals */
 }
 
@@ -674,7 +683,8 @@ const unescapeJson = () => {
   transition: all 0.2s;
   white-space: nowrap;
   flex-shrink: 0;
-}
+  }
+
 
 .query-type-badge:hover {
   border-color: var(--color-primary);
@@ -745,10 +755,14 @@ const unescapeJson = () => {
 }
 
   .query-input {
-    /* prefer to give the query input space but prevent it from pushing action buttons off-screen */
-    flex: 1 1 360px;
-    min-width: 120px;
+
+    /* give the input the remaining space while keeping the row on one line */
+    flex: 1 1 0;
+    min-width: 160px;
+    width: 0;
+    max-width: none;
     padding: 6px 8px;
+
   border: 1px solid var(--color-border);
   border-radius: 4px;
   background: var(--color-bg-primary);
@@ -912,12 +926,25 @@ const unescapeJson = () => {
   }
 
   .query-type-badge {
-    padding: 6px 10px;
+      padding: 4px 8px;
+
     font-size: var(--font-size-xs);
   }
 
+    .action-btn__text {
+      display: none;
+    }
+
+
   .actions-inline {
-    gap: 6px;
+      gap: 4px;
+      padding-right: 0;
+    }
+
+    .action-btn {
+      padding: 4px;
+      gap: 4px;
+
   }
 }
 
@@ -996,18 +1023,62 @@ const unescapeJson = () => {
 
 /* Help tooltip styles */
 .help-wrapper {
-  margin-left: auto;
-  position: relative;
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  cursor: default;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+
   user-select: none;
+    z-index: 2;
+
 }
-.help-label {
-  font-size: var(--font-size-xs);
+
+  .help-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-primary);
+
   color: var(--color-text-secondary);
+    box-shadow: 0 1.5px 6px rgba(76, 78, 120, 0.065);
+    transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.12s;
+  }
+
+  .help-toggle:hover,
+  .help-toggle:focus-visible {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    background: var(--color-hover-bg);
+  }
+
+  .help-toggle:active {
+    transform: translateY(1px);
+  }
+
+  .help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: var(--color-primary-lighter);
+    color: var(--color-primary-darker);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+
 }
 .help-tooltip {
   /* 固定定位，确保浮层在编辑器之上并不受父容器 stacking context 限制 */
@@ -1022,6 +1093,8 @@ const unescapeJson = () => {
   box-shadow: var(--shadow-lg);
   z-index: 200000;
   font-size: var(--font-size-xs);
+    max-width: min(360px, calc(100vw - 24px));
+
 }
 .help-title {
   font-weight: 600;
@@ -1033,6 +1106,37 @@ const unescapeJson = () => {
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
+
+  @media (max-width: 899px) {
+    .status-bar-row {
+      gap: 4px;
+    }
+
+    .query-input {
+      flex: 1 1 auto;
+      min-width: 0;
+      width: auto;
+    }
+
+    .query-type-badge {
+      padding: 4px 8px;
+    }
+
+    .query-btn {
+      padding: 4px 8px;
+    }
+
+    .actions-inline {
+      gap: 4px;
+      padding-right: 0;
+    }
+
+    .action-btn {
+      padding: 4px;
+      gap: 4px;
+    }
+  }
+
 
 /* transient copy error */
 .copy-error {
@@ -1080,15 +1184,17 @@ const unescapeJson = () => {
 
   /* 小屏幕优化：按钮组动态占满右侧空间 */
   .actions-inline {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     gap: 4px;
     justify-content: flex-end;
+    padding-right: 0;
   }
 
   .query-input {
-    flex: 1 1 120px;
-    min-width: 80px;
-    max-width: 60%;
+    flex: 1 1 0;
+    min-width: 0;
+    width: 0;
+    max-width: none;
   }
 
   /* 缩小徽章尺寸以节省空间 */
@@ -1096,6 +1202,10 @@ const unescapeJson = () => {
     padding: 5px 8px;
     font-size: 11px;
     min-width: fit-content;
+  }
+
+  .query-btn {
+    padding: 4px 8px;
   }
 
   /* 缩小按钮 padding 以紧凑排列 */

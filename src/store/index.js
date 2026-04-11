@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, reactive } from 'vue';
+import { reactive, ref } from 'vue';
 
 export const useJsonStore = defineStore('json', () => {
   // 状态
@@ -52,7 +52,7 @@ export const useJsonStore = defineStore('json', () => {
     aiComposer.loadingModels = false;
     aiComposer.modelLoadError = '';
   };
-  
+
   // OutputPanel 状态
   const outputTabs = ['jsonpath', 'jq', 'diff'];
 
@@ -75,7 +75,7 @@ export const useJsonStore = defineStore('json', () => {
     content: createOutputContent(),
     history: []
   });
-  
+
   // ========= 表格视图状态 begin =========
   const tableView = reactive({
     visible: false,
@@ -110,7 +110,7 @@ export const useJsonStore = defineStore('json', () => {
     diffFilter: 'all', // all | changed | added | removed | modified
     error: ''
   });
-  
+
   // ========= 主题系统 begin =========
   const themePreference = ref({
     theme: 'catppuccin', // 'catppuccin' | 'vue'
@@ -204,7 +204,7 @@ export const useJsonStore = defineStore('json', () => {
     lineNumbers: true,
     wordWrap: 'off',
     fontSize: 14,
-    fontFamily: "'Cascadia Code NF', 'JetBrains Mono','Fira Code Retina', Consolas, 'Source Code Pro', 'Menlo', 'Courier New', monospace, 'Source Han Sans VF', '思源黑体'",
+    fontFamily: '',
     theme: 'vs-dark',
     // 新增：基于宽度的自动换行控制（默认开启）
     wrapEnabled: true,
@@ -221,7 +221,7 @@ export const useJsonStore = defineStore('json', () => {
     // 新增：格式检测模式，'lenient' | 'strict'
     formatDetectorMode: 'lenient'
   });
-  
+
   const showDiffSidebar = (leftContent = '') => {
     diffSidebar.visible = true;
     diffSidebar.mode = 'input';
@@ -234,7 +234,7 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.diffFilter = 'all';
     diffSidebar.error = '';
   };
-  
+
   const setDiffResult = (leftContent, rightContent, payload = {}) => {
     diffSidebar.mode = 'result';
     diffSidebar.leftContent = leftContent;
@@ -245,7 +245,7 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.diffStats = payload.diffStats || diffSidebar.diffStats;
     diffSidebar.error = '';
   };
-  
+
   const hideDiffSidebar = () => {
     diffSidebar.visible = false;
     // 可选：清理临时数据
@@ -256,11 +256,11 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.diffTree = null;
     diffSidebar.error = '';
   };
-  
+
   const setDiffLines = (lines) => {
     diffSidebar.diffLines = lines;
   };
-  
+
   const setDiffError = (error) => {
     diffSidebar.error = error;
   };
@@ -274,7 +274,7 @@ export const useJsonStore = defineStore('json', () => {
       const pad = (n) => String(n).padStart(2, '0');
       defaultName = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     }
-    
+
     const now = new Date();
     const tab = {
       id,
@@ -290,18 +290,18 @@ export const useJsonStore = defineStore('json', () => {
     activeTabId.value = id;
     return id;
   };
-  
+
   const closeTab = (tabId) => {
     const index = tabs.value.findIndex(t => t.id === tabId);
     if (index > -1) {
       tabs.value.splice(index, 1);
-      
+
       if (activeTabId.value === tabId) {
         activeTabId.value = tabs.value.length > 0 ? tabs.value[tabs.value.length - 1].id : null;
       }
     }
   };
-  
+
   const updateTabContent = (tabId, content) => {
     const tab = tabs.value.find(t => t.id === tabId);
     if (tab) {
@@ -309,14 +309,14 @@ export const useJsonStore = defineStore('json', () => {
       tab.isModified = true;
     }
   };
-  
+
   const updateTabName = (tabId, name) => {
     const tab = tabs.value.find(t => t.id === tabId);
     if (tab) {
       tab.name = name;
     }
   };
-  
+
   const getActiveTab = () => {
     return tabs.value.find(t => t.id === activeTabId.value);
   };
@@ -451,7 +451,7 @@ export const useJsonStore = defineStore('json', () => {
       return false;
     }
   };
-  
+
   const SETTINGS_KEY = 'json_settings_v1';
   const saveSettingsState = () => {
     try {
@@ -469,7 +469,7 @@ export const useJsonStore = defineStore('json', () => {
       // ignore
     }
   };
-  
+
   const loadSettingsState = () => {
     try {
       let raw = null;
@@ -495,7 +495,7 @@ export const useJsonStore = defineStore('json', () => {
       return false;
     }
   };
-  
+
   // 查询历史
   const addQueryHistory = (query, type) => {
     queryHistory.value.unshift({
@@ -504,41 +504,41 @@ export const useJsonStore = defineStore('json', () => {
       timestamp: new Date(),
       id: Date.now()
     });
-    
+
     // 限制历史记录数量
     if (queryHistory.value.length > 50) {
       queryHistory.value.pop();
     }
   };
-  
+
   const clearQueryHistory = () => {
     queryHistory.value = [];
   };
-  
+
   // AI 配置
   const setAIConfig = (config) => {
     Object.assign(aiConfig.value, config);
   };
-  
+
   const getAIConfig = () => {
     return { ...aiConfig.value };
   };
-  
+
   // 编辑器设置
   const updateEditorSettings = (settings) => {
     Object.assign(editorSettings, settings);
   };
-  
+
   const getEditorSettings = () => {
     return { ...editorSettings };
   };
-  
+
   // OutputPanel 操作
-  
+
   const hideOutputPanel = () => {
     outputPanel.visible = false;
   };
-  
+
   const showOutputPanel = (tab, payload = emptyPanel()) => {
     if (!outputTabs.includes(tab)) {
       return;
@@ -547,12 +547,12 @@ export const useJsonStore = defineStore('json', () => {
     outputPanel.currentTab = tab;
     outputPanel.content[tab] = payload;
   };
-  
+
   const switchOutputTab = (tab) => {
     outputPanel.currentTab = tab;
     outputPanel.visible = true;
   };
-  
+
   const clearOutput = (tab = null) => {
     if (tab) {
       outputPanel.content[tab] = emptyPanel();
@@ -560,7 +560,7 @@ export const useJsonStore = defineStore('json', () => {
       outputPanel.content = createOutputContent();
     }
   };
-  
+
       return {
         // ========= 主题系统 =========
         themePreference,
@@ -579,7 +579,7 @@ export const useJsonStore = defineStore('json', () => {
     outputPanel,
     diffSidebar,
     tableView,
-    
+
     // Tab 管理
     addTab,
     closeTab,
@@ -589,15 +589,15 @@ export const useJsonStore = defineStore('json', () => {
     // 持久化
     saveTabsState,
     loadTabsState,
-    
+
     // 查询历史
     addQueryHistory,
     clearQueryHistory,
-    
+
     // AI 配置
     setAIConfig,
     getAIConfig,
-    
+
     // AI Composer
     setAIDraft,
     setAISelectedModel,
@@ -609,20 +609,20 @@ export const useJsonStore = defineStore('json', () => {
     // 编辑器设置
     updateEditorSettings,
     getEditorSettings,
-    
+
     // OutputPanel 操作
     showOutputPanel,
     hideOutputPanel,
     switchOutputTab,
     clearOutput,
-    
+
     // DiffSidebar 操作
     showDiffSidebar,
     hideDiffSidebar,
     setDiffLines,
     setDiffResult,
     setDiffError,
-    
+
     // Tab extras
     setActiveTab,
     toggleFavorite,
@@ -630,7 +630,7 @@ export const useJsonStore = defineStore('json', () => {
     closeOtherTabs,
     closeLeftTabs,
     cleanupOldTabs,
-    
+
     // Settings persistence
     saveSettingsState,
     loadSettingsState,

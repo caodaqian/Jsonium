@@ -13,8 +13,10 @@ const Range = function (sL, sC, eL, eC) {
 
 const KeyCode = {
   Enter: 1,
-  KeyC: 2,
-  Backslash: 3
+  KeyF: 2,
+  KeyC: 3,
+  KeyJ: 4,
+  Backslash: 5
 };
 
 const KeyMod = {
@@ -38,19 +40,23 @@ const languages = {
 
 const editor = {
   create() {
-    return {
+    const instance = {
+      commands: [],
+      actions: [],
       getModel: () => ({ getValue: () => '{}', pushEditOperations: () => {}, getValueInRange: () => '{}' }),
       getValue: () => '{}',
       getSelections: () => [],
       onDidChangeModelContent: () => {},
       onKeyDown: () => {},
-      addCommand: () => {},
-      addAction: () => {},
+      addCommand: (keybinding, handler) => { instance.commands.push({ keybinding, handler }); },
+      addAction: (action) => { instance.actions.push(action); },
       getAction: () => ({ run: async () => {} }),
       dispose: () => {},
       getDomNode: () => null,
       focus: () => {}
     };
+    globalThis.__monacoLastEditor = instance;
+    return instance;
   },
   defineTheme: () => {},
   setTheme: () => {}

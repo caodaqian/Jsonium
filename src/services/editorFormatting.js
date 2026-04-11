@@ -10,7 +10,12 @@
  * @param {string} content
  * @returns {string}
  */
-import { normalizeLineEndings, ensureTrailingNewline, approximateChangeRatio } from '../utils/textUtils.js';
+import { approximateChangeRatio, ensureTrailingNewline, normalizeLineEndings } from '../utils/textUtils.js';
+import { runWorkerTask } from './computeWorkerManager.js';
+
+// When document sizes exceed this number of characters, heavy compute (diff/edits)
+// will be offloaded to a WebWorker. Tunable constant; 100KB by default.
+export const WORKER_OFFLOAD_CHARS = 100 * 1024;
 
 export function formatJsonString(content) {
   const parsed = JSON.parse(content);
@@ -208,6 +213,32 @@ export function computeMinimalEdits(oldText, newText, monacoInstance) {
   }
 
   return edits;
+}
+
+/**
+ * Async worker-backed version of computeMinimalEdits.
+ * Falls back to synchronous computeMinimalEdits if worker task fails.
+ * Returns an array of edits where `range` is either a Monaco Range (if monacoInstance provided)
+ * or a plain numeric range object with { startLineNumber, startColumn, endLineNumber, endColumn }.
+ */
+export async function computeMinimalEditsAsync(oldText, newText, monacoInstance = null) {
+  try {
+    const result = await runWorkerTask('computeMinimalEdits', { oldText: oldText || '', newText: newText || '' }, { timeout: 30000 });
+    // Convert numeric ranges to Monaco Range if requested
+    if (Array.isArray(result)) {
+      return result.map((e) => {
+        const r = e.range || {};
+        if (monacoInstance && monacoInstance.Range) {
+          return { range: new monacoInstance.Range(r.startLineNumber, r.startColumn, r.endLineNumber, r.endColumn), text: e.text };
+        }
+        return { range: { startLineNumber: r.startLineNumber, startColumn: r.startColumn, endLineNumber: r.endLineNumber, endColumn: r.endColumn }, text: e.text };
+      });
+    }
+  } catch (e) {
+    // ignore and fallback to synchronous compute
+  }
+  // synchronous fallback
+  return computeMinimalEdits(oldText, newText, monacoInstance);
 }
 
 /**

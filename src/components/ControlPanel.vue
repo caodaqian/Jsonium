@@ -1,7 +1,7 @@
 <script setup>
-import { ref, watch } from 'vue';
-import { useJsonStore } from '../store/index.js';
+import { computed, ref, watch } from 'vue';
 import notify from '../services/notify.js';
+import { useJsonStore } from '../store/index.js';
 
 const props = defineProps({
   activePanel: {
@@ -30,7 +30,7 @@ const themeOptions = [
 ];
 
 const modeOptions = [
-  { value: 'auto', label: '自动跟随系统/utools' },
+  { value: 'auto', label: '跟随系统' },
   { value: 'light', label: '亮色 Light' },
   { value: 'dark', label: '暗色 Dark' }
 ];
@@ -38,18 +38,32 @@ const modeOptions = [
 const themeValue = ref(store.themePreference.theme);
 const modeValue = ref(store.themePreference.mode);
 
-const editorSettingsOpen = ref(true);
+const appearanceSettingsOpen = ref(false);
+const editorSettingsOpen = ref(false);
 const aiSettingsOpen = ref(false);
+
+const themeLabelByValue = computed(() => themeOptions.find((option) => option.value === themeValue.value)?.label || '未选择');
+const modeLabelByValue = computed(() => modeOptions.find((option) => option.value === modeValue.value)?.label || '未选择');
+const fontLabel = computed(() => {
+  const value = store.editorSettings.fontFamily;
+  if (!value) return '系统默认';
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  return value;
+});
+const wrapLabel = computed(() => {
+  if (!store.editorSettings.wrapEnabled) return '关闭';
+  return store.editorSettings.wrapByWidth ? `按宽度 ${store.editorSettings.wrapThresholdPx}px` : `按列 ${store.editorSettings.wrapColumn}`;
+});
+const aiRetryLabel = computed(() => (store.aiConfig.parseRetry ? `开启 · ${store.aiConfig.parseRetryMax} 次` : '关闭'));
 
 watch(
   [themeValue, modeValue],
   ([theme, mode]) => {
     store.setThemePreference(theme, mode);
-    if (typeof window !== 'undefined') {
-      try {
-        if (window.applyTheme) window.applyTheme();
-      } catch (_) {}
-    }
+    const appWindow = globalThis.window;
+    appWindow?.applyTheme?.();
   }
 );
 
@@ -68,7 +82,9 @@ watch(
   () => {
     try {
       if (typeof store.saveSettingsState === 'function') store.saveSettingsState();
-    } catch (e) {}
+    } catch (error) {
+      console.warn('Failed to save editor settings state', error);
+    }
   },
   { deep: true }
 );
@@ -89,14 +105,15 @@ function handleImport() {
 }
 
 function handleReadFile() {
-  if (window.utools) {
+  const appWindow = globalThis.window;
+  if (appWindow?.utools) {
     try {
-      const files = window.utools.showOpenDialog({
+      const files = appWindow.utools.showOpenDialog({
         title: '选择文件',
         properties: ['openFile']
       });
       if (files && files[0]) {
-        const content = window.services.readFile(files[0]);
+        const content = appWindow.services.readFile(files[0]);
         emit('import', content);
       }
     } catch (err) {
@@ -113,11 +130,12 @@ function handleWriteFile() {
     notify.warn('请先打开一个标签页');
     return;
   }
-  if (window.utools) {
+  const appWindow = globalThis.window;
+  if (appWindow?.utools) {
     try {
-      const outputPath = window.services.writeTextFile(activeTab.content);
+      const outputPath = appWindow.services.writeTextFile(activeTab.content);
       if (outputPath) {
-        window.utools.shellShowItemInFolder(outputPath);
+        appWindow.utools.shellShowItemInFolder(outputPath);
         notify.success('文件已保存到: ' + outputPath);
       }
     } catch (err) {
@@ -158,6 +176,14 @@ function getTabLabel(tab) {
   };
   return labels[tab] || tab;
 }
+
+function formatThemeSummary() {
+  return `${themeLabelByValue.value} · ${modeLabelByValue.value}`;
+}
+
+function getDisclosureLabel(open) {
+  return open ? '收起详情' : '查看详情';
+}
 </script>
 
 <template>
@@ -189,48 +215,66 @@ function getTabLabel(tab) {
 
     <div class="panel-content">
       <section class="settings-section settings-section--appearance">
-        <div class="section-heading">
-          <div>
-            <h4>界面外观</h4>
-            <p>主题风格与配色模式</p>
-          </div>
-        </div>
+        <button
+          class="section-toggle"
+          type="button"
+          :aria-expanded="appearanceSettingsOpen"
+          aria-controls="appearance-settings"
+          @click="appearanceSettingsOpen = !appearanceSettingsOpen"
+        >
+          <span>
+            <span class="section-toggle__title">界面外观</span>
+            <span class="section-toggle__desc">当前 {{ formatThemeSummary() }}</span>
+          </span>
+          <span class="section-toggle__state">{{ getDisclosureLabel(appearanceSettingsOpen) }}</span>
+        </button>
 
-        <div class="theme-grid" aria-label="主题风格">
-          <label
-            v-for="opt in themeOptions"
-            :key="opt.value"
-            class="theme-option"
-            :class="{ active: themeValue === opt.value }"
-          >
-            <input
-              v-model="themeValue"
-              type="radio"
-              name="themeStyle"
-              :value="opt.value"
-            />
-            <span class="theme-option__title">{{ opt.label }}</span>
-            <span class="theme-option__meta">{{ opt.meta }}</span>
-          </label>
-        </div>
+        <div
+          id="appearance-settings"
+          class="section-body"
+          :class="{ 'is-collapsed': !appearanceSettingsOpen }"
+        >
+          <div class="appearance-layout">
+            <div class="theme-column">
+              <div class="mini-label">主题风格</div>
+              <div class="theme-grid" aria-label="主题风格">
+                <label
+                  v-for="opt in themeOptions"
+                  :key="opt.value"
+                  class="theme-option"
+                  :class="{ active: themeValue === opt.value }"
+                >
+                  <input
+                    v-model="themeValue"
+                    type="radio"
+                    name="themeStyle"
+                    :value="opt.value"
+                  />
+                  <span class="theme-option__title">{{ opt.label }}</span>
+                  <span class="theme-option__meta">{{ opt.meta }}</span>
+                </label>
+              </div>
+            </div>
 
-        <div class="mode-section">
-          <div class="mini-label">配色模式</div>
-          <div class="mode-grid">
-            <label
-              v-for="opt in modeOptions"
-              :key="opt.value"
-              class="mode-option"
-              :class="{ active: modeValue === opt.value }"
-            >
-              <input
-                v-model="modeValue"
-                type="radio"
-                name="themeMode"
-                :value="opt.value"
-              />
-              <span>{{ opt.label }}</span>
-            </label>
+            <div class="mode-column">
+              <div class="mini-label">配色模式</div>
+              <div class="mode-grid">
+                <label
+                  v-for="opt in modeOptions"
+                  :key="opt.value"
+                  class="mode-option"
+                  :class="{ active: modeValue === opt.value }"
+                >
+                  <input
+                    v-model="modeValue"
+                    type="radio"
+                    name="themeMode"
+                    :value="opt.value"
+                  />
+                  <span>{{ opt.label }}</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -245,9 +289,9 @@ function getTabLabel(tab) {
         >
           <span>
             <span class="section-toggle__title">编辑器设置</span>
-            <span class="section-toggle__desc">行宽、缩进与复制行为</span>
+            <span class="section-toggle__desc">字体 {{ fontLabel }} · 换行 {{ wrapLabel }}</span>
           </span>
-          <span class="section-toggle__state">{{ editorSettingsOpen ? '收起' : '展开' }}</span>
+          <span class="section-toggle__state">{{ getDisclosureLabel(editorSettingsOpen) }}</span>
         </button>
 
         <div
@@ -255,35 +299,37 @@ function getTabLabel(tab) {
           class="section-body"
           :class="{ 'is-collapsed': !editorSettingsOpen }"
         >
-          <label class="setting-row setting-row--toggle">
-            <span class="input-toggle">
-              <input
-                v-model="store.editorSettings.wrapEnabled"
-                type="checkbox"
-                aria-label="默认按编辑器宽度自动换行"
-              />
-              <span class="slider" aria-hidden="true"></span>
-            </span>
-            <span class="setting-copy">
-              <span class="setting-name">默认按编辑器宽度自动换行</span>
-              <span class="setting-help">长文本浏览时更易阅读。</span>
-            </span>
-          </label>
+          <div class="setting-stack">
+            <label class="setting-row setting-row--toggle">
+              <span class="input-toggle">
+                <input
+                  v-model="store.editorSettings.wrapEnabled"
+                  type="checkbox"
+                  aria-label="默认按编辑器宽度自动换行"
+                />
+                <span class="slider" aria-hidden="true"></span>
+              </span>
+              <span class="setting-copy">
+                <span class="setting-name">默认按编辑器宽度自动换行</span>
+                <span class="setting-help">长文本浏览时更易阅读。</span>
+              </span>
+            </label>
 
-          <label class="setting-row setting-row--toggle">
-            <span class="input-toggle">
-              <input
-                v-model="store.editorSettings.wrapByWidth"
-                type="checkbox"
-                aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）"
-              />
-              <span class="slider" aria-hidden="true"></span>
-            </span>
-            <span class="setting-copy">
-              <span class="setting-name">换行策略：按宽度触发 / 按列数触发</span>
-              <span class="setting-help">开启后会根据视口或固定列数自动换行。</span>
-            </span>
-          </label>
+            <label class="setting-row setting-row--toggle">
+              <span class="input-toggle">
+                <input
+                  v-model="store.editorSettings.wrapByWidth"
+                  type="checkbox"
+                  aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）"
+                />
+                <span class="slider" aria-hidden="true"></span>
+              </span>
+              <span class="setting-copy">
+                <span class="setting-name">换行策略：按宽度触发 / 按列数触发</span>
+                <span class="setting-help">开启后会根据视口或固定列数自动换行。</span>
+              </span>
+            </label>
+          </div>
 
           <div class="setting-grid">
             <label class="setting-field">
@@ -310,12 +356,13 @@ function getTabLabel(tab) {
               />
             </label>
           </div>
-    
+
           <div class="setting-grid">
             <label class="setting-field">
               <span class="setting-field__label">字体</span>
-              <span class="setting-field__help">编辑器首选字体（优先从左到右搜索）</span>
+              <span class="setting-field__help">默认使用系统字体，必要时可手动指定等宽字体。</span>
               <select v-model="store.editorSettings.fontFamily" class="form-select setting-field__control">
+                <option value="">系统默认</option>
                 <option value="'Cascadia Code NF'">Cascadia Code NF</option>
                 <option value="'JetBrains Mono'">JetBrains Mono</option>
                 <option value="'Fira Code Retina'">Fira Code Retina</option>
@@ -326,17 +373,16 @@ function getTabLabel(tab) {
                 <option value="monospace">monospace</option>
                 <option value="'Source Han Sans VF'">Source Han Sans VF</option>
                 <option value="'思源黑体'">思源黑体</option>
-                <option value="">系统默认</option>
               </select>
             </label>
-    
+
             <label class="setting-field">
               <span class="setting-field__label">字号 (px)</span>
               <span class="setting-field__help">调整编辑器字体大小</span>
               <input v-model.number="store.editorSettings.fontSize" type="number" min="8" class="form-input setting-field__control setting-field__control--narrow" />
             </label>
           </div>
-    
+
           <label class="setting-row setting-row--toggle">
             <span class="input-toggle">
               <input
@@ -373,9 +419,9 @@ function getTabLabel(tab) {
         >
           <span>
             <span class="section-toggle__title">AI 解析设置</span>
-            <span class="section-toggle__desc">失败重试与输出约束</span>
+            <span class="section-toggle__desc">失败重试 {{ aiRetryLabel }}</span>
           </span>
-          <span class="section-toggle__state">{{ aiSettingsOpen ? '收起' : '展开' }}</span>
+          <span class="section-toggle__state">{{ getDisclosureLabel(aiSettingsOpen) }}</span>
         </button>
 
         <div
@@ -427,20 +473,23 @@ function getTabLabel(tab) {
 .control-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   width: 100%;
   min-width: 0;
   max-width: none;
   box-sizing: border-box;
-  padding: 16px;
+  padding: 18px;
   color: var(--color-text-primary);
-  background: var(--color-bg-secondary);
+  background:
+    radial-gradient(circle at top left, rgba(198, 160, 246, 0.12), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(66, 184, 131, 0.08), transparent 30%),
+    var(--color-bg-secondary);
   border-left: 1px solid var(--color-divider);
   border-right: 1px solid transparent;
   border-top: 0;
   border-bottom: 0;
-  box-shadow: none;
-  backdrop-filter: blur(6px);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(14px);
 }
 
 :global(html.dark-mode) .control-panel {
@@ -449,9 +498,10 @@ function getTabLabel(tab) {
 
 .panel-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding: 8px 4px 2px;
 }
 
 .panel-header__copy {
@@ -469,7 +519,7 @@ function getTabLabel(tab) {
 
 .panel-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 22px;
   line-height: 1.2;
   font-weight: 700;
   color: var(--color-text-primary);
@@ -477,18 +527,18 @@ function getTabLabel(tab) {
 
 .panel-description {
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--color-text-secondary);
-  max-width: 36ch;
+  max-width: 42ch;
 }
 
 .panel-close {
   flex: none;
-  padding: 8px 14px;
+  padding: 9px 14px;
   border-radius: var(--radius-btn, 11px);
   border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
+  background: rgba(255, 255, 255, 0.52);
   color: var(--color-text-primary);
   font-size: 14px;
   font-weight: 600;
@@ -505,9 +555,9 @@ function getTabLabel(tab) {
 .panel-tabs {
   display: flex;
   gap: 8px;
-  padding: 4px;
-  border-radius: 12px;
-  background: var(--color-bg-primary);
+  padding: 6px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.45);
   border: 1px solid var(--color-divider);
 }
 
@@ -542,27 +592,47 @@ function getTabLabel(tab) {
 .panel-content {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .settings-section {
-  padding: 14px;
-  border-radius: 12px;
+  padding: 16px;
+  border-radius: 20px;
   border: 1px solid var(--color-divider);
-  background: var(--color-bg-primary);
-  box-shadow: none;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
 }
 
 :global(html.dark-mode) .settings-section {
-  background: var(--color-bg-primary);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .settings-section--footer {
-  padding: 10px 14px;
+  padding: 14px 16px;
+}
+
+.settings-section--appearance {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.10)),
+    rgba(255, 255, 255, 0.42);
+}
+
+.appearance-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.theme-column,
+.mode-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .section-heading {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .section-heading h4 {
@@ -582,19 +652,20 @@ function getTabLabel(tab) {
 
 .theme-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
 }
 
 .theme-option {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-height: 88px;
-  padding: 12px 12px 11px;
-  border-radius: 14px;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
+  padding: 13px 14px 12px;
+  border-radius: 16px;
   border: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.28));
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
@@ -613,8 +684,8 @@ function getTabLabel(tab) {
 
 .theme-option.active {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(198, 160, 246, 0.12);
-  background: var(--color-hover-bg);
+  box-shadow: 0 0 0 2px rgba(198, 160, 246, 0.12), var(--shadow-md);
+  background: linear-gradient(180deg, rgba(198, 160, 246, 0.16), rgba(255, 255, 255, 0.30));
 }
 
 .theme-option__title {
@@ -631,7 +702,7 @@ function getTabLabel(tab) {
 }
 
 .mode-section {
-  margin-top: 14px;
+  margin-top: 0;
 }
 
 .mini-label {
@@ -642,24 +713,25 @@ function getTabLabel(tab) {
 }
 
 .mode-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .mode-option {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 42px;
-  padding: 8px 10px;
-  border-radius: 12px;
+  padding: 9px 14px;
+  border-radius: 999px;
   border: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
+  background: rgba(255, 255, 255, 0.50);
   color: var(--color-text-secondary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  flex: 0 1 auto;
 }
 
 .mode-option input {
@@ -671,7 +743,7 @@ function getTabLabel(tab) {
 .mode-option.active {
   border-color: var(--color-success);
   color: var(--color-text-primary);
-  background: var(--color-hover-bg);
+  background: rgba(166, 218, 149, 0.16);
 }
 
 .section-toggle {
@@ -712,19 +784,30 @@ function getTabLabel(tab) {
 
 .section-toggle__state {
   flex: none;
-  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
   border-radius: 999px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
+  background: transparent;
+  border: 1px solid transparent;
   font-size: 12px;
   font-weight: 700;
   color: var(--color-text-secondary);
 }
 
+.section-toggle__state:hover,
+.section-toggle__state:focus-visible,
+.overview-card__action:hover,
+.overview-card__action:focus-visible {
+  background: var(--color-hover-bg);
+  border-color: var(--color-border);
+}
+
 .section-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   overflow: hidden;
   max-height: 1000px;
   opacity: 1;
@@ -742,7 +825,7 @@ function getTabLabel(tab) {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 10px 0;
+  padding: 12px 0;
 }
 
 .setting-row--toggle {
@@ -775,10 +858,16 @@ function getTabLabel(tab) {
   gap: 10px;
 }
 
+.setting-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .setting-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .setting-field--inline {
@@ -814,9 +903,9 @@ function getTabLabel(tab) {
 .form-select {
   width: 100%;
   min-height: 42px;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
+  background: rgba(255, 255, 255, 0.60);
   color: var(--color-text-primary);
   font-size: 14px;
 }
@@ -882,7 +971,7 @@ function getTabLabel(tab) {
 .panel-btn {
   min-height: 40px;
   padding: 8px 18px;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--color-primary);
   background: var(--color-primary);
   color: #fff;
@@ -906,6 +995,7 @@ function getTabLabel(tab) {
     padding: 14px;
   }
 
+  .appearance-layout,
   .theme-grid,
   .setting-grid,
   .mode-grid {
@@ -923,6 +1013,16 @@ function getTabLabel(tab) {
 
   .panel-close {
     width: 100%;
+  }
+}
+
+@media (max-width: 980px) {
+  .appearance-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 </style>

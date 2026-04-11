@@ -10,18 +10,18 @@ export function getDifferences(json1, json2, options = {}) {
   try {
     let data1 = typeof json1 === 'string' ? JSON.parse(json1) : json1;
     let data2 = typeof json2 === 'string' ? JSON.parse(json2) : json2;
-    
+
     const { ignoreFields = [], ignoreOrder = false, ignoreValue = false } = options;
-    
+
     // 排序后对比（如需要）
     if (ignoreOrder) {
       data1 = sortObject(data1);
       data2 = sortObject(data2);
     }
-    
+
     const differences = [];
     compareDiff(data1, data2, '', differences, ignoreFields, ignoreValue);
-    
+
     return {
       success: true,
       differences: differences,
@@ -47,7 +47,7 @@ export function stringifySortedJson(source) {
 function compareDiff(obj1, obj2, path, differences, ignoreFields, ignoreValue) {
   const type1 = getType(obj1);
   const type2 = getType(obj2);
-  
+
   // 类型不同
   if (type1 !== type2) {
     differences.push({
@@ -58,7 +58,7 @@ function compareDiff(obj1, obj2, path, differences, ignoreFields, ignoreValue) {
     });
     return;
   }
-  
+
   // 基本类型对比
   if (type1 !== 'object' && type1 !== 'array') {
     if (!ignoreValue && obj1 !== obj2) {
@@ -71,18 +71,18 @@ function compareDiff(obj1, obj2, path, differences, ignoreFields, ignoreValue) {
     }
     return;
   }
-  
+
   // 对象对比
   if (type1 === 'object') {
     const keys1 = Object.keys(obj1);
     const keys2 = Object.keys(obj2);
     const allKeys = new Set([...keys1, ...keys2]);
-    
+
     for (const key of allKeys) {
       if (ignoreFields.includes(key)) continue;
-      
+
       const newPath = path ? `${path}.${key}` : key;
-      
+
       if (!(key in obj1)) {
         differences.push({
           path: newPath,
@@ -101,12 +101,12 @@ function compareDiff(obj1, obj2, path, differences, ignoreFields, ignoreValue) {
     }
     return;
   }
-  
+
   // 数组对比
   if (type1 === 'array') {
     const len1 = obj1.length;
     const len2 = obj2.length;
-    
+
     if (len1 !== len2) {
       differences.push({
         path: path,
@@ -115,11 +115,11 @@ function compareDiff(obj1, obj2, path, differences, ignoreFields, ignoreValue) {
         right: len2
       });
     }
-    
+
     const maxLen = Math.max(len1, len2);
     for (let i = 0; i < maxLen; i++) {
       const newPath = `${path}[${i}]`;
-      
+
       if (i >= len1) {
         differences.push({
           path: newPath,
@@ -177,7 +177,7 @@ export function categorizeDifferences(differences) {
     arrayChange: [],
     other: []
   };
-  
+
   for (const diff of differences) {
     if (diff.type === 'key-added') {
       categories.keyAdded.push(diff);
@@ -193,7 +193,7 @@ export function categorizeDifferences(differences) {
       categories.other.push(diff);
     }
   }
-  
+
   return categories;
 }
 
@@ -202,7 +202,7 @@ export function categorizeDifferences(differences) {
  */
 export function generateDiffSummary(differences) {
   const categories = categorizeDifferences(differences);
-  
+
   return {
     total: differences.length,
     keyAdded: categories.keyAdded.length,
@@ -221,17 +221,17 @@ export function extractOnlyDifferences(json1, json2, options = {}) {
   try {
     let data1 = typeof json1 === 'string' ? JSON.parse(json1) : json1;
     let data2 = typeof json2 === 'string' ? JSON.parse(json2) : json2;
-    
+
     const differences = getDifferences(data1, data2, options);
-    
+
     if (!differences.success) {
       return differences;
     }
-    
+
     // 构建只包含差异的结构
     const left = {};
     const right = {};
-    
+
     for (const diff of differences.differences) {
       // handle root-path diffs
       if (!diff.path || diff.path === '/' || diff.path === '$') {
@@ -368,6 +368,33 @@ export function buildLineDiffs(leftLines, rightLines) {
   }
 
   return diffLines;
+}
+
+/**
+ * Async worker-backed version of buildLineDiffs. Accepts either arrays of lines or raw text.
+ * Falls back to synchronous buildLineDiffs if worker fails.
+ * @param {string[]|string} left
+ * @param {string[]|string} right
+ */
+export async function buildLineDiffsAsync(left, right) {
+  try {
+    const payload = {};
+    if (Array.isArray(left) && Array.isArray(right)) {
+      payload.leftText = left.join('\n');
+      payload.rightText = right.join('\n');
+    } else {
+      payload.leftText = typeof left === 'string' ? left : (Array.isArray(left) ? left.join('\n') : '');
+      payload.rightText = typeof right === 'string' ? right : (Array.isArray(right) ? right.join('\n') : '');
+    }
+    // Lazy import to avoid circular deps in non-bundled test env
+    // eslint-disable-next-line import/no-mutable-exports
+    const { runWorkerTask } = await import('./computeWorkerManager.js');
+    const res = await runWorkerTask('buildLineDiffs', payload, { timeout: 30000 });
+    if (Array.isArray(res)) return res;
+  } catch (e) {
+    // fall through to synchronous
+  }
+  return buildLineDiffs(Array.isArray(left) ? left : String(left).split(/\r\n|\n/), Array.isArray(right) ? right : String(right).split(/\r\n|\n/));
 }
 
 /**

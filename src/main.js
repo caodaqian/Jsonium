@@ -1,5 +1,5 @@
-import { createApp, watch } from 'vue';
 import { createPinia } from 'pinia';
+import { createApp, watch } from 'vue';
 import App from './App.vue';
 import './main.css';
 import { useJsonStore } from './store';
@@ -52,6 +52,52 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     try { store.saveTabsState && store.saveTabsState(); } catch (_) {}
   });
+}
+
+// Development-only helpers for perf testing: expose lightweight APIs to create/close tabs
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  try {
+    window.__jsonium_store = store;
+    window.__jsonium_addTabs = (count = 100, sizeKB = 0) => {
+      try {
+        for (let i = 0; i < count; i++) {
+          const content = sizeKB > 0 ? JSON.stringify({ data: 'x'.repeat(sizeKB * 1024) }) : '{}';
+          store.addTab(content, `perf-${Date.now()}-${i}`, 'json');
+        }
+      } catch (e) { /* ignore */ }
+    };
+    window.__jsonium_closeAllTabs = (opts = { keepFavorited: false }) => {
+      try { store.closeAllTabs(opts); } catch (e) { /* ignore */ }
+    };
+  } catch (e) { /* ignore */ }
+}
+
+// Global Worker wrapper for diagnostics: capture worker error events into a serializable global array
+if (typeof window !== 'undefined' && typeof window.Worker === 'function') {
+  try {
+    const OriginalWorker = window.Worker;
+    try { window.__OriginalWorker = OriginalWorker; } catch (_) { }
+    const WorkerWrapper = function (scriptUrl, options) {
+      const w = new OriginalWorker(scriptUrl, options);
+      try {
+        if (w && typeof w.addEventListener === 'function') {
+          w.addEventListener('error', (ev) => {
+            try {
+              const msg = (ev && ev.message ? ev.message : '') + ' ' + (ev && ev.filename ? (ev.filename + ':' + (ev.lineno || 0) + ':' + (ev.colno || 0)) : '');
+              const errMsg = (ev && ev.error && ev.error.message) ? (' error:' + ev.error.message) : '';
+              const detail = msg + errMsg;
+              try { console.error('[WorkerWrapper] worker error event', detail); } catch (_) { }
+              try { window.__jsonium_worker_errors = window.__jsonium_worker_errors || []; window.__jsonium_worker_errors.push({ ts: Date.now(), label: 'global', script: String(scriptUrl), detail }); } catch (_) { }
+            } catch (_) { }
+          });
+          w.addEventListener('messageerror', (ev) => { try { console.error('[WorkerWrapper] worker messageerror', String(ev)); } catch (_) { } });
+        }
+      } catch (_) { }
+      return w;
+    };
+    try { WorkerWrapper.prototype = OriginalWorker.prototype; } catch (_) { }
+    try { window.Worker = WorkerWrapper; } catch (_) { }
+  } catch (_) { }
 }
 
 app.mount('#app');

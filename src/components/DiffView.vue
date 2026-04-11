@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, nextTick, watch, onMounted } from 'vue';
-import { getDifferences, generateDiffSummary, findLineForPath as engineFindLineForPath, getValueAtPath, extractOnlyDifferences, buildLineDiffs, computeDiffStats } from '../services/diffEngine.js';
-import DiffTextView from './DiffTextView.vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { buildLineDiffs, buildLineDiffsAsync, computeDiffStats, findLineForPath as engineFindLineForPath, extractOnlyDifferences, generateDiffSummary, getDifferences, getValueAtPath } from '../services/diffEngine.js';
+import { WORKER_OFFLOAD_CHARS } from '../services/editorFormatting.js';
 import notify from '../services/notify.js';
+import DiffTextView from './DiffTextView.vue';
 
 const props = defineProps({
   leftContent: String,
@@ -151,10 +152,18 @@ async function compareDiffs() {
     }
 
     // 生成行级 diff 并触发 DiffTextView 装饰与折叠计算
-    try {
+      try {
       const leftText = String(displayedLeftString.value || '').split(/\r?\n/);
       const rightText = String(displayedRightString.value || '').split(/\r?\n/);
-      const ld = buildLineDiffs(leftText, rightText);
+      const leftStr = leftText.join('\n');
+      const rightStr = rightText.join('\n');
+      const useWorker = (leftStr.length > (WORKER_OFFLOAD_CHARS || 0)) || (rightStr.length > (WORKER_OFFLOAD_CHARS || 0));
+      let ld;
+      if (useWorker && typeof buildLineDiffsAsync === 'function') {
+        try { ld = await buildLineDiffsAsync(leftStr, rightStr); } catch (e) { ld = buildLineDiffs(leftText, rightText); }
+      } else {
+        ld = buildLineDiffs(leftText, rightText);
+      }
       lineDiffs.value = ld;
 
       // 计算折叠区间：扫描连续 unchanged 段

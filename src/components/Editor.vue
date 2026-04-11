@@ -1,15 +1,18 @@
 <script setup>
   let monaco = null;
-  import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-  import {
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
     cancelScheduledAutoFormat,
     computeMinimalEdits,
+    computeMinimalEditsAsync,
     formatJsonString,
     registerJsonFormattingProvider,
     runEditorFormat,
-    scheduleAutoFormat
-  } from '../services/editorFormatting.js';
-  import { useJsonStore } from '../store/index.js';
+    scheduleAutoFormat,
+    WORKER_OFFLOAD_CHARS
+} from '../services/editorFormatting.js';
+import { extractPathFromText } from '../services/pathExtraction.js';
+import { useJsonStore } from '../store/index.js';
 
   const props = defineProps({
     content: {
@@ -38,6 +41,9 @@
 
   const store = useJsonStore();
   const editorContainer = ref(null);
+  const editorContextMenuRef = ref(null);
+  const editorContextMenuPosition = ref({ top: 0, left: 0, adjustedTop: undefined, adjustedLeft: undefined });
+  const showEditorContextMenu = ref(false);
   let editor = null;
   let __applyingEdit = false;
   let domKeydownHandler = null;
@@ -45,7 +51,11 @@
   let lastCopyTs = 0; // short guard to avoid duplicate rapid copy invocations
   let copyingLock = false; // prevent overlapping copy ops
   let resizeObserver = null;
+  let domPasteHandler = null;
+  let fallbackResizeListenerAdded = false;
   let adjustWrap = null;
+  let themeAppliedHandler = null;
+  let themeRefreshRaf = null;
 
   // modifierHandler keeps track of modifier keys across separate key events (helps when Alt/Shift are pressed in sequence)
   const modifierHandler = (e) => {
@@ -65,6 +75,92 @@
   const scheduleState = { timer: null, lastReason: null };
   let lastEnterTs = 0;
 
+  const editorContextMenuStyles = computed(() => {
+    const top = editorContextMenuPosition.value.adjustedTop !== undefined && editorContextMenuPosition.value.adjustedTop !== null
+      ? editorContextMenuPosition.value.adjustedTop
+      : editorContextMenuPosition.value.top;
+    const left = editorContextMenuPosition.value.adjustedLeft !== undefined && editorContextMenuPosition.value.adjustedLeft !== null
+      ? editorContextMenuPosition.value.adjustedLeft
+      : editorContextMenuPosition.value.left;
+    return {
+      top: `${top}px`,
+      left: `${left}px`
+    };
+  });
+
+  const hideEditorContextMenu = () => {
+    showEditorContextMenu.value = false;
+  };
+
+  const positionEditorContextMenu = () => {
+    const menuEl = editorContextMenuRef.value;
+    if (!menuEl) return;
+
+    const margin = 8;
+    const menuW = menuEl.offsetWidth;
+    const menuH = menuEl.offsetHeight;
+    let left = editorContextMenuPosition.value.left;
+    let top = editorContextMenuPosition.value.top;
+
+    if (left + menuW > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - menuW - margin);
+    }
+    if (top + menuH > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - menuH - margin);
+    }
+
+    editorContextMenuPosition.value.adjustedLeft = left;
+    editorContextMenuPosition.value.adjustedTop = top;
+  };
+
+  const handleEditorContextMenu = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    editorContextMenuPosition.value = {
+      top: event.clientY,
+      left: event.clientX,
+      adjustedTop: undefined,
+      adjustedLeft: undefined
+    };
+    showEditorContextMenu.value = true;
+    nextTick(() => {
+      positionEditorContextMenu();
+    });
+  };
+
+  const handleEditorContextMenuClick = (event) => {
+    if (!showEditorContextMenu.value) return;
+    const target = event.target;
+    if (editorContextMenuRef.value?.contains(target)) return;
+    hideEditorContextMenu();
+  };
+
+  const handleEditorContextMenuAction = async (actionId) => {
+    hideEditorContextMenu();
+    switch (actionId) {
+      case 'format':
+        await formatJson('manual');
+        break;
+      case 'escape':
+        await escapeCurrentDocument();
+        break;
+      case 'unescape':
+        await unescapeCurrentDocument();
+        break;
+      case 'copy-json':
+        await copyCurrentJson();
+        break;
+      case 'jsonpath':
+        await copyCurrentPath('jsonpath');
+        break;
+      case 'jq':
+        await copyCurrentPath('jq');
+        break;
+      default:
+        break;
+    }
+  };
+
   onMounted(async () => {
     // 尝试使用 ESM 入口并加载样式，避免 Vite externalized 导致的 runtime 问题
     try {
@@ -77,50 +173,138 @@
           // 1. ESM module worker via new Worker(new URL(..., import.meta.url), { type: 'module' })
           // 2. Blob-based module import that imports the real worker module
           // 3. Classic importScripts-based worker via Blob (last resort)
-          window.MonacoEnvironment = window.MonacoEnvironment || {};
+          // preserve any existing helpers before overriding to avoid recursion
+          const existingEnv = window.MonacoEnvironment || {};
+          const savedGetWorker = existingEnv.getWorker;
+          const savedGetWorkerUrl = existingEnv.getWorkerUrl;
+          window.MonacoEnvironment = existingEnv;
           window.MonacoEnvironment.getWorker = function (moduleId, label) {
             try {
-              const env = window.MonacoEnvironment || {};
-              if (typeof env.getWorkerUrl === 'function') {
+              try { console.debug('[Editor] MonacoEnvironment.getWorker called', { moduleId, label }); } catch(_) {}
+              // prefer bundler/provided helper if it existed before we overrode it
+              if (typeof savedGetWorkerUrl === 'function') {
                 try {
-                  const url = env.getWorkerUrl(moduleId, label);
+                  const url = savedGetWorkerUrl(moduleId, label);
+                  try { console.debug('[Editor] getWorker using savedGetWorkerUrl', { url, moduleId, label }); } catch(_) {}
                   return new Worker(url);
                 } catch (e) {
                   // fall through to other strategies
                 }
               }
-              if (typeof env.getWorker === 'function') {
-                try { return env.getWorker(moduleId, label); } catch (_) { /* fallthrough */ }
+              if (typeof savedGetWorker === 'function') {
+                try { return savedGetWorker(moduleId, label); } catch (_) { /* fallthrough */ }
               }
             } catch (_) {}
 
             const makeUrl = (p) => {
-              try { return new URL(p, import.meta.url).toString(); } catch (_) { return p; }
+              try {
+                if (typeof location !== 'undefined' && typeof p === 'string' && p.charAt(0) === '/') return new URL(p, location.origin).toString();
+                return p;
+              } catch (_) { return p; }
             };
 
-            const jsonPath = 'monaco-editor/esm/vs/language/json/json.worker.js';
-            const editorPath = 'monaco-editor/esm/vs/editor/editor.worker.js';
+            // Use absolute paths to node_modules so Vite serves the worker files correctly in dev
+            const jsonPath = '/node_modules/monaco-editor/esm/vs/language/json/json.worker.js';
+            const editorPath = '/node_modules/monaco-editor/esm/vs/editor/editor.worker.js';
 
             try {
               if (label === 'json') {
-                return new Worker(new URL(jsonPath, import.meta.url), { type: 'module' });
+                try { console.debug('[Editor] creating module worker for json', { url: jsonPath }); } catch(_) {}
+                try {
+                  const w = new Worker(jsonPath, { type: 'module' });
+                  try {
+                    if (w && typeof w.addEventListener === 'function') {
+                      w.addEventListener('error', (ev) => {
+                        try {
+                          const msg = (ev && ev.message ? ev.message : '') + ' ' + (ev && ev.filename ? (ev.filename + ':' + (ev.lineno||0) + ':' + (ev.colno||0)) : '');
+                          const errMsg = (ev && ev.error && ev.error.message) ? (' error:' + ev.error.message) : '';
+                          console.error('[Editor] worker error event', msg + errMsg);
+                          try { if (typeof window !== 'undefined') { window.__jsonium_worker_errors = window.__jsonium_worker_errors || []; window.__jsonium_worker_errors.push({ ts: Date.now(), label: 'editor', detail: msg + errMsg }); } } catch(_){}
+                        } catch(_){}
+                      });
+                      w.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', String(ev)); } catch(_){} });
+                    }
+                  } catch(_){}
+                  return w;
+                } catch (e) {
+                  throw e;
+                }
               }
-              return new Worker(new URL(editorPath, import.meta.url), { type: 'module' });
+              try { console.debug('[Editor] creating module worker for editor', { url: editorPath }); } catch(_) {}
+              try {
+                const w = new Worker(editorPath, { type: 'module' });
+                try {
+                  if (w && typeof w.addEventListener === 'function') {
+                    w.addEventListener('error', (ev) => {
+                      try {
+                        const msg = (ev && ev.message ? ev.message : '') + ' ' + (ev && ev.filename ? (ev.filename + ':' + (ev.lineno||0) + ':' + (ev.colno||0)) : '');
+                        const errMsg = (ev && ev.error && ev.error.message) ? (' error:' + ev.error.message) : '';
+                        console.error('[Editor] worker error event', msg + errMsg);
+                        try { if (typeof window !== 'undefined') { window.__jsonium_worker_errors = window.__jsonium_worker_errors || []; window.__jsonium_worker_errors.push({ ts: Date.now(), label: 'editor', detail: msg + errMsg }); } } catch(_){}
+                      } catch(_){}
+                    });
+                    w.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', String(ev)); } catch(_){} });
+                  }
+                } catch(_){}
+                return w;
+              } catch (e) {
+                throw e;
+              }
             } catch (err) {
               // fallback: try creating a module worker from a blob that imports the real worker module
+              try { console.error('[Editor] module worker creation error', err && err.message ? err.message : err); } catch (_) {}
+              try { console.debug('[Editor] module worker creation stack', err && err.stack ? err.stack : 'no-stack'); } catch (_) {}
               try {
                 const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
+                try { console.debug('[Editor] module worker failed, falling back to blob import', { url, label }); } catch(_) {}
                 const blob = new Blob([`import("${url}");`], { type: 'application/javascript' });
                 const blobUrl = URL.createObjectURL(blob);
-                return new Worker(blobUrl, { type: 'module' });
+                try {
+                  try { console.debug('[Editor] creating blob module worker', { blobUrl }); } catch(_) {}
+                  const w = new Worker(blobUrl, { type: 'module' });
+                  try {
+                    if (w && typeof w.addEventListener === 'function') {
+                      w.addEventListener('error', (ev) => {
+                        try {
+                          const msg = (ev && ev.message ? ev.message : '') + ' ' + (ev && ev.filename ? (ev.filename + ':' + (ev.lineno||0) + ':' + (ev.colno||0)) : '');
+                          const errMsg = (ev && ev.error && ev.error.message) ? (' error:' + ev.error.message) : '';
+                          console.error('[Editor] worker error event', msg + errMsg);
+                          try { if (typeof window !== 'undefined') { window.__jsonium_worker_errors = window.__jsonium_worker_errors || []; window.__jsonium_worker_errors.push({ ts: Date.now(), label: 'editor', detail: msg + errMsg }); } } catch(_){}
+                        } catch(_){}
+                      });
+                      w.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', String(ev)); } catch(_){} });
+                    }
+                  } catch(_){}
+                  try { URL.revokeObjectURL(blobUrl); } catch (e) { }
+                  return w;
+                } catch (errWorker) {
+                  try { console.error('[Editor] blob module worker creation error', errWorker && errWorker.message ? errWorker.message : errWorker); } catch (_) {}
+                  try { URL.revokeObjectURL(blobUrl); } catch (e) { }
+                  throw errWorker;
+                }
               } catch (e) {
                 // last resort: classic worker using importScripts (may or may not work depending on packaging)
+                try { console.error('[Editor] blob fallback error', e && e.message ? e.message : e); } catch (_) {}
+                try { console.debug('[Editor] blob fallback stack', e && e.stack ? e.stack : 'no-stack'); } catch (_) {}
                 try {
                   const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
+                  try { console.debug('[Editor] blob module failed, trying importScripts worker', { url, label }); } catch(_) {}
                   const blob = new Blob([`self.importScripts("${url}");`], { type: 'application/javascript' });
                   const b = URL.createObjectURL(blob);
-                  return new Worker(b);
+                  try {
+                    try { console.debug('[Editor] creating importScripts worker', { blobUrl: b }); } catch(_) {}
+                    const w2 = new Worker(b);
+                    try { if (w2 && typeof w2.addEventListener === 'function') { w2.addEventListener('error', (ev) => { try { console.error('[Editor] worker error event', ev && ev.message ? ev.message : ev); } catch(_){} }); w2.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', ev); } catch(_){} }); } } catch(_){}
+                    try { URL.revokeObjectURL(b); } catch (e) { }
+                    return w2;
+                  } catch (errWorker2) {
+                    try { console.error('[Editor] importScripts worker creation error', errWorker2 && errWorker2.message ? errWorker2.message : errWorker2); } catch (_) {}
+                    try { URL.revokeObjectURL(b); } catch (e) { }
+                    throw errWorker2;
+                  }
                 } catch (e2) {
+                  try { console.error('[Editor] importScripts fallback error', e2 && e2.message ? e2.message : e2); } catch (_) {}
+                  try { console.debug('[Editor] importScripts fallback stack', e2 && e2.stack ? e2.stack : 'no-stack'); } catch (_) {}
                   // rethrow original error to surface failure
                   throw err;
                 }
@@ -136,14 +320,22 @@
       // 优先加载 ESM 编辑器 API（兼容 vite 的打包方式）
       try {
         const m = await import('monaco-editor/esm/vs/editor/editor.api');
-        monaco = m && Object.keys(m).length ? m : (window.monaco || null);
+        // normalize module shape: prefer default.editor, then module.editor, then window.monaco
+        if (m && Object.keys(m).length) {
+          monaco = (m.default && m.default.editor) ? m.default : m;
+        } else {
+          monaco = (window && window.monaco) || null;
+        }
+        // ensure global reference for other parts of the app and diagnostic scripts
+        try { if (monaco && typeof window !== 'undefined' && !window.monaco) window.monaco = monaco; } catch (_) {}
       } catch (e) {
         // 回退到常规包（部分环境下可用）
         try {
           const m2 = await import('monaco-editor');
-          monaco = m2 && m2.editor ? m2 : (window.monaco || null);
+          monaco = m2 && m2.editor ? m2 : (window && window.monaco) || null;
+          try { if (monaco && typeof window !== 'undefined' && !window.monaco) window.monaco = monaco; } catch (_) {}
         } catch (e2) {
-          monaco = window.monaco || null;
+          monaco = (window && window.monaco) || null;
         }
       }
     } catch (_) {
@@ -175,22 +367,72 @@
     initEditor();
   });
 
+  watch(showEditorContextMenu, (visible) => {
+    if (visible) {
+      document.addEventListener('click', handleEditorContextMenuClick, true);
+      window.addEventListener('resize', positionEditorContextMenu);
+      window.addEventListener('scroll', positionEditorContextMenu, { capture: true, passive: true });
+    } else {
+      document.removeEventListener('click', handleEditorContextMenuClick, true);
+      window.removeEventListener('resize', positionEditorContextMenu);
+      window.removeEventListener('scroll', positionEditorContextMenu, { capture: true, passive: true });
+    }
+  });
+
   onBeforeUnmount(() => {
     cancelScheduledAutoFormat(scheduleState);
+    hideEditorContextMenu();
     try {
+      try {
+        if (themeAppliedHandler && typeof window !== 'undefined') {
+          window.removeEventListener('jsonium-theme-applied', themeAppliedHandler);
+        }
+        if (themeRefreshRaf) {
+          if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+            window.cancelAnimationFrame(themeRefreshRaf);
+          } else {
+            clearTimeout(themeRefreshRaf);
+          }
+        }
+      } catch (_) {}
+      themeAppliedHandler = null;
+      themeRefreshRaf = null;
       // remove modifier listeners
       try { window.removeEventListener('keydown', modifierHandler); } catch (e) { }
       try { window.removeEventListener('keyup', modifierHandler); } catch (e) { }
       if (editor) {
         // remove both window listener (added as fallback) and any dom listener if present
         try { window.removeEventListener('keydown', domKeydownHandler); } catch (e) { }
-        const domNode = editor.getDomNode && editor.getDomNode();
-        if (domNode && domKeydownHandler) {
-          try { domNode.removeEventListener('keydown', domKeydownHandler, true); } catch (e) { }
-          try { domNode.removeEventListener('keydown', domKeydownHandler); } catch (e) { }
-        }
+        try {
+          const domNode = editor && editor.getDomNode && editor.getDomNode();
+          if (domNode && domKeydownHandler) {
+            try { domNode.removeEventListener('keydown', domKeydownHandler, true); } catch (e) { }
+            try { domNode.removeEventListener('keydown', domKeydownHandler); } catch (e) { }
+            try { domNode.removeEventListener('contextmenu', handleEditorContextMenu, true); } catch (e) { }
+          }
+          if (domNode && domPasteHandler) {
+            try { domNode.removeEventListener('paste', domPasteHandler); } catch (e) { }
+            domPasteHandler = null;
+          }
+        } catch (e) { }
         domKeydownHandler = null;
-        editor.dispose && editor.dispose();
+        try { editor && editor.dispose && editor.dispose(); } catch (e) { }
+
+        // disconnect ResizeObserver if present
+        try {
+          if (resizeObserver && typeof resizeObserver.disconnect === 'function') {
+            try { resizeObserver.disconnect(); } catch (e) { }
+            resizeObserver = null;
+          }
+        } catch (e) { }
+
+        // remove fallback window resize listener if it was added
+        try {
+          if (fallbackResizeListenerAdded) {
+            try { window.removeEventListener('resize', adjustWrap); } catch (e) { }
+            fallbackResizeListenerAdded = false;
+          }
+        } catch (e) { }
       }
     } catch (e) { }
   });
@@ -219,6 +461,34 @@
 
     __applyingEdit = true;
     try {
+      let usedAsync = false;
+      const useWorker = (oldContent && oldContent.length > (WORKER_OFFLOAD_CHARS || 0)) || (newContent && newContent.length > (WORKER_OFFLOAD_CHARS || 0));
+      if (useWorker && typeof computeMinimalEditsAsync === 'function') {
+        usedAsync = true;
+        // Offload expensive diff computation to a worker; apply edits when ready.
+        computeMinimalEditsAsync(oldContent, newContent, monaco).then((edits) => {
+          try {
+            if (!edits || edits.length === 0) return;
+            const selections = editor.getSelections() || [];
+            model.pushEditOperations(selections, edits, () => null);
+          } catch (e) {
+            // fallback to synchronous path if applying edits failed
+            try {
+              const fallbackEdits = computeMinimalEdits(oldContent, newContent, monaco);
+              if (fallbackEdits && fallbackEdits.length) {
+                const selections = editor.getSelections() || [];
+                model.pushEditOperations(selections, fallbackEdits, () => null);
+              }
+            } catch (_) {}
+          }
+        }).finally(() => {
+          // allow change handlers after microtask
+          setTimeout(() => { __applyingEdit = false; }, 0);
+        });
+        if (usedAsync) return;
+      }
+
+      // synchronous small-doc path
       const edits = computeMinimalEdits(oldContent, newContent, monaco);
       if (edits.length === 0) return;
 
@@ -229,8 +499,13 @@
         () => null // let Monaco compute cursor positions from the edits
       );
     } finally {
-      // allow change handlers after microtask
-      setTimeout(() => { __applyingEdit = false; }, 0);
+      // if we used async worker path, the worker promise finalizer clears __applyingEdit;
+      // otherwise clear for the synchronous path.
+      if (typeof usedAsync !== 'undefined' && usedAsync) {
+        // do not clear here; the async path clears it in its own finally
+      } else {
+        setTimeout(() => { __applyingEdit = false; }, 0);
+      }
     }
   }
 
@@ -290,13 +565,63 @@ function getCurrentThemeMode() {
   return eff?.mode === 'dark' ? 'dark' : 'light';
 }
 
+function applyCurrentTheme() {
+  if (!monaco) return;
+  const mode = getCurrentThemeMode();
+  const { bg } = getJsoniumThemeVars(mode);
+  try {
+    if (editorContainer.value) {
+      editorContainer.value.style.background = bg;
+    }
+    const editorNode = editor && typeof editor.getDomNode === 'function' ? editor.getDomNode() : null;
+    if (editorNode && editorNode.style) {
+      editorNode.style.background = bg;
+    }
+  } catch (_) {}
+  defineAndSetMonacoTheme(monaco, mode);
+  try {
+    if (editor && typeof editor.layout === 'function') {
+      editor.layout();
+    }
+  } catch (_) {}
+}
+
+function installThemeRefreshListener() {
+  if (themeAppliedHandler || typeof window === 'undefined') return;
+  themeAppliedHandler = () => {
+    try {
+      if (themeRefreshRaf && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(themeRefreshRaf);
+      }
+    } catch (_) {}
+    try {
+      if (typeof window.requestAnimationFrame === 'function') {
+        themeRefreshRaf = window.requestAnimationFrame(() => {
+          themeRefreshRaf = null;
+          applyCurrentTheme();
+        });
+      } else {
+        themeRefreshRaf = setTimeout(() => {
+          themeRefreshRaf = null;
+          applyCurrentTheme();
+        }, 0);
+      }
+    } catch (_) {
+      applyCurrentTheme();
+    }
+  };
+  try {
+    window.addEventListener('jsonium-theme-applied', themeAppliedHandler);
+  } catch (_) {}
+}
+
 function initEditor() {
     if (!editorContainer.value) return;
     if (!monaco) return; // monaco not available (tests or unsupported env)
 
     // ---------- 新增：注册主题 ----------
-    const mode = getCurrentThemeMode();
-    defineAndSetMonacoTheme(monaco, mode);
+  const mode = getCurrentThemeMode();
+    applyCurrentTheme();
     // -----------------------------------
 
     const settings = store.getEditorSettings();
@@ -384,18 +709,16 @@ function initEditor() {
           adjustWrap();
         });
 
-  // ========== 新增：watch 主题切换，动态 setTheme ==========
   try {
     watch(
       () => store.themePreference,
       () => {
-        const mode = getCurrentThemeMode();
-        defineAndSetMonacoTheme(monaco, mode); // 重新注册并切换
+        applyCurrentTheme();
       },
       { deep: true }
     );
   } catch (_) {}
-  // =====================================================
+  installThemeRefreshListener();
         resizeObserver.observe(editorContainer.value);
       } else {
         // fallback to window resize
@@ -472,10 +795,11 @@ function initEditor() {
       // best-effort: listen to DOM paste event as fallback
       const domNode = editor.getDomNode && editor.getDomNode();
       if (domNode) {
-        domNode.addEventListener('paste', () => {
+        domPasteHandler = () => {
           if (!props.autoFormat || !props.autoFormatOnPaste) return;
           setTimeout(() => formatJson('paste'), 0);
-        });
+        };
+        try { domNode.addEventListener('paste', domPasteHandler); } catch (e) { }
       }
     }
 
@@ -487,6 +811,41 @@ function initEditor() {
       }
     );
 
+    try {
+      editor.addCommand(
+        monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF,
+        () => { try { formatJson('manual'); } catch (e) { /* ignore */ } }
+      );
+    } catch (e) { }
+
+    try {
+      editor.addAction({
+        id: 'json-copy-current',
+        label: '复制当前 JSON',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 3.5,
+        keybindings: [
+          monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyJ,
+          monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ
+        ],
+        run: () => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
+      });
+    } catch (e) { }
+
+    try {
+      editor.addCommand(
+        monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyJ,
+        () => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
+      );
+    } catch (e) { }
+
+    try {
+      editor.addCommand(
+        monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ,
+        () => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
+      );
+    } catch (e) { }
+
     // editor context menu actions: keep high-frequency operations near the content area
     try {
       editor.addAction({
@@ -494,7 +853,10 @@ function initEditor() {
         label: '格式化 JSON',
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 1,
-        keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
+        keybindings: [
+          monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+          monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF
+        ],
         run: () => { try { formatJson('manual'); } catch (e) { /* ignore */ } }
       });
     } catch (e) { }
@@ -505,7 +867,7 @@ function initEditor() {
         label: '转义 JSON 字符串',
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 2,
-        run: () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
+        run: () => { try { escapeCurrentDocument(); } catch (e) { /* ignore */ } }
       });
     } catch (e) { }
 
@@ -515,7 +877,27 @@ function initEditor() {
         label: '反转义 JSON 字符串',
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 3,
-        run: () => { try { unescapeSelectionOrContent(); } catch (e) { /* ignore */ } }
+        run: () => { try { unescapeCurrentDocument(); } catch (e) { /* ignore */ } }
+      });
+  } catch (e) { }
+
+  try {
+    editor.addAction({
+      id: 'copy-jsonpath',
+      label: '复制当前 JSONPath',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 4.5,
+      run: () => { try { copyCurrentPath('jsonpath'); } catch (e) { /* ignore */ } }
+    });
+  } catch (e) { }
+
+  try {
+    editor.addAction({
+      id: 'copy-jqpath',
+      label: '复制当前 jq',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 4.6,
+      run: () => { try { copyCurrentPath('jq'); } catch (e) { /* ignore */ } }
       });
     } catch (e) { }
 
@@ -594,6 +976,11 @@ function initEditor() {
     // fallback keydown listener: attach on editor DOM (capture) and window as fallback
     domKeydownHandler = (e) => {
       try {
+        if (showEditorContextMenu.value && e.key === 'Escape') {
+          hideEditorContextMenu();
+          return;
+        }
+
         const domNode = editor && editor.getDomNode && editor.getDomNode();
         // allow if event originates inside editor DOM (cover nested nodes) OR editor has focus
         const originatedInEditor = domNode && e.target && domNode.contains(e.target);
@@ -622,7 +1009,13 @@ function initEditor() {
           // allow either Alt+Shift or Cmd/Ctrl+Shift as trigger (fallback)
           if (!e.ctrlKey && !e.metaKey && !modifierState.ctrl && !modifierState.meta) {
             // Alt+Shift path
-            if (code === 'KeyC' || key === 'c' || key === 'C') {
+            if (code === 'KeyF' || key === 'f' || key === 'F') {
+              e.preventDefault();
+              try { formatJson('manual'); } catch (_) { /* ignore */ }
+            } else if (code === 'KeyJ' || key === 'j' || key === 'J') {
+              e.preventDefault();
+              try { copyCurrentJson(); } catch (_) { /* ignore */ }
+            } else if (code === 'KeyC' || key === 'c' || key === 'C') {
               e.preventDefault();
               try { copyAsSingleLine(); } catch (_) { /* ignore */ }
             } else if (code === 'Backslash' || key === '\\' || key === 'IntlBackslash') {
@@ -631,7 +1024,13 @@ function initEditor() {
             }
           } else {
             // Cmd/Ctrl+Shift fallback
-            if (code === 'KeyC' || key === 'c' || key === 'C') {
+            if (code === 'KeyF' || key === 'f' || key === 'F') {
+              e.preventDefault();
+              try { formatJson('manual'); } catch (_) { /* ignore */ }
+            } else if (code === 'KeyJ' || key === 'j' || key === 'J') {
+              e.preventDefault();
+              try { copyCurrentJson(); } catch (_) { /* ignore */ }
+            } else if (code === 'KeyC' || key === 'c' || key === 'C') {
               e.preventDefault();
               try { copyAsSingleLine(); } catch (_) { /* ignore */ }
             } else if (code === 'Backslash' || key === '\\' || key === 'IntlBackslash') {
@@ -649,6 +1048,7 @@ function initEditor() {
       const root = editor && editor.getDomNode && editor.getDomNode();
       if (root && root.addEventListener) {
         try { root.addEventListener('keydown', domKeydownHandler, true); } catch (e) { }
+        try { root.addEventListener('contextmenu', handleEditorContextMenu, true); } catch (e) { }
       }
     } catch (e) { }
     // keep a window fallback as well
@@ -768,6 +1168,199 @@ function initEditor() {
     }
   }
 
+  async function copyRawTextToClipboard(text) {
+    if (text === null || text === undefined) return false;
+
+    try {
+      if (typeof window !== 'undefined' && window.utools && typeof window.utools.copyText === 'function') {
+        window.utools.copyText(String(text));
+        return true;
+      }
+    } catch (_) { }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(String(text));
+        return true;
+      }
+    } catch (_) { }
+
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = String(text);
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      return true;
+    } catch (e) {
+      try { emit('copy-error', { reason: e && e.message ? e.message : 'clipboard-failed' }); } catch (_) { }
+      try { window.dispatchEvent(new CustomEvent('editor-copy-error', { detail: { reason: e && e.message ? e.message : 'clipboard-failed' } })); } catch (_) { }
+      return false;
+    }
+  }
+
+  function getFullEditorText() {
+    try {
+      const model = editor && editor.getModel && editor.getModel();
+      if (model && typeof model.getValue === 'function') {
+        return model.getValue();
+      }
+    } catch (_) { }
+
+    try {
+      return editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function escapeWholeDocument(text) {
+    const parsed = JSON.parse(String(text));
+    return JSON.stringify(JSON.stringify(parsed));
+  }
+
+  function unescapeWholeDocument(text) {
+    const parsed = JSON.parse(String(text));
+    const source = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+    const unescaped = JSON.parse(source);
+    return JSON.stringify(unescaped, null, 2);
+  }
+
+  async function escapeCurrentDocument() {
+    if (!editor) return;
+    try {
+      const source = getFullEditorText();
+      if (!source || !String(source).trim()) {
+        notify.warn('请输入 JSON 内容');
+        return;
+      }
+      const escaped = escapeWholeDocument(source);
+      applyEdit(escaped);
+    } catch (e) {
+      notify.error('转义失败: ' + (e && e.message ? e.message : String(e)));
+    }
+  }
+
+  async function unescapeCurrentDocument() {
+    if (!editor) return;
+    try {
+      const source = getFullEditorText();
+      if (!source || !String(source).trim()) {
+        notify.warn('请输入 JSON 内容');
+        return;
+      }
+
+      let unescaped;
+      try {
+        unescaped = unescapeWholeDocument(source);
+      } catch (_) {
+        const parsed = JSON.parse(JSON.parse(String(source)));
+        unescaped = JSON.stringify(parsed, null, 2);
+      }
+
+      applyEdit(unescaped);
+    } catch (e) {
+      notify.error('反转义失败: ' + (e && e.message ? e.message : String(e)));
+    }
+  }
+
+  async function copyCurrentPath(kind) {
+    if (!editor) return;
+
+    try {
+      const model = editor.getModel && editor.getModel();
+      if (!model || typeof model.getValue !== 'function') {
+        notify.error('无法读取编辑器内容');
+        return;
+      }
+
+      const text = model.getValue();
+      const selection = editor.getSelection && editor.getSelection();
+      const position = editor.getPosition && editor.getPosition();
+      let result = null;
+
+      if (selection && typeof selection.isEmpty === 'function' && !selection.isEmpty()) {
+        const selectionStart = typeof model.getOffsetAt === 'function' ? model.getOffsetAt(selection.getStartPosition()) : null;
+        const selectionEnd = typeof model.getOffsetAt === 'function' ? model.getOffsetAt(selection.getEndPosition()) : null;
+        result = extractPathFromText(text, {
+          selectionStart,
+          selectionEnd
+        });
+
+        if (result && result.success && result.nodeType === 'document') {
+          const fullSelection = selectionStart === 0 && selectionEnd === text.length;
+          if (!fullSelection) {
+            result = null;
+          }
+        }
+      }
+
+      if (!result || !result.success) {
+        result = extractPathFromText(text, {
+          cursorOffset: position && typeof model.getOffsetAt === 'function' ? model.getOffsetAt(position) : null
+        });
+      }
+
+      if (!result || !result.success) {
+        notify.error(result?.error || '无法提取路径');
+        return;
+      }
+
+      const value = kind === 'jq' ? result.jq : result.jsonpath;
+      const ok = await copyRawTextToClipboard(value);
+      if (!ok) {
+        notify.error('复制路径失败');
+        return;
+      }
+
+      notify.success(kind === 'jq' ? '已复制 jq' : '已复制 JSONPath');
+    } catch (e) {
+      notify.error('提取路径失败: ' + (e && e.message ? e.message : String(e)));
+    }
+  }
+
+  async function copyCurrentJson() {
+    if (!editor) return;
+
+    if (copyingLock) {
+      return;
+    }
+    copyingLock = true;
+
+    try {
+      try {
+        const now = Date.now();
+        if (now - lastCopyTs < 300) {
+          return;
+        }
+        lastCopyTs = now;
+      } catch (_) { }
+
+      const text = getFullEditorText();
+      if (!text) {
+        notify.error('当前内容为空');
+        return;
+      }
+
+      const formatted = formatJsonString(text);
+      const ok = await copyRawTextToClipboard(formatted);
+      if (!ok) {
+        notify.error('复制当前 JSON 失败');
+        return;
+      }
+
+      notify.success('已复制当前 JSON');
+    } catch (e) {
+      notify.error('复制当前 JSON 失败: ' + (e && e.message ? e.message : String(e)));
+    } finally {
+      copyingLock = false;
+    }
+  }
+
   async function copyAsSingleLine() {
     // prevent overlapping copy operations
     if (copyingLock) {
@@ -864,20 +1457,26 @@ function initEditor() {
         txt = getSelectionOrFull() || '';
       }
 
+      let compactJsonText;
+      try {
+        const parsed = JSON.parse(txt);
+        compactJsonText = JSON.stringify(parsed);
+      } catch (e) {
+        compactJsonText = String(txt)
+          .replace(/\r?\n/g, '')
+          .replace(/\t/g, '');
+      }
+
       let out;
       try {
-        out = JSON.stringify(txt);
+        out = JSON.stringify(compactJsonText);
       } catch (e) {
-        out = '"' + String(txt)
+        out = '"' + String(compactJsonText)
           .replace(/\\/g, '\\\\')
           .replace(/"/g, '\\"')
           .replace(/\r/g, '\\r')
           .replace(/\n/g, '\\n')
           .replace(/\t/g, '\\t') + '"';
-      }
-      // apply whitespace preservation setting
-      if (!(store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy)) {
-        out = String(out).replace(/\s+/g, '');
       }
       const ok = await copyToClipboard(out);
       // eslint-disable-next-line no-console
@@ -946,6 +1545,32 @@ function initEditor() {
   <div class="editor-wrapper">
     <div ref="editorContainer" class="editor-container"></div>
   </div>
+
+  <teleport to="body">
+    <div v-if="showEditorContextMenu" ref="editorContextMenuRef" class="editor-context-menu"
+      :style="editorContextMenuStyles" @click.stop>
+      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('format')">
+        <span class="editor-context-menu__label">格式化 JSON</span>
+        <span class="editor-context-menu__hint">Shift + Alt + F</span>
+      </button>
+      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('escape')">
+        <span class="editor-context-menu__label">转义 JSON 字符串</span>
+      </button>
+      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('unescape')">
+        <span class="editor-context-menu__label">反转义 JSON 字符串</span>
+      </button>
+      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('copy-json')">
+        <span class="editor-context-menu__label">复制当前 JSON</span>
+      </button>
+      <div class="editor-context-menu__divider"></div>
+      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('jsonpath')">
+        <span class="editor-context-menu__label">复制当前 JSONPath</span>
+      </button>
+      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('jq')">
+        <span class="editor-context-menu__label">复制当前 jq</span>
+      </button>
+    </div>
+  </teleport>
 </template>
 
 <style scoped>
@@ -963,5 +1588,59 @@ function initEditor() {
     background: var(--color-bg-primary);
     /* 防止父布局收缩导致编辑器高度为 0 的问题，设置一个保底高度 */
     min-height: 240px;
+  }
+
+  .editor-context-menu {
+    position: fixed;
+    z-index: 300000;
+    min-width: 220px;
+    padding: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-bg-primary);
+    box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(10px);
+  }
+
+  .editor-context-menu__item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .editor-context-menu__item:hover,
+  .editor-context-menu__item:focus-visible {
+    background: var(--color-hover-bg);
+    color: var(--color-primary);
+    outline: none;
+  }
+
+  .editor-context-menu__label {
+    font-size: var(--font-size-xs);
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .editor-context-menu__hint {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+
+  .editor-context-menu__divider {
+    height: 1px;
+    margin: 6px 4px;
+    background: var(--color-divider);
   }
 </style>
