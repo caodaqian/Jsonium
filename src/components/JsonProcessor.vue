@@ -1,22 +1,21 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { useJsonStore } from '../store/index.js';
-import { detectAndConvert, toFormat, FORMAT_TYPES } from '../services/formatDetector.js';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { parseAIJsonWithRetry, processWithAI } from '../services/aiProcessor.js';
 import { convert } from '../services/converter.js';
-import { queryJsonPath, queryJq } from '../services/queryEngine.js';
-import { getDifferences, buildLineDiffs, buildTreeDiff } from '../services/diffEngine.js';
-import { processWithAI, parseAIJsonWithRetry } from '../services/aiProcessor.js';
-import Editor from './Editor.vue';
-import TabBar from './TabBar.vue';
-import StatusBar from './StatusBar.vue';
-import OutputPanel from './OutputPanel.vue';
+import { buildTreeDiff, stringifySortedJson } from '../services/diffEngine.js';
+import { detectAndConvert, FORMAT_TYPES, toFormat } from '../services/formatDetector.js';
+import notify from '../services/notify.js';
+import { queryJq, queryJsonPath } from '../services/queryEngine.js';
+import { useJsonStore } from '../store/index.js';
+import { getFormatName } from '../utils/formatNames.js';
 import ControlPanel from './ControlPanel.vue';
 import DiffSidebar from './DiffSidebar.vue';
 import DiffView from './DiffView.vue';
+import Editor from './Editor.vue';
+import OutputPanel from './OutputPanel.vue';
+import StatusBar from './StatusBar.vue';
+import TabBar from './TabBar.vue';
 import TableView from './TableView.vue';
-import { stringifySortedJson } from '../services/diffEngine.js';
-import notify from '../services/notify.js';
-import { getFormatName } from '../utils/formatNames.js';
 
 const store = useJsonStore();
 
@@ -85,7 +84,15 @@ function closeLineDiff() {
 
 function toggleFloatingSidebar() {
   try {
-    if (!store.diffSidebar.visible) {
+    const outputDiffVisible = store.outputPanel.visible && store.outputPanel.currentTab === 'diff';
+    const sidebarVisible = store.diffSidebar.visible && !store.diffSidebar.collapsed;
+
+    if (outputDiffVisible) {
+      store.hideOutputPanel();
+      return;
+    }
+
+    if (!sidebarVisible) {
       store.showDiffSidebar('');
       store.diffSidebar.collapsed = false;
     } else {
@@ -96,11 +103,9 @@ function toggleFloatingSidebar() {
   }
 }
 
-// 初始化
-const lastImportedText = ref('');
-
   onMounted(async () => {
     // 尝试从持久化恢复 tabs；若恢复失败则创建初始 tab
+    const initialEnterAction = { ...props.enterAction };
     try {
       if (typeof store.loadTabsState === 'function') {
         const restored = await store.loadTabsState();
@@ -120,7 +125,7 @@ const lastImportedText = ref('');
       ensureInitialTab();
     }
 
-  await importEnterAction(props.enterAction);
+    await importEnterAction(initialEnterAction);
 
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('beforeunload', _save);
@@ -192,7 +197,7 @@ function ensureInitialTab() {
 
 async function importEnterAction(action) {
   const text = action?.text;
-  if (!text || text === lastImportedText.value) {
+  if (!text) {
     return;
   }
 
@@ -203,7 +208,6 @@ async function importEnterAction(action) {
 
   store.addTab(result.data, '导入内容', result.originalFormat);
   activePanel.value = 'editor';
-  lastImportedText.value = text;
 
   await nextTick();
   await nextTick();
@@ -267,7 +271,7 @@ const handleImportText = async (text) => {
 // 转换格式
 const handleConvert = async (targetFormat) => {
   if (!activeTab.value) return;
-  
+
   try {
     const result = await toFormat(activeTab.value.content, targetFormat);
     if (result.success) {
@@ -282,7 +286,7 @@ const handleConvert = async (targetFormat) => {
 // 生成代码
 const handleGenerateCode = async (language) => {
   if (!activeTab.value) return;
-  
+
   try {
     const result = convert(activeTab.value.content, language);
     if (result.success) {
@@ -296,7 +300,7 @@ const handleGenerateCode = async (language) => {
 // 执行查询
 const handleQuery = async (expression, type) => {
   if (!activeTab.value) return;
-  
+
   try {
     let result;
     if (type === 'jsonpath') {
@@ -304,7 +308,7 @@ const handleQuery = async (expression, type) => {
     } else {
       result = queryJq(activeTab.value.content, expression);
     }
-    
+
     if (result.success) {
       // 尝试自动解码（转义 JSON / Base64 等），以便展示/写回更友好的内容
       let queryData = result.results;
@@ -499,7 +503,7 @@ const handleCopyToClipboard = () => {
 // 下载为文件
 const handleDownload = () => {
   if (!activeTab.value) return;
-  
+
   const element = document.createElement('a');
   element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(activeTab.value.content));
   element.setAttribute('download', `${activeTab.value.name || 'data'}.json`);
@@ -552,18 +556,18 @@ onMounted(() => {
   <div class="json-processor">
     <button
       class="global-sidebar-toggle"
-      :class="{ 'is-active': store.diffSidebar.visible && !store.diffSidebar.collapsed }"
+      :class="{ 'is-active': (store.diffSidebar.visible && !store.diffSidebar.collapsed) || (store.outputPanel.visible && store.outputPanel.currentTab === 'diff') }"
       @click="toggleFloatingSidebar"
       aria-label="侧边栏切换"
       title="切换对比侧边栏"
     >
-      <span v-if="store.diffSidebar.visible && !store.diffSidebar.collapsed">◀</span>
+      <span v-if="(store.diffSidebar.visible && !store.diffSidebar.collapsed) || (store.outputPanel.visible && store.outputPanel.currentTab === 'diff')">◀</span>
       <span v-else>▶</span>
     </button>
     <div class="processor-header">
       <h1 class="app-title">Jsonium</h1>
-      <TabBar 
-        :tabs="displayedTabs" 
+      <TabBar
+        :tabs="displayedTabs"
         :activeTabId="store.activeTabId"
         @selectTab="(id) => store.setActiveTab(id)"
         @closeTab="(id) => store.closeTab(id)"
@@ -576,7 +580,7 @@ onMounted(() => {
       />
       <!-- 设置入口由状态栏提供，移除此处的重复按钮 -->
     </div>
-    
+
     <div class="processor-container" v-if="activeTab">
       <div class="control-panel-wrapper" :class="{ 'drawer-mode': isNarrow }" v-if="store.editorSettings.controlPanelVisible">
         <template v-if="isNarrow">
@@ -614,7 +618,7 @@ onMounted(() => {
       </div>
       <div class="workspace">
         <div class="editor-section">
-          <Editor 
+          <Editor
             ref="editorRef"
             :content="activeTab.content"
             :autoFormat="store.getEditorSettings().autoFormat"
@@ -633,7 +637,7 @@ onMounted(() => {
       <button class="line-diff-close" @click="closeLineDiff">关闭</button>
       <DiffView :leftContent="lineLeft" :rightContent="lineRight" />
     </div>
-    
+
     <!-- AI 原始响应悬浮面板 -->
     <teleport to="body">
       <div v-if="aiRawVisible" class="ai-raw-overlay" role="dialog" aria-modal="true">
@@ -680,11 +684,11 @@ onMounted(() => {
         @aiProcess="handleAIProcess"
         @openTableView="handleOpenTableView"
       />
-    
+
     <div class="processor-empty" v-else>
       <p>没有打开的标签页，请新建或导入文件</p>
     </div>
-    
+
   </div>
 </template>
 

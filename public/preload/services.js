@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { clipboard } = require('electron')
 
 // 通过 window 对象向渲染进程注入 nodejs 能力
 window.services = {
@@ -20,6 +21,15 @@ window.services = {
     const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.' + matchs[1])
     fs.writeFileSync(filePath, base64Url.substring(matchs[0].length), { encoding: 'base64' })
     return filePath
+  },
+
+  // 读取系统剪贴板文本
+  readClipboardText() {
+    try {
+      return clipboard.readText()
+    } catch (e) {
+      return ''
+    }
   },
 
   // 尝试通过宿主 API 将窗口调整到至少指定宽度（容错，多重探测）

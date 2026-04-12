@@ -1,7 +1,7 @@
-import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick, defineComponent, h } from 'vue';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 import { useJsonStore } from '../store/index.js';
 
 const { editorFormatSpy, statusBarEscapePayload, statusBarCopyPayload } = vi.hoisted(() => ({
@@ -36,8 +36,14 @@ vi.mock('../components/StatusBar.vue', async () => {
   return {
     default: defineComponent({
       name: 'StatusBarStub',
+      props: {
+        content: {
+          type: String,
+          default: ''
+        }
+      },
       emits: ['copy', 'format', 'escape', 'unescape', 'compare', 'aiProcess'],
-      setup(_, { emit }) {
+      setup(props, { emit }) {
         return () => h('div', [
           h('button', {
             'data-testid': 'status-bar-stub-escape',
@@ -47,6 +53,10 @@ vi.mock('../components/StatusBar.vue', async () => {
             'data-testid': 'status-bar-stub-copy',
             onClick: () => emit('copy')
           }, 'emit-copy')
+          , h('button', {
+            'data-testid': 'status-bar-stub-compare',
+            onClick: () => emit('compare', props.content, '')
+          }, 'emit-compare')
         ]);
       }
     })
@@ -178,5 +188,57 @@ describe('JsonProcessor', () => {
     await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
     await nextTick();
     expect(window.utools.copyText).toHaveBeenCalledWith('');
+  });
+
+  it('hides the diff output panel from the floating toggle and reflects its active state', async () => {
+    const wrapper = mount(JsonProcessor, {
+      props: {
+        enterAction: {}
+      },
+      global: {}
+    });
+
+    const store = useJsonStore();
+    const hideOutputPanelSpy = vi.spyOn(store, 'hideOutputPanel');
+
+    store.outputPanel.visible = true;
+    store.outputPanel.currentTab = 'diff';
+    store.diffSidebar.visible = false;
+    store.diffSidebar.collapsed = true;
+
+    await nextTick();
+
+    const toggle = wrapper.get('.global-sidebar-toggle');
+    expect(toggle.classes()).toContain('is-active');
+    expect(toggle.text()).toContain('◀');
+
+    await toggle.trigger('click');
+    await nextTick();
+
+    expect(hideOutputPanelSpy).toHaveBeenCalledTimes(1);
+    expect(store.outputPanel.visible).toBe(false);
+    expect(store.diffSidebar.visible).toBe(false);
+  });
+
+  it('opens the diff sidebar from compare even when it was previously collapsed', async () => {
+    const wrapper = mount(JsonProcessor, {
+      props: {
+        enterAction: {}
+      },
+      global: {}
+    });
+
+    const store = useJsonStore();
+    store.diffSidebar.visible = false;
+    store.diffSidebar.collapsed = true;
+
+    await nextTick();
+
+    await wrapper.get('[data-testid="status-bar-stub-compare"]').trigger('click');
+    await nextTick();
+
+    expect(store.diffSidebar.visible).toBe(true);
+    expect(store.diffSidebar.collapsed).toBe(false);
+    expect(store.diffSidebar.mode).toBe('input');
   });
 });

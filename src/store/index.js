@@ -100,6 +100,8 @@ export const useJsonStore = defineStore('json', () => {
     visible: false,
     collapsed: false,
     mode: 'input', // 'input' | 'result'
+    // 停靠偏好：'auto' | 'panel' | 'sidebar'
+    dockMode: 'auto',
     leftInput: '',
     leftContent: '',
     rightContent: '',
@@ -213,6 +215,8 @@ export const useJsonStore = defineStore('json', () => {
     wrapThresholdPx: 900,
     // 控制面板是否显示（UI 控制，默认隐藏）
     controlPanelVisible: false,
+    // diff 显示首选位置：'auto'|'panel'|'sidebar'
+    diffDock: 'auto',
     // 最小窗口宽度与上次窗口尺寸记录
     minWindowWidth: 1200,
     lastWindowSize: { width: null, height: null },
@@ -224,6 +228,7 @@ export const useJsonStore = defineStore('json', () => {
 
   const showDiffSidebar = (leftContent = '') => {
     diffSidebar.visible = true;
+    diffSidebar.collapsed = false;
     diffSidebar.mode = 'input';
     diffSidebar.leftInput = leftContent;
     diffSidebar.leftContent = '';
@@ -233,6 +238,22 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.diffStats = { added: 0, removed: 0, changed: 0, unchanged: 0 };
     diffSidebar.diffFilter = 'all';
     diffSidebar.error = '';
+  };
+
+  // 在首选位置展示对比结果（向后兼容的入口）
+  const showDiff = (leftContent = '', rightContent = '', payload = {}) => {
+    // 先写入结果数据
+    setDiffResult(leftContent, rightContent, payload || {});
+    // 决定显示位置：优先使用 editorSettings.diffDock，其次使用 diffSidebar.dockMode
+    const dock = editorSettings.diffDock || diffSidebar.dockMode || 'auto';
+    if (dock === 'panel') {
+      outputPanel.visible = true;
+      outputPanel.currentTab = 'diff';
+    } else {
+      diffSidebar.visible = true;
+      diffSidebar.collapsed = false;
+      diffSidebar.mode = 'result';
+    }
   };
 
   const setDiffResult = (leftContent, rightContent, payload = {}) => {
@@ -543,6 +564,26 @@ export const useJsonStore = defineStore('json', () => {
     if (!outputTabs.includes(tab)) {
       return;
     }
+    // 针对 diff tab：将结果写入统一的 diff state 并根据偏好展示
+    if (tab === 'diff') {
+      // payload 可选地承载 left/right/diffPayload
+      const left = payload && payload.left ? payload.left : (diffSidebar.leftContent || diffSidebar.leftInput || '');
+      const right = payload && payload.right ? payload.right : (diffSidebar.rightContent || (getActiveTab() ? getActiveTab().content : '') || '');
+      const diffPayload = payload && payload.diffPayload ? payload.diffPayload : (payload && payload.value && typeof payload.value === 'object' ? payload.value : {});
+      setDiffResult(left, right, diffPayload || {});
+      // 若用户偏好底部面板，则展示之，否则展示侧栏
+      const dock = editorSettings.diffDock || diffSidebar.dockMode || 'auto';
+      if (dock === 'panel') {
+        outputPanel.visible = true;
+        outputPanel.currentTab = 'diff';
+      } else {
+        diffSidebar.visible = true;
+        diffSidebar.collapsed = false;
+        diffSidebar.mode = 'result';
+      }
+      return;
+    }
+
     outputPanel.visible = true;
     outputPanel.currentTab = tab;
     outputPanel.content[tab] = payload;
@@ -618,6 +659,7 @@ export const useJsonStore = defineStore('json', () => {
 
     // DiffSidebar 操作
     showDiffSidebar,
+        showDiff,
     hideDiffSidebar,
     setDiffLines,
     setDiffResult,

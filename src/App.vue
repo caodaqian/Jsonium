@@ -9,7 +9,7 @@ import { useJsonStore } from './store';
 // 新增主题资源
   import './main.css';
 import './theme/theme-catppuccin.css';
-  import './theme/theme-vue.css';
+import './theme/theme-vue.css';
 
 const route = ref('process');
 const enterAction = ref({});
@@ -54,6 +54,42 @@ function applyTheme() {
   } catch (_) { }
 }
 
+
+const shouldReadClipboard = (action) => {
+  try {
+    return (action?.code || '') === 'process' && (action?.type || '') === 'regex';
+  } catch (e) {
+    return false;
+  }
+};
+
+const readClipboardText = async () => {
+  try {
+    if (typeof window !== 'undefined' && window.services && typeof window.services.readClipboardText === 'function') {
+      return window.services.readClipboardText() || '';
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+      return await navigator.clipboard.readText();
+    }
+  } catch (e) {
+    // ignore
+  }
+  return '';
+};
+
+const handlePluginEnter = async (action = {}) => {
+  const nextAction = { ...action };
+  if (shouldReadClipboard(action)) {
+    const clipboardText = await readClipboardText();
+    if (clipboardText) {
+      nextAction.text = clipboardText;
+    }
+  }
+  if (typeof nextAction.text !== 'string') {
+    nextAction.text = typeof action.payload === 'string' ? action.payload : '';
+  }
+  enterAction.value = nextAction;
+};
 onMounted(() => {
   // 1. 初次同步主题
   applyTheme();
@@ -70,7 +106,10 @@ onMounted(() => {
       _mq = window.matchMedia('(prefers-color-scheme: dark)');
       try { _mq.addEventListener('change', _themeUpdateListener); } catch (e) { }
       if (window.utools && window.utools.onPluginEnter) {
-        window.utools.onPluginEnter(() => applyTheme());
+        window.utools.onPluginEnter(async (action) => {
+          applyTheme();
+          await handlePluginEnter(action);
+        });
       }
     }
   } catch(_) {}
@@ -83,32 +122,17 @@ watch(() => store.themePreference, () => {
   applyTheme();
 }, { deep: true });
 
-/* 原功能代码（略简） */
 const isDarkMode = ref(false); // 兼容老参数供子组件
-const shouldReadClipboard = (action) => {
-  try {
-    const t = action.type || '';
-    const code = action.code || '';
-    if (code === 'process' && t === "regex") {
-      return true;
-    }
-  } catch (e) {}
-  return false;
-};
-onMounted(() => {
-  // 路由和剪贴板相关处理（原 onMounted 代码保留）
-  // ...（省略, 按旧代码展开即可）
-});
 
-  onBeforeUnmount(() => {
-    try { if (_mq && typeof _mq.removeEventListener === 'function' && _themeUpdateListener) _mq.removeEventListener('change', _themeUpdateListener); } catch (e) { }
-    _themeUpdateListener = null;
-    try {
-      if (typeof window !== 'undefined' && window.applyTheme === applyTheme) {
-        window.applyTheme = null;
-      }
-    } catch (_) { }
-  });
+onBeforeUnmount(() => {
+  try { if (_mq && typeof _mq.removeEventListener === 'function' && _themeUpdateListener) _mq.removeEventListener('change', _themeUpdateListener); } catch (e) { }
+  _themeUpdateListener = null;
+  try {
+    if (typeof window !== 'undefined' && window.applyTheme === applyTheme) {
+      window.applyTheme = null;
+    }
+  } catch (_) { }
+});
 </script>
 
 <template>

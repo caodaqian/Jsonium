@@ -38,30 +38,64 @@ const languages = {
   }
 };
 
+function createEditorInstance() {
+  const instance = {
+    commands: [],
+    actions: [],
+    getModel: () => ({ getValue: () => '{}', pushEditOperations: () => { }, getValueInRange: () => '{}' }),
+    getValue: () => '{}',
+    getSelections: () => [],
+    onDidChangeModelContent: () => { },
+    onKeyDown: () => { },
+    addCommand: (keybinding, handler) => { instance.commands.push({ keybinding, handler }); },
+    addAction: (action) => { instance.actions.push(action); },
+    getAction: () => ({ run: async () => { } }),
+    dispose: () => { },
+    getDomNode: () => null,
+    focus: () => { },
+    updateOptions: () => { },
+    deltaDecorations: (_oldDecorations, newDecorations) => newDecorations || [],
+    revealLineInCenter: () => { },
+    revealLine: () => { },
+    setValue: () => { }
+  };
+  globalThis.__monacoLastEditor = instance;
+  return instance;
+}
+
+function createDiffEditorInstance() {
+  const originalEditor = createEditorInstance();
+  const modifiedEditor = createEditorInstance();
+  return {
+    setModel: () => { },
+    getOriginalEditor: () => originalEditor,
+    getModifiedEditor: () => modifiedEditor,
+    dispose: () => { },
+    layout: () => { }
+  };
+}
+
 const editor = {
   create() {
-    const instance = {
-      commands: [],
-      actions: [],
-      getModel: () => ({ getValue: () => '{}', pushEditOperations: () => {}, getValueInRange: () => '{}' }),
-      getValue: () => '{}',
-      getSelections: () => [],
-      onDidChangeModelContent: () => {},
-      onKeyDown: () => {},
-      addCommand: (keybinding, handler) => { instance.commands.push({ keybinding, handler }); },
-      addAction: (action) => { instance.actions.push(action); },
-      getAction: () => ({ run: async () => {} }),
-      dispose: () => {},
-      getDomNode: () => null,
-      focus: () => {}
-    };
-    globalThis.__monacoLastEditor = instance;
-    return instance;
+    return createEditorInstance();
   },
+  createDiffEditor: () => createDiffEditorInstance(),
+  createModel: (value = '', language = 'json') => ({
+    value,
+    language,
+    getValue: () => value,
+    dispose: () => { }
+  }),
+  setModelLanguage: () => { },
   defineTheme: () => {},
-  setTheme: () => {}
+  setTheme: (themeId) => {
+    if (!globalThis.__monacoSetThemeCalls) {
+      globalThis.__monacoSetThemeCalls = [];
+    }
+    globalThis.__monacoSetThemeCalls.push(themeId);
+  }
 };
 
-export { Range, KeyCode, KeyMod, languages, editor };
+export { editor, KeyCode, KeyMod, languages, Range };
 
 export default { Range, KeyCode, KeyMod, languages, editor };

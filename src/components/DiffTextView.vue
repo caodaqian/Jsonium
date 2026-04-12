@@ -3,6 +3,7 @@ import { diffWordsWithSpace } from 'diff';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { buildLineDiffs, buildLineDiffsAsync } from '../services/diffEngine.js';
 import { WORKER_OFFLOAD_CHARS } from '../services/editorFormatting.js';
+import { useJsonStore } from '../store/index.js';
 let monaco = null;
 
 const props = defineProps({
@@ -13,16 +14,115 @@ const props = defineProps({
 });
 
 const editorContainer = ref(null);
+const store = useJsonStore();
 let diffEditor = null;
 let leftModel = null;
 let rightModel = null;
 const monacoAvailable = ref(false);
 const monacoLoadError = ref('');
 const monacoLoading = ref(true);
+let themeAppliedHandler = null;
+let themeRefreshRaf = null;
 
 // When foldRanges is called before Monaco is ready, cache the ranges and
 // apply them once Monaco becomes available.
 const pendingFoldRanges = ref([]);
+
+function getJsoniumThemeVars(mode = 'light') {
+  try {
+    const computedStyle = typeof window !== 'undefined' ? window.getComputedStyle(document.documentElement) : null;
+    if (!computedStyle) {
+      return {
+        bg: mode === 'dark' ? '#24273a' : '#ffffff',
+        fg: mode === 'dark' ? '#cad3f5' : '#1f2937'
+      };
+    }
+    return {
+      bg: computedStyle.getPropertyValue('--color-bg-primary')?.trim() || (mode === 'dark' ? '#24273a' : '#ffffff'),
+      fg: computedStyle.getPropertyValue('--color-text-primary')?.trim() || (mode === 'dark' ? '#cad3f5' : '#1f2937')
+    };
+  } catch (e) {
+    return {
+      bg: mode === 'dark' ? '#24273a' : '#ffffff',
+      fg: mode === 'dark' ? '#cad3f5' : '#1f2937'
+    };
+  }
+}
+
+function getCurrentThemeMode() {
+  try {
+    const effectiveTheme = store.getEffectiveTheme ? store.getEffectiveTheme() : null;
+    return effectiveTheme?.mode === 'dark' ? 'dark' : 'light';
+  } catch (e) {
+    return 'light';
+  }
+}
+
+function defineAndSetMonacoTheme() {
+  if (!monaco || !monaco.editor) return;
+  const mode = getCurrentThemeMode();
+  const { bg, fg } = getJsoniumThemeVars(mode);
+  try {
+    if (mode === 'light') {
+      monaco.editor.defineTheme('jsonium-light', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': bg,
+          'editor.foreground': fg
+        }
+      });
+      monaco.editor.setTheme('jsonium-light');
+    } else {
+      monaco.editor.defineTheme('jsonium-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': bg,
+          'editor.foreground': fg
+        }
+      });
+      monaco.editor.setTheme('jsonium-dark');
+    }
+  } catch (e) {
+    try { monaco.editor.setTheme(mode === 'light' ? 'vs' : 'vs-dark'); } catch (_) {}
+  }
+}
+
+function applyCurrentTheme() {
+  defineAndSetMonacoTheme();
+}
+
+function installThemeRefreshListener() {
+  if (themeAppliedHandler || typeof window === 'undefined') return;
+  themeAppliedHandler = () => {
+    try {
+      if (themeRefreshRaf && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(themeRefreshRaf);
+      }
+    } catch (e) {}
+    try {
+      if (typeof window.requestAnimationFrame === 'function') {
+        themeRefreshRaf = window.requestAnimationFrame(() => {
+          themeRefreshRaf = null;
+          applyCurrentTheme();
+        });
+      } else {
+        themeRefreshRaf = setTimeout(() => {
+          themeRefreshRaf = null;
+          applyCurrentTheme();
+        }, 0);
+      }
+    } catch (e) {
+      applyCurrentTheme();
+    }
+  };
+  try {
+    window.addEventListener('jsonium-theme-applied', themeAppliedHandler);
+  } catch (e) {}
+}
 
 onMounted(async () => {
   try {
@@ -253,6 +353,22 @@ onBeforeUnmount(() => {
   try { diffEditor?.dispose && diffEditor.dispose(); } catch (e) {}
   try { leftModel?.dispose && leftModel.dispose(); } catch (e) {}
   try { rightModel?.dispose && rightModel.dispose(); } catch (e) {}
+  try {
+    if (themeAppliedHandler && typeof window !== 'undefined') {
+      window.removeEventListener('jsonium-theme-applied', themeAppliedHandler);
+    }
+  } catch (e) {}
+  try {
+    if (themeRefreshRaf) {
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(themeRefreshRaf);
+      } else {
+        clearTimeout(themeRefreshRaf);
+      }
+    }
+  } catch (e) {}
+  themeAppliedHandler = null;
+  themeRefreshRaf = null;
 });
 
 function initDiffEditor() {
@@ -305,7 +421,7 @@ function initDiffEditor() {
         monaco.editor.setModelLanguage(leftModel, props.language);
         monaco.editor.setModelLanguage(rightModel, props.language);
         try {
-          if (typeof monaco.editor.setTheme === 'function') monaco.editor.setTheme('vs-dark');
+          applyCurrentTheme();
           if (typeof monaco.editor.tokenize === 'function') {
             try { monaco.editor.tokenize(leftModel.getValue(), props.language); } catch (_) {}
             try { monaco.editor.tokenize(rightModel.getValue(), props.language); } catch (_) {}
@@ -313,6 +429,8 @@ function initDiffEditor() {
         } catch (_) { /* ignore */ }
       }
     } catch (_) {}
+
+    installThemeRefreshListener();
 
     try {
       const orig = diffEditor.getOriginalEditor();

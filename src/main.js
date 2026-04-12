@@ -40,9 +40,9 @@ if (typeof window !== 'undefined' && window.utools) {
   } catch (_) { /* ignore */ }
 }
 
- // 监听 tab 列表与激活 tab 变化并保存（深度监听）
+// 监听 tab 列表与激活 tab 变化并保存（深度监听）
 watch(
-  [store.tabs, store.activeTabId],
+  [() => store.tabs, () => store.activeTabId],
   scheduleSave,
   { deep: true }
 );
