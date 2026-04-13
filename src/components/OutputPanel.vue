@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { detectAndConvert } from '../services/formatDetector.js';
 import notify from '../services/notify.js';
 import { useJsonStore } from '../store/index.js';
+  import { getStringifyIndent } from '../utils/indent.js';
 import DiffView from './DiffView.vue';
 
 const store = useJsonStore();
@@ -24,7 +25,7 @@ const formattedContent = computed(() => {
   if (typeof entry.value === 'string') {
     return entry.value;
   }
-  return JSON.stringify(entry.value, null, 2);
+  return JSON.stringify(entry.value, null, getStringifyIndent());
 });
 
 const hasContent = computed(() => {
@@ -71,7 +72,7 @@ const handleInsertToEditor = async () => {
         contentToWrite = entry.value;
       }
     } else {
-      contentToWrite = JSON.stringify(entry.value, null, 2);
+      contentToWrite = JSON.stringify(entry.value, null, getStringifyIndent());
     }
     const active = store.getActiveTab();
     if (!active) {

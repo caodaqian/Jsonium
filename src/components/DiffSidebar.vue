@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { buildTreeDiff, stringifySortedJson } from '../services/diffEngine.js';
 import { useJsonStore } from '../store/index.js';
+  import { getStringifyIndent } from '../utils/indent.js';
 import DiffView from './DiffView.vue';
 import Editor from './Editor.vue';
 const emit = defineEmits(['openLineDiff']);
@@ -46,7 +47,7 @@ function handleFormatLeft() {
   } else {
     try {
       const parsed = JSON.parse(leftInput.value || '');
-      store.diffSidebar.leftInput = JSON.stringify(parsed, null, 2);
+      store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
       leftError.value = '';
     } catch (e) {
       leftError.value = 'JSON 格式错误: ' + e.message;
@@ -58,7 +59,7 @@ function handleLeftPaste() {
   setTimeout(() => {
     try {
       const parsed = JSON.parse(leftInput.value || '');
-      store.diffSidebar.leftInput = JSON.stringify(parsed, null, 2);
+      store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
       leftError.value = '';
     } catch (e) {
       // ignore
@@ -243,13 +244,19 @@ function embedToBottom() {
     var(--color-bg-secondary);
   border-left: 1px solid color-mix(in srgb, var(--color-divider) 70%, transparent);
   display: none;
-  position: fixed;
+    position: absolute;
+
+ 
   top: 0;
   right: 0;
-  height: 100vh;
+    bottom: 0;
+    height: auto;
+
+ 
   flex-direction: column;
   overflow: hidden;
-  box-shadow: -8px 0 32px rgba(0,0,0,0.12);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.07);
+ 
   z-index: 99999;
   transition: width 180ms ease;
 }
@@ -308,7 +315,8 @@ function embedToBottom() {
   cursor: pointer;
   font-size: 18px;
   color: var(--color-text-tertiary);
-  box-shadow: 0 1px 0 rgba(255,255,255,0.04), 0 4px 10px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 10px rgba(0, 0, 0, 0.03);
+ 
   transition: transform 160ms ease, background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 .close-btn:hover {
@@ -316,7 +324,8 @@ function embedToBottom() {
   background: color-mix(in srgb, var(--color-bg-primary) 72%, var(--color-primary) 10%);
   border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-divider));
   color: var(--color-text-primary);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+ 
 }
 
 .input-mode { display:flex; flex-direction:column; gap:var(--spacing-md); padding:var(--spacing-md); flex:1; overflow-y:auto; }

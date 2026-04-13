@@ -32,10 +32,12 @@ function remove(id) {
   padding: 10px 14px;
   border-radius: 8px;
   color: var(--color-text-primary);
-  background: rgba(0,0,0,0.75);
+    background: rgba(0, 0, 0, 0.45);
+ 
   backdrop-filter: blur(6px);
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
+ 
   transition: transform 0.12s ease, opacity 0.12s ease;
 }
 .toast-message {

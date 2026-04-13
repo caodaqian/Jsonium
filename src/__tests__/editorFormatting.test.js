@@ -1,13 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  scheduleAutoFormat,
+  _resetProviderRegistration,
   cancelScheduledAutoFormat,
-  runEditorFormat,
-  formatJsonString,
   computeMinimalEdits,
+  formatJsonString,
   registerJsonFormattingProvider,
-  _resetProviderRegistration
+  runEditorFormat,
+  scheduleAutoFormat
 } from '../services/editorFormatting.js';
+import { getStringifyIndent } from '../utils/indent.js';
 
 describe('editorFormatting utilities', () => {
   beforeEach(() => {
@@ -96,7 +97,7 @@ describe('editorFormatting utilities', () => {
 
   it('formatJsonString pretty-prints JSON and throws on invalid JSON', () => {
     const src = '{"b":2,"a":1}';
-    expect(formatJsonString(src)).toBe(JSON.stringify(JSON.parse(src), null, 2));
+    expect(formatJsonString(src)).toBe(JSON.stringify(JSON.parse(src), null, getStringifyIndent()));
     expect(() => formatJsonString('not-json')).toThrow();
   });
 

@@ -6,7 +6,7 @@
   --radius-btn: 11px;
   --radius-field: 8px;
   --card-blur: blur(10px);
-  --card-shadow: 0 6px 28px 0 rgba(80, 78, 143, 0.18), 0 1.5px 4px 0 rgba(0,0,0,0.10);
+  --card-shadow: 0 6px 28px 0 rgba(80, 78, 143, 0.12), 0 1.5px 4px 0 rgba(0, 0, 0, 0.06);
   --nav-blur: blur(8px);
   --transition-main: background 0.26s cubic-bezier(.4,.2,.3,1), color 0.22s, box-shadow .12s;
   /* ======= End Modern UI variables ======= */
@@ -17,33 +17,32 @@
   --color-text-primary: #4c4f69;
   --color-text-secondary: #5c5f77;
   --color-text-tertiary: #6c6f85;
-  
+
   /* Catppuccin Mauve - 紫色主色 */
   --color-primary: #c6a0f6;
   --color-primary-light: #d8b4fe;
   --color-primary-lighter: #e5d5ff;
   --color-primary-dark: #b47fd6;
   --color-primary-darker: #a267c6;
-  
+
   /* 状态颜色 - Catppuccin */
   --color-success: #a6da95;
   --color-warning: #f5a24e;
   --color-error: #e78284;
   --color-info: #85c1dc;
-  
+
   /* 边框和分割线 */
   --color-border: #bcc0cc;
   --color-divider: #acb0be;
-  
+
   /* 其他 */
   --color-hover-bg: #dfe1ea;
   --color-active-bg: #d0d3e0;
-  
+
   /* 阴影 */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06);
   /* 间距 */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -51,7 +50,7 @@
   --spacing-lg: 16px;
   --spacing-xl: 24px;
   --spacing-2xl: 32px;
-  
+
   /* 字体 */
   --font-size-xs: 12px;
   --font-size-sm: 13px;
@@ -73,18 +72,18 @@
     --color-text-primary: #cad3f5;
     --color-text-secondary: #b8c5d6;
     --color-text-tertiary: #a5adce;
-    
+
     /* Catppuccin Mauve - 紫色主色 */
     --color-primary: #c6a0f6;
     --color-primary-light: #d8b4fe;
     --color-primary-lighter: #e5d5ff;
     --color-primary-dark: #b47fd6;
     --color-primary-darker: #a267c6;
-    
+
     /* 边框 */
     --color-border: #5b6078;
     --color-divider: #49506e;
-    
+
     /* 其他 */
     --color-hover-bg: #494d64;
     --color-active-bg: #565b73;
@@ -162,10 +161,10 @@ button {
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
   box-shadow: 0 1.5px 6px rgba(76,78,120,0.08);
-  transition: 
-    background-color 0.18s, 
-    border-color 0.18s, 
-    color 0.18s, 
+  transition:
+      background-color 0.18s,
+      border-color 0.18s,
+      color 0.18s,
     box-shadow 0.16s cubic-bezier(.2,.7,.3,1.1);
   font-weight: var(--font-weight-medium);
   outline: none;
@@ -190,23 +189,25 @@ button:disabled {
 }
 
 button.primary {
-  background: linear-gradient(95deg, var(--color-primary-light) 0%, var(--color-primary) 100%);
-  color: #fff;
-  border-color: var(--color-primary);
-  box-shadow: 0 3px 14px -2px var(--color-primary-light, #d8b4fe);
+  background: transparent;
+    /* 边框型主按钮：默认展示文字色，悬浮时填充主色以提高可读性 */
+    color: var(--color-primary);
+    border: 1.5px solid var(--color-primary);
+    box-shadow: none;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em;
 }
 
 button.primary:hover {
-  background-color: var(--color-primary-light);
-  border-color: var(--color-primary-light);
+  background-color: var(--color-primary);
+    border-color: var(--color-primary);
   color: #ffffff;
 }
 
 button.primary:active {
   background-color: var(--color-primary-dark);
   border-color: var(--color-primary-dark);
+  color: #ffffff;
 }
 
 input, textarea, select {
@@ -224,7 +225,7 @@ input, textarea, select {
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(198, 160, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(198, 160, 246, 0.06);
 }
 
 select {
@@ -326,41 +327,42 @@ textarea {
 /* Modern 卡片/毛玻璃/浮层工具类 by frontend-design */
 .card,
 .card-blur {
-  background: rgba(30,31,51,0.42);
+  background-color: transparent;
+    /* 改为透明表面，仅使用边框保持层次，便于区分按钮与背景 */
   border-radius: var(--radius-card, 18px);
   box-shadow: var(--card-shadow);
   backdrop-filter: var(--card-blur);
   -webkit-backdrop-filter: var(--card-blur);
-  border: 1.2px solid var(--color-divider);
+  border: 1px solid var(--color-border);
   transition: var(--transition-main);
   overflow: hidden;
 }
 
 .card-blur-light {
-  background: rgba(250,250,255,0.65);
+  background: rgba(250, 250, 255, 0.45);
   color: #353351;
   backdrop-filter: blur(8px);
 }
 
 .field-deck {
-  background: rgba(34,34,47,.22);
+  background-color: var(--color-bg-tertiary);
   border-radius: var(--radius-field, 8px);
-  box-shadow: 0 2.5px 10px -2px rgba(70,77,122,0.12);
+  box-shadow: 0 2.5px 10px -2px rgba(70, 77, 122, 0.07);
   transition: var(--transition-main);
 }
 
 .shadow-pop {
-  box-shadow: 0 6px 17px 0 rgba(80, 78, 143, 0.11);
+  box-shadow: 0 6px 17px 0 rgba(80, 78, 143, 0.07);
 }
 .shadow-up {
-  box-shadow: 0 -2px 12px 0 rgba(80, 78, 143, 0.13);
+  box-shadow: 0 -2px 12px 0 rgba(80, 78, 143, 0.08);
 }
 .blur-nav {
   backdrop-filter: var(--nav-blur, blur(8px));
   -webkit-backdrop-filter: var(--nav-blur, blur(8px));
-  background: rgba(31,31,54,0.54);
+  background-color: var(--color-bg-secondary);
   border-radius: 18px 18px 0 0;
-  box-shadow: 0 4px 24px 0 rgba(25,23,53,0.17);
+  box-shadow: 0 4px 24px 0 rgba(25, 23, 53, 0.12);
 }
 
 /* === 表单 & 控件统一风格 (frontend-design) === */
@@ -460,7 +462,7 @@ input[type="checkbox"] {
   margin-right: 8px;
   margin-top: 3px;
   margin-bottom: 3px;
-  box-shadow: 0 1.5px 6px rgba(76,78,120,0.05), 0 1.5px 6px rgba(198,160,246,0.07);
+  box-shadow: 0 1.5px 6px rgba(76, 78, 120, 0.035), 0 1.5px 6px rgba(198, 160, 246, 0.04);
   transition: background .18s, border .18s, color .17s, box-shadow .14s;
 }
 .panel-btn.primary {

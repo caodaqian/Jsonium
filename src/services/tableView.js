@@ -1,12 +1,12 @@
 /**
  * tableView.js
- * 
+ *
  * 表格视图核心服务：负责 JSON ↔ 表格数据转换、类型推断、过滤/排序、导出等纯函数。
  * 不依赖任何 UI 框架，可直接被 Vue 组件或测试文件引用。
  */
 
 import { JSONPath } from 'jsonpath-plus';
-import { getValueAtJsonPath } from '../utils/pathUtils.js';
+import { getStringifyIndent } from '../utils/indent.js';
 
 // =============================================
 // 0. 表达式类型检测与统一求值
@@ -155,8 +155,8 @@ function jsonPathStrToDotPath(pathStr) {
 /**
  * 按 dot 路径读取对象中的值（例如 "user.name" → obj.user.name）。
  * 不支持数组下标语法，仅处理对象属性访问。
- * @param {object} obj 
- * @param {string} path 
+ * @param {object} obj
+ * @param {string} path
  * @returns {any}
  */
 export function getByDotPath(obj, path) {
@@ -172,9 +172,9 @@ export function getByDotPath(obj, path) {
 
 /**
  * 按 dot 路径写入对象中的值，逐层创建不存在的对象节点。
- * @param {object} obj 
- * @param {string} path 
- * @param {any} value 
+ * @param {object} obj
+ * @param {string} path
+ * @param {any} value
  */
 export function setByDotPath(obj, path, value) {
   if (obj == null || !path) return;
@@ -197,8 +197,8 @@ export function setByDotPath(obj, path, value) {
 /**
  * 从行对象数组中收集所有 dot 路径，递归展开嵌套对象，限制深度。
  * 排除内部字段 _rowIndex。
- * @param {object[]} rows 
- * @param {number} maxDepth 
+ * @param {object[]} rows
+ * @param {number} maxDepth
  * @returns {string[]}
  */
 export function collectAllPaths(rows, maxDepth = 3) {
@@ -228,8 +228,8 @@ export function collectAllPaths(rows, maxDepth = 3) {
 /**
  * 对给定路径在所有行中推断主导类型（抽样 100 行）。
  * 返回 TableColumn[] 数组。
- * @param {object[]} rows 
- * @param {string[]} paths 
+ * @param {object[]} rows
+ * @param {string[]} paths
  * @returns {import('./tableView.js').TableColumn[]}
  */
 export function detectColumnTypes(rows, paths) {
@@ -280,8 +280,8 @@ export function detectColumnTypes(rows, paths) {
  *  - 以 $ 开头：JSONPath 表达式，例如 $.items
  *  - 以 . 开头：jq 表达式，例如 .store.books
  *  - 其它：点分路径，例如 store.books（原有行为）
- * @param {string} jsonString 
- * @param {{ arrayPath?: string|null, sampleLimit?: number }} options 
+ * @param {string} jsonString
+ * @param {{ arrayPath?: string|null, sampleLimit?: number }} options
  * @returns {{ success: boolean, rows: object[], columns: object[], totalRows: number, error?: string }}
  */
 export function extractTableFromJson(jsonString, { arrayPath = null, sampleLimit = 200 } = {}) {
@@ -359,7 +359,7 @@ export function extractTableFromJson(jsonString, { arrayPath = null, sampleLimit
  * 注意：jq 路径与返回多个离散元素的 JSONPath 表达式不支持写回（无法精确定位原始位置），
  * 此时函数会返回错误。
  * @param {string} jsonString 原始 JSON 字符串
- * @param {{ arrayPath?: string|null, edits: Array<{rowIndex: number, columnPath: string, newValue: any}> }} options 
+ * @param {{ arrayPath?: string|null, edits: Array<{rowIndex: number, columnPath: string, newValue: any}> }} options
  * @returns {{ success: boolean, jsonString: string, error?: string }}
  */
 export function applyEditsToJson(jsonString, { arrayPath = null, edits = [] } = {}) {
@@ -435,7 +435,7 @@ export function applyEditsToJson(jsonString, { arrayPath = null, edits = [] } = 
       }
     }
 
-    return { success: true, jsonString: JSON.stringify(parsed, null, 2) };
+    return { success: true, jsonString: JSON.stringify(parsed, null, getStringifyIndent()) };
   } catch (e) {
     return { success: false, jsonString, error: `应用修改失败: ${e.message}` };
   }
@@ -447,8 +447,8 @@ export function applyEditsToJson(jsonString, { arrayPath = null, edits = [] } = 
 
 /**
  * 对行数组执行全局搜索、列过滤与列排序。
- * @param {object[]} rows 
- * @param {{ globalSearch?: string, columnFilters?: Record<string, string>, sortColumn?: string|null, sortDir?: 'asc'|'desc' }} options 
+ * @param {object[]} rows
+ * @param {{ globalSearch?: string, columnFilters?: Record<string, string>, sortColumn?: string|null, sortDir?: 'asc'|'desc' }} options
  * @returns {object[]}
  */
 export function filterAndSortRows(rows, { globalSearch = '', columnFilters = {}, sortColumn = null, sortDir = 'asc' } = {}) {
@@ -506,8 +506,8 @@ export function filterAndSortRows(rows, { globalSearch = '', columnFilters = {},
 /**
  * 将表格数据导出为 CSV 并触发浏览器下载。
  * @param {object[]} columns 可见列（含 path 和 label）
- * @param {object[]} rows 
- * @param {string} filename 
+ * @param {object[]} rows
+ * @param {string} filename
  */
 export function exportTableToCsv(columns, rows, filename = 'table-export.csv') {
   const visibleCols = columns.filter(c => c.visible);
@@ -535,8 +535,8 @@ function csvEscape(str) {
 /**
  * 将表格数据导出为 XLSX 并触发浏览器下载（依赖 xlsx 库）。
  * @param {object[]} columns 可见列
- * @param {object[]} rows 
- * @param {string} filename 
+ * @param {object[]} rows
+ * @param {string} filename
  */
 export async function exportTableToXlsx(columns, rows, filename = 'table-export.xlsx') {
   try {
@@ -568,8 +568,8 @@ export async function exportTableToXlsx(columns, rows, filename = 'table-export.
 
 /**
  * 与 exportTableToCsv 相同但返回字符串而非下载，供测试使用。
- * @param {object[]} columns 
- * @param {object[]} rows 
+ * @param {object[]} columns
+ * @param {object[]} rows
  * @returns {string}
  */
 export function buildCsvString(columns, rows) {

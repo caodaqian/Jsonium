@@ -8,6 +8,7 @@ import notify from '../services/notify.js';
 import { queryJq, queryJsonPath } from '../services/queryEngine.js';
 import { useJsonStore } from '../store/index.js';
 import { getFormatName } from '../utils/formatNames.js';
+  import { getStringifyIndent } from '../utils/indent.js';
 import ControlPanel from './ControlPanel.vue';
 import DiffSidebar from './DiffSidebar.vue';
 import DiffView from './DiffView.vue';
@@ -322,7 +323,7 @@ const handleQuery = async (expression, type) => {
           // 忽略解码错误，保留原始字符串
         }
       }
-      const queryResult = typeof queryData === 'string' ? queryData : JSON.stringify(queryData, null, 2);
+      const queryResult = typeof queryData === 'string' ? queryData : JSON.stringify(queryData, null, getStringifyIndent());
       store.addTab(queryResult, `查询结果 - ${type}`, FORMAT_TYPES.JSON);
       store.addQueryHistory(expression, type);
     } else {
@@ -431,7 +432,7 @@ async function handleRetryParseAI() {
       maxRetries: max
     });
     if (res && res.parsed) {
-      const formatted = JSON.stringify(res.parsed, null, 2);
+      const formatted = JSON.stringify(res.parsed, null, getStringifyIndent());
       store.addTab(formatted, 'AI 重试结果（JSON）', FORMAT_TYPES.JSON);
       aiRawVisible.value = false;
       aiRawResponse.value = '';
@@ -537,8 +538,8 @@ onMounted(() => {
   try {
     if (typeof window !== 'undefined' && window.location && window.location.search && window.location.search.indexOf('autotest') !== -1) {
       // 自动化测试模式：注入示例左右内容并直接打开行级对比视图
-      const left = JSON.stringify({ a: 1, b: 2, c: { x: 1, y: 2 } }, null, 2);
-      const right = JSON.stringify({ a: 1, b: 3, d: 4, c: { x: 1, y: 9 } }, null, 2);
+      const left = JSON.stringify({ a: 1, b: 2, c: { x: 1, y: 2 } }, null, getStringifyIndent());
+      const right = JSON.stringify({ a: 1, b: 3, d: 4, c: { x: 1, y: 9 } }, null, getStringifyIndent());
       try {
         const act = store.getActiveTab && store.getActiveTab();
         if (act && act.id) {
@@ -721,6 +722,9 @@ onMounted(() => {
 .processor-container {
   display: flex;
   flex: 1;
+    position: relative;
+
+ 
   overflow: hidden;
   gap: 1px;
 }
@@ -748,7 +752,8 @@ onMounted(() => {
   max-width: 360px;
   z-index: 10;
   flex-shrink: 0;
-  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.1);
+    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.06);
+ 
 }
 
 .editor-section {
@@ -775,7 +780,8 @@ onMounted(() => {
   bottom: 60px;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-divider);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+ 
   z-index: 200000;
   display: flex;
   flex-direction: column;
@@ -823,7 +829,8 @@ onMounted(() => {
     width: auto;
     max-width: 640px;
     z-index: 300001;
-    box-shadow: 0 12px 48px rgba(0,0,0,0.4);
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+ 
     border-right: none;
     border-radius: 8px;
     overflow: hidden;
@@ -831,7 +838,8 @@ onMounted(() => {
   .drawer-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+      background: rgba(0, 0, 0, 0.12);
+ 
     z-index: 300000;
   }
   .control-panel-drawer {
@@ -858,7 +866,8 @@ onMounted(() => {
 .ai-raw-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.45);
+    background: rgba(0, 0, 0, 0.12);
+ 
   display: flex;
   align-items: center;
   justify-content: center;
@@ -874,7 +883,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
+ 
 }
 .ai-raw-header {
   display: flex;
@@ -960,6 +970,7 @@ onMounted(() => {
   background: var(--color-primary);
   color: #fff;
   border-color: var(--color-primary);
-  box-shadow: 0 8px 24px rgba(198, 160, 246, 0.28);
+    box-shadow: 0 8px 24px rgba(198, 160, 246, 0.16);
+ 
 }
 </style>

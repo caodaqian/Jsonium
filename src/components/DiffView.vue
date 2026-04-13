@@ -12,6 +12,7 @@ import {
 } from '../services/diffEngine.js';
 import { WORKER_OFFLOAD_CHARS } from '../services/editorFormatting.js';
 import notify from '../services/notify.js';
+  import { getStringifyIndent } from '../utils/indent.js';
 import DiffTextView from './DiffTextView.vue';
 import DiffTreeNode from './DiffTreeNode.vue';
 
@@ -99,7 +100,7 @@ const displayedRightString = computed(() => String(displayedRight.value || ''));
 function pretty(content) {
   try {
     const value = typeof content === 'string' ? JSON.parse(content) : content;
-    return JSON.stringify(value, null, 2);
+    return JSON.stringify(value, null, getStringifyIndent());
   } catch (e) {
     return content || '';
   }

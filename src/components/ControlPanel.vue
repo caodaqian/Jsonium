@@ -1,189 +1,189 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
-import notify from '../services/notify.js';
-import { useJsonStore } from '../store/index.js';
+  import { computed, ref, watch } from 'vue';
+  import notify from '../services/notify.js';
+  import { useJsonStore } from '../store/index.js';
 
-const props = defineProps({
-  activePanel: {
-    type: String,
-    default: 'editor'
+  const props = defineProps({
+    activePanel: {
+      type: String,
+      default: 'editor'
+    }
+  });
+
+  const emit = defineEmits([
+    'panelChange',
+    'import',
+    'convert',
+    'generateCode',
+    'query',
+    'compare',
+    'aiProcess',
+    'copyToClipboard',
+    'download'
+  ]);
+
+  const store = useJsonStore();
+
+  const themeOptions = [
+    { value: 'catppuccin', label: 'Catppuccin（卡布奇诺）', meta: '柔和阅读' },
+    { value: 'vue', label: 'Vue 官方风格', meta: '清爽开发' }
+  ];
+
+  const modeOptions = [
+    { value: 'auto', label: '跟随系统' },
+    { value: 'light', label: '亮色 Light' },
+    { value: 'dark', label: '暗色 Dark' }
+  ];
+
+  const themeValue = ref(store.themePreference.theme);
+  const modeValue = ref(store.themePreference.mode);
+
+  const appearanceSettingsOpen = ref(false);
+  const editorSettingsOpen = ref(false);
+  const aiSettingsOpen = ref(false);
+
+  const themeLabelByValue = computed(() => themeOptions.find((option) => option.value === themeValue.value)?.label || '未选择');
+  const modeLabelByValue = computed(() => modeOptions.find((option) => option.value === modeValue.value)?.label || '未选择');
+  const fontLabel = computed(() => {
+    const value = store.editorSettings.fontFamily;
+    if (!value) return '系统默认';
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      return value.slice(1, -1);
+    }
+    return value;
+  });
+  const wrapLabel = computed(() => {
+    if (!store.editorSettings.wrapEnabled) return '关闭';
+    return store.editorSettings.wrapByWidth ? `按宽度 ${store.editorSettings.wrapThresholdPx}px` : `按列 ${store.editorSettings.wrapColumn}`;
+  });
+  const aiRetryLabel = computed(() => (store.aiConfig.parseRetry ? `开启 · ${store.aiConfig.parseRetryMax} 次` : '关闭'));
+
+  watch(
+    [themeValue, modeValue],
+    ([theme, mode]) => {
+      store.setThemePreference(theme, mode);
+      const appWindow = globalThis.window;
+      appWindow?.applyTheme?.();
+    }
+  );
+
+  watch(
+    () => store.themePreference,
+    (pref) => {
+      if (!pref) return;
+      themeValue.value = pref.theme;
+      modeValue.value = pref.mode;
+    },
+    { deep: true, immediate: true }
+  );
+
+  watch(
+    () => store.editorSettings,
+    () => {
+      try {
+        if (typeof store.saveSettingsState === 'function') store.saveSettingsState();
+      } catch (error) {
+        console.warn('Failed to save editor settings state', error);
+      }
+    },
+    { deep: true }
+  );
+
+  function switchPanel(panel) {
+    emit('panelChange', panel);
   }
-});
 
-const emit = defineEmits([
-  'panelChange',
-  'import',
-  'convert',
-  'generateCode',
-  'query',
-  'compare',
-  'aiProcess',
-  'copyToClipboard',
-  'download'
-]);
-
-const store = useJsonStore();
-
-const themeOptions = [
-  { value: 'catppuccin', label: 'Catppuccin（卡布奇诺）', meta: '柔和阅读' },
-  { value: 'vue', label: 'Vue 官方风格', meta: '清爽开发' }
-];
-
-const modeOptions = [
-  { value: 'auto', label: '跟随系统' },
-  { value: 'light', label: '亮色 Light' },
-  { value: 'dark', label: '暗色 Dark' }
-];
-
-const themeValue = ref(store.themePreference.theme);
-const modeValue = ref(store.themePreference.mode);
-
-const appearanceSettingsOpen = ref(false);
-const editorSettingsOpen = ref(false);
-const aiSettingsOpen = ref(false);
-
-const themeLabelByValue = computed(() => themeOptions.find((option) => option.value === themeValue.value)?.label || '未选择');
-const modeLabelByValue = computed(() => modeOptions.find((option) => option.value === modeValue.value)?.label || '未选择');
-const fontLabel = computed(() => {
-  const value = store.editorSettings.fontFamily;
-  if (!value) return '系统默认';
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
+  function handleClose() {
+    store.editorSettings.controlPanelVisible = false;
   }
-  return value;
-});
-const wrapLabel = computed(() => {
-  if (!store.editorSettings.wrapEnabled) return '关闭';
-  return store.editorSettings.wrapByWidth ? `按宽度 ${store.editorSettings.wrapThresholdPx}px` : `按列 ${store.editorSettings.wrapColumn}`;
-});
-const aiRetryLabel = computed(() => (store.aiConfig.parseRetry ? `开启 · ${store.aiConfig.parseRetryMax} 次` : '关闭'));
 
-watch(
-  [themeValue, modeValue],
-  ([theme, mode]) => {
-    store.setThemePreference(theme, mode);
+  function handleImport() {
+    const text = prompt('请粘贴 JSON 内容:');
+    if (text) {
+      emit('import', text);
+    }
+  }
+
+  function handleReadFile() {
     const appWindow = globalThis.window;
-    appWindow?.applyTheme?.();
-  }
-);
-
-watch(
-  () => store.themePreference,
-  (pref) => {
-    if (!pref) return;
-    themeValue.value = pref.theme;
-    modeValue.value = pref.mode;
-  },
-  { deep: true, immediate: true }
-);
-
-watch(
-  () => store.editorSettings,
-  () => {
-    try {
-      if (typeof store.saveSettingsState === 'function') store.saveSettingsState();
-    } catch (error) {
-      console.warn('Failed to save editor settings state', error);
-    }
-  },
-  { deep: true }
-);
-
-function switchPanel(panel) {
-  emit('panelChange', panel);
-}
-
-function handleClose() {
-  store.editorSettings.controlPanelVisible = false;
-}
-
-function handleImport() {
-  const text = prompt('请粘贴 JSON 内容:');
-  if (text) {
-    emit('import', text);
-  }
-}
-
-function handleReadFile() {
-  const appWindow = globalThis.window;
-  if (appWindow?.utools) {
-    try {
-      const files = appWindow.utools.showOpenDialog({
-        title: '选择文件',
-        properties: ['openFile']
-      });
-      if (files && files[0]) {
-        const content = appWindow.services.readFile(files[0]);
-        emit('import', content);
+    if (appWindow?.utools) {
+      try {
+        const files = appWindow.utools.showOpenDialog({
+          title: '选择文件',
+          properties: ['openFile']
+        });
+        if (files && files[0]) {
+          const content = appWindow.services.readFile(files[0]);
+          emit('import', content);
+        }
+      } catch (err) {
+        notify.error('读取文件失败: ' + err.message);
       }
-    } catch (err) {
-      notify.error('读取文件失败: ' + err.message);
+    } else {
+      notify.warn('此功能仅在 uTools 中可用');
     }
-  } else {
-    notify.warn('此功能仅在 uTools 中可用');
   }
-}
 
-function handleWriteFile() {
-  const activeTab = store.getActiveTab();
-  if (!activeTab) {
-    notify.warn('请先打开一个标签页');
-    return;
-  }
-  const appWindow = globalThis.window;
-  if (appWindow?.utools) {
-    try {
-      const outputPath = appWindow.services.writeTextFile(activeTab.content);
-      if (outputPath) {
-        appWindow.utools.shellShowItemInFolder(outputPath);
-        notify.success('文件已保存到: ' + outputPath);
+  function handleWriteFile() {
+    const activeTab = store.getActiveTab();
+    if (!activeTab) {
+      notify.warn('请先打开一个标签页');
+      return;
+    }
+    const appWindow = globalThis.window;
+    if (appWindow?.utools) {
+      try {
+        const outputPath = appWindow.services.writeTextFile(activeTab.content);
+        if (outputPath) {
+          appWindow.utools.shellShowItemInFolder(outputPath);
+          notify.success('文件已保存到: ' + outputPath);
+        }
+      } catch (err) {
+        notify.error('保存文件失败: ' + err.message);
       }
-    } catch (err) {
-      notify.error('保存文件失败: ' + err.message);
+    } else {
+      notify.warn('此功能仅在 uTools 中可用');
     }
-  } else {
-    notify.warn('此功能仅在 uTools 中可用');
   }
-}
 
-function handleConvert() {
-  emit('convert', 'json');
-}
+  function handleConvert() {
+    emit('convert', 'json');
+  }
 
-function handleGenerateCode() {
-  emit('generateCode', 'javascript');
-}
+  function handleGenerateCode() {
+    emit('generateCode', 'javascript');
+  }
 
-function handleQuery() {
-  emit('query', '', 'jsonpath');
-}
+  function handleQuery() {
+    emit('query', '', 'jsonpath');
+  }
 
-function handleCompare() {
-  emit('compare', '', '');
-}
+  function handleCompare() {
+    emit('compare', '', '');
+  }
 
-function handleAIProcess() {
-  emit('aiProcess', '');
-}
+  function handleAIProcess() {
+    emit('aiProcess', '');
+  }
 
-function getTabLabel(tab) {
-  const labels = {
-    editor: '编辑器',
-    convert: '转换',
-    query: '查询',
-    diff: '对比',
-    ai: 'AI'
-  };
-  return labels[tab] || tab;
-}
+  function getTabLabel(tab) {
+    const labels = {
+      editor: '编辑器',
+      convert: '转换',
+      query: '查询',
+      diff: '对比',
+      ai: 'AI'
+    };
+    return labels[tab] || tab;
+  }
 
-function formatThemeSummary() {
-  return `${themeLabelByValue.value} · ${modeLabelByValue.value}`;
-}
+  function formatThemeSummary() {
+    return `${themeLabelByValue.value} · ${modeLabelByValue.value}`;
+  }
 
-function getDisclosureLabel(open) {
-  return open ? '收起详情' : '查看详情';
-}
+  function getDisclosureLabel(open) {
+    return open ? '收起详情' : '查看详情';
+  }
 </script>
 
 <template>
@@ -203,25 +203,16 @@ function getDisclosureLabel(open) {
     </div>
 
     <div class="panel-tabs" role="tablist" aria-label="面板切换">
-      <button
-        class="panel-tab"
-        :class="{ active: activePanel === 'editor' }"
-        type="button"
-        @click="switchPanel('editor')"
-      >
+      <button class="panel-tab" :class="{ active: activePanel === 'editor' }" type="button"
+        @click="switchPanel('editor')">
         {{ getTabLabel('editor') }}
       </button>
     </div>
 
     <div class="panel-content">
       <section class="settings-section settings-section--appearance">
-        <button
-          class="section-toggle"
-          type="button"
-          :aria-expanded="appearanceSettingsOpen"
-          aria-controls="appearance-settings"
-          @click="appearanceSettingsOpen = !appearanceSettingsOpen"
-        >
+        <button class="section-toggle" type="button" :aria-expanded="appearanceSettingsOpen"
+          aria-controls="appearance-settings" @click="appearanceSettingsOpen = !appearanceSettingsOpen">
           <span>
             <span class="section-toggle__title">界面外观</span>
             <span class="section-toggle__desc">当前 {{ formatThemeSummary() }}</span>
@@ -229,27 +220,14 @@ function getDisclosureLabel(open) {
           <span class="section-toggle__state">{{ getDisclosureLabel(appearanceSettingsOpen) }}</span>
         </button>
 
-        <div
-          id="appearance-settings"
-          class="section-body"
-          :class="{ 'is-collapsed': !appearanceSettingsOpen }"
-        >
+        <div id="appearance-settings" class="section-body" :class="{ 'is-collapsed': !appearanceSettingsOpen }">
           <div class="appearance-layout">
             <div class="theme-column">
               <div class="mini-label">主题风格</div>
               <div class="theme-grid" aria-label="主题风格">
-                <label
-                  v-for="opt in themeOptions"
-                  :key="opt.value"
-                  class="theme-option"
-                  :class="{ active: themeValue === opt.value }"
-                >
-                  <input
-                    v-model="themeValue"
-                    type="radio"
-                    name="themeStyle"
-                    :value="opt.value"
-                  />
+                <label v-for="opt in themeOptions" :key="opt.value" class="theme-option"
+                  :class="{ active: themeValue === opt.value }">
+                  <input v-model="themeValue" type="radio" name="themeStyle" :value="opt.value" />
                   <span class="theme-option__title">{{ opt.label }}</span>
                   <span class="theme-option__meta">{{ opt.meta }}</span>
                 </label>
@@ -259,18 +237,9 @@ function getDisclosureLabel(open) {
             <div class="mode-column">
               <div class="mini-label">配色模式</div>
               <div class="mode-grid">
-                <label
-                  v-for="opt in modeOptions"
-                  :key="opt.value"
-                  class="mode-option"
-                  :class="{ active: modeValue === opt.value }"
-                >
-                  <input
-                    v-model="modeValue"
-                    type="radio"
-                    name="themeMode"
-                    :value="opt.value"
-                  />
+                <label v-for="opt in modeOptions" :key="opt.value" class="mode-option"
+                  :class="{ active: modeValue === opt.value }">
+                  <input v-model="modeValue" type="radio" name="themeMode" :value="opt.value" />
                   <span>{{ opt.label }}</span>
                 </label>
               </div>
@@ -280,13 +249,8 @@ function getDisclosureLabel(open) {
       </section>
 
       <section class="settings-section">
-        <button
-          class="section-toggle"
-          type="button"
-          :aria-expanded="editorSettingsOpen"
-          aria-controls="editor-settings"
-          @click="editorSettingsOpen = !editorSettingsOpen"
-        >
+        <button class="section-toggle" type="button" :aria-expanded="editorSettingsOpen" aria-controls="editor-settings"
+          @click="editorSettingsOpen = !editorSettingsOpen">
           <span>
             <span class="section-toggle__title">编辑器设置</span>
             <span class="section-toggle__desc">字体 {{ fontLabel }} · 换行 {{ wrapLabel }}</span>
@@ -294,19 +258,21 @@ function getDisclosureLabel(open) {
           <span class="section-toggle__state">{{ getDisclosureLabel(editorSettingsOpen) }}</span>
         </button>
 
-        <div
-          id="editor-settings"
-          class="section-body"
-          :class="{ 'is-collapsed': !editorSettingsOpen }"
-        >
+        <div id="editor-settings" class="section-body" :class="{ 'is-collapsed': !editorSettingsOpen }">
           <div class="setting-stack">
             <label class="setting-row setting-row--toggle">
               <span class="input-toggle">
-                <input
-                  v-model="store.editorSettings.wrapEnabled"
-                  type="checkbox"
-                  aria-label="默认按编辑器宽度自动换行"
-                />
+                <input v-model="store.editorSettings.stickyEnabled" type="checkbox" aria-label="启用粘性节点" />
+                <span class="slider" aria-hidden="true"></span>
+              </span>
+              <span class="setting-copy">
+                <span class="setting-name">启用粘性节点（Sticky）</span>
+                <span class="setting-help">在编辑器中显示折叠区域的粘性节点，便于定位深层结构。</span>
+              </span>
+            </label>
+            <label class="setting-row setting-row--toggle">
+              <span class="input-toggle">
+                <input v-model="store.editorSettings.wrapEnabled" type="checkbox" aria-label="默认按编辑器宽度自动换行" />
                 <span class="slider" aria-hidden="true"></span>
               </span>
               <span class="setting-copy">
@@ -317,11 +283,8 @@ function getDisclosureLabel(open) {
 
             <label class="setting-row setting-row--toggle">
               <span class="input-toggle">
-                <input
-                  v-model="store.editorSettings.wrapByWidth"
-                  type="checkbox"
-                  aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）"
-                />
+                <input v-model="store.editorSettings.wrapByWidth" type="checkbox"
+                  aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）" />
                 <span class="slider" aria-hidden="true"></span>
               </span>
               <span class="setting-copy">
@@ -335,25 +298,15 @@ function getDisclosureLabel(open) {
             <label class="setting-field">
               <span class="setting-field__label">换行阈值（px）</span>
               <span class="setting-field__help">视口小于该值时按宽度换行。</span>
-              <input
-                v-model.number="store.editorSettings.wrapThresholdPx"
-                type="number"
-                min="200"
-                step="50"
-                class="form-input setting-field__control"
-              />
+              <input v-model.number="store.editorSettings.wrapThresholdPx" type="number" min="200" step="50"
+                class="form-input setting-field__control" />
             </label>
 
             <label class="setting-field">
               <span class="setting-field__label">固定换行列数</span>
               <span class="setting-field__help">按列数换行时使用的最大列宽。</span>
-              <input
-                v-model.number="store.editorSettings.wrapColumn"
-                type="number"
-                min="40"
-                step="1"
-                class="form-input setting-field__control"
-              />
+              <input v-model.number="store.editorSettings.wrapColumn" type="number" min="40" step="1"
+                class="form-input setting-field__control" />
             </label>
           </div>
 
@@ -379,17 +332,15 @@ function getDisclosureLabel(open) {
             <label class="setting-field">
               <span class="setting-field__label">字号 (px)</span>
               <span class="setting-field__help">调整编辑器字体大小</span>
-              <input v-model.number="store.editorSettings.fontSize" type="number" min="8" class="form-input setting-field__control setting-field__control--narrow" />
+              <input v-model.number="store.editorSettings.fontSize" type="number" min="8"
+                class="form-input setting-field__control setting-field__control--narrow" />
             </label>
           </div>
 
           <label class="setting-row setting-row--toggle">
             <span class="input-toggle">
-              <input
-                v-model="store.editorSettings.preserveWhitespaceOnCopy"
-                type="checkbox"
-                aria-label="保留复制内容中的原始空白（空格/换行）"
-              />
+              <input v-model="store.editorSettings.preserveWhitespaceOnCopy" type="checkbox"
+                aria-label="保留复制内容中的原始空白（空格/换行）" />
               <span class="slider" aria-hidden="true"></span>
             </span>
             <span class="setting-copy">
@@ -410,13 +361,8 @@ function getDisclosureLabel(open) {
       </section>
 
       <section class="settings-section">
-        <button
-          class="section-toggle"
-          type="button"
-          :aria-expanded="aiSettingsOpen"
-          aria-controls="ai-settings"
-          @click="aiSettingsOpen = !aiSettingsOpen"
-        >
+        <button class="section-toggle" type="button" :aria-expanded="aiSettingsOpen" aria-controls="ai-settings"
+          @click="aiSettingsOpen = !aiSettingsOpen">
           <span>
             <span class="section-toggle__title">AI 解析设置</span>
             <span class="section-toggle__desc">失败重试 {{ aiRetryLabel }}</span>
@@ -424,18 +370,10 @@ function getDisclosureLabel(open) {
           <span class="section-toggle__state">{{ getDisclosureLabel(aiSettingsOpen) }}</span>
         </button>
 
-        <div
-          id="ai-settings"
-          class="section-body"
-          :class="{ 'is-collapsed': !aiSettingsOpen }"
-        >
+        <div id="ai-settings" class="section-body" :class="{ 'is-collapsed': !aiSettingsOpen }">
           <label class="setting-row setting-row--toggle">
             <span class="input-toggle">
-              <input
-                v-model="store.aiConfig.parseRetry"
-                type="checkbox"
-                aria-label="自动在失败时重试仅返回 JSON（parseRetry）"
-              />
+              <input v-model="store.aiConfig.parseRetry" type="checkbox" aria-label="自动在失败时重试仅返回 JSON（parseRetry）" />
               <span class="slider" aria-hidden="true"></span>
             </span>
             <span class="setting-copy">
@@ -447,13 +385,8 @@ function getDisclosureLabel(open) {
           <label class="setting-field setting-field--inline">
             <span class="setting-field__label">最大重试次数</span>
             <span class="setting-field__help">建议保持较小数值，避免重复请求。</span>
-            <input
-              v-model.number="store.aiConfig.parseRetryMax"
-              type="number"
-              min="0"
-              step="1"
-              class="form-input setting-field__control setting-field__control--narrow"
-            />
+            <input v-model.number="store.aiConfig.parseRetryMax" type="number" min="0" step="1"
+              class="form-input setting-field__control setting-field__control--narrow" />
           </label>
         </div>
       </section>
@@ -470,559 +403,595 @@ function getDisclosureLabel(open) {
 </template>
 
 <style scoped>
-.control-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  width: 100%;
-  min-width: 0;
-  max-width: none;
-  box-sizing: border-box;
-  padding: 18px;
-  color: var(--color-text-primary);
-  background:
-    radial-gradient(circle at top left, rgba(198, 160, 246, 0.12), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(66, 184, 131, 0.08), transparent 30%),
-    var(--color-bg-secondary);
-  border-left: 1px solid var(--color-divider);
-  border-right: 1px solid transparent;
-  border-top: 0;
-  border-bottom: 0;
-  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(14px);
-}
-
-:global(html.dark-mode) .control-panel {
-  background: var(--color-bg-secondary);
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 8px 4px 2px;
-}
-
-.panel-header__copy {
-  min-width: 0;
-}
-
-.panel-eyebrow {
-  margin: 0 0 4px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-tertiary);
-}
-
-.panel-title {
-  margin: 0;
-  font-size: 22px;
-  line-height: 1.2;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.panel-description {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--color-text-secondary);
-  max-width: 42ch;
-}
-
-.panel-close {
-  flex: none;
-  padding: 9px 14px;
-  border-radius: var(--radius-btn, 11px);
-  border: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.52);
-  color: var(--color-text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow: var(--shadow-sm);
-}
-
-.panel-close:hover,
-.panel-close:focus-visible {
-  border-color: var(--color-primary);
-  color: var(--color-primary-darker);
-  background: var(--color-hover-bg);
-}
-
-.panel-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 6px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.45);
-  border: 1px solid var(--color-divider);
-}
-
-:global(html.dark-mode) .panel-tabs {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.panel-tab {
-  min-height: 38px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-weight: 600;
-  box-shadow: none;
-}
-
-.panel-tab:hover {
-  background: var(--color-hover-bg);
-  color: var(--color-text-primary);
-  border-color: var(--color-border);
-}
-
-.panel-tab.active {
-  background: var(--color-bg-primary);
-  color: var(--color-primary-darker);
-  border-color: var(--color-primary-light);
-  box-shadow: var(--shadow-sm);
-}
-
-.panel-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.settings-section {
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid var(--color-divider);
-  background: rgba(255, 255, 255, 0.42);
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(10px);
-}
-
-:global(html.dark-mode) .settings-section {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.settings-section--footer {
-  padding: 14px 16px;
-}
-
-.settings-section--appearance {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.10)),
-    rgba(255, 255, 255, 0.42);
-}
-
-.appearance-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.theme-column,
-.mode-column {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.section-heading {
-  margin-bottom: 14px;
-}
-
-.section-heading h4 {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.3;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.section-heading p {
-  margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-}
-
-.theme-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
-}
-
-.theme-option {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  min-height: 92px;
-  padding: 13px 14px 12px;
-  border-radius: 16px;
-  border: 1px solid var(--color-border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.28));
-  cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-}
-
-.theme-option input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.theme-option:hover {
-  transform: translateY(-1px);
-  border-color: var(--color-primary-light);
-  box-shadow: var(--shadow-md);
-}
-
-.theme-option.active {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(198, 160, 246, 0.12), var(--shadow-md);
-  background: linear-gradient(180deg, rgba(198, 160, 246, 0.16), rgba(255, 255, 255, 0.30));
-}
-
-.theme-option__title {
-  font-size: 14px;
-  line-height: 1.45;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.theme-option__meta {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--color-text-secondary);
-}
-
-.mode-section {
-  margin-top: 0;
-}
-
-.mini-label {
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.mode-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.mode-option {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  min-height: 42px;
-  padding: 9px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.50);
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  flex: 0 1 auto;
-}
-
-.mode-option input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.mode-option.active {
-  border-color: var(--color-success);
-  color: var(--color-text-primary);
-  background: rgba(166, 218, 149, 0.16);
-}
-
-.section-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 2px 0 12px;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  color: var(--color-text-primary);
-  text-align: left;
-}
-
-.section-toggle:hover {
-  background: transparent;
-  color: var(--color-text-primary);
-  border-color: transparent;
-}
-
-.section-toggle__title {
-  display: block;
-  font-size: 16px;
-  line-height: 1.3;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.section-toggle__desc {
-  display: block;
-  margin-top: 3px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--color-text-secondary);
-}
-
-.section-toggle__state {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: transparent;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-text-secondary);
-}
-
-.section-toggle__state:hover,
-.section-toggle__state:focus-visible,
-.overview-card__action:hover,
-.overview-card__action:focus-visible {
-  background: var(--color-hover-bg);
-  border-color: var(--color-border);
-}
-
-.section-body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow: hidden;
-  max-height: 1000px;
-  opacity: 1;
-  transition: max-height 0.25s ease, opacity 0.2s ease, transform 0.2s ease;
-}
-
-.section-body.is-collapsed {
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-4px);
-  pointer-events: none;
-}
-
-.setting-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 0;
-}
-
-.setting-row--toggle {
-  padding: 8px 0;
-}
-
-.setting-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.setting-name {
-  font-size: 14px;
-  line-height: 1.45;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.setting-help {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
-}
-
-.setting-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.setting-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.setting-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.setting-field--inline {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px 12px;
-  align-items: center;
-}
-
-.setting-field__label {
-  grid-column: 1 / -1;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.setting-field__help {
-  grid-column: 1 / -1;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
-}
-
-.setting-field__control {
-  grid-column: 1 / -1;
-}
-
-.setting-field__control--narrow {
-  width: 110px;
-}
-
-.form-input,
-.form-select {
-  width: 100%;
-  min-height: 42px;
-  border-radius: 14px;
-  border: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.60);
-  color: var(--color-text-primary);
-  font-size: 14px;
-}
-
-.form-input:focus,
-.form-select:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(198, 160, 246, 0.12);
-}
-
-.input-toggle {
-  display: inline-flex;
-  align-items: center;
-  width: 42px;
-  height: 26px;
-  position: relative;
-  flex: none;
-  margin-top: 2px;
-}
-
-.input-toggle input[type="checkbox"] {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  position: absolute;
-}
-
-.input-toggle .slider {
-  position: absolute;
-  inset: 0;
-  cursor: pointer;
-  background-color: var(--color-border);
-  border-radius: 999px;
-  transition: background 0.2s ease;
-}
-
-.input-toggle .slider::before {
-  content: "";
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  top: 4px;
-  left: 4px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(76, 78, 120, 0.14);
-  transition: transform 0.22s ease;
-}
-
-.input-toggle input[type="checkbox"]:checked + .slider {
-  background-color: var(--color-primary);
-}
-
-.input-toggle input[type="checkbox"]:checked + .slider::before {
-  transform: translateX(16px);
-}
-
-.footer-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.panel-btn {
-  min-height: 40px;
-  padding: 8px 18px;
-  border-radius: 14px;
-  border: 1px solid var(--color-primary);
-  background: var(--color-primary);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  box-shadow: none;
-}
-
-.panel-btn:hover,
-.panel-btn:focus-visible {
-  background: linear-gradient(90deg, var(--color-primary-light), var(--color-primary));
-  color: #fff;
-  border-color: var(--color-primary-dark);
-}
-
-@media (max-width: 480px) {
   .control-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
     width: 100%;
     min-width: 0;
-    max-width: 100%;
-    padding: 14px;
+    max-width: none;
+    box-sizing: border-box;
+    padding: 18px;
+    color: var(--color-text-primary);
+    background:
+      radial-gradient(circle at top left, rgba(198, 160, 246, 0.08), transparent 28%),
+      radial-gradient(circle at bottom right, rgba(66, 184, 131, 0.05), transparent 30%),
+
+
+
+
+      var(--color-bg-secondary);
+    border-left: 1px solid var(--color-divider);
+    border-right: 1px solid transparent;
+    border-top: 0;
+    border-bottom: 0;
+    box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.12);
+
+
+
+
+    backdrop-filter: blur(14px);
   }
 
-  .appearance-layout,
-  .theme-grid,
-  .setting-grid,
-  .mode-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .setting-field--inline {
-    grid-template-columns: 1fr;
+  :global(html.dark-mode) .control-panel {
+    background: var(--color-bg-secondary);
   }
 
   .panel-header {
-    flex-direction: column;
-    align-items: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 4px 2px;
+  }
+
+  .panel-header__copy {
+    min-width: 0;
+  }
+
+  .panel-eyebrow {
+    margin: 0 0 4px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+  }
+
+  .panel-title {
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .panel-description {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+    max-width: 42ch;
   }
 
   .panel-close {
-    width: 100%;
-  }
-}
+    flex: none;
+    padding: 9px 14px;
+    border-radius: var(--radius-btn, 11px);
+    border: 1px solid var(--color-border);
+    background: rgba(255, 255, 255, 0.36);
 
-@media (max-width: 980px) {
+
+
+
+    color: var(--color-text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .panel-close:hover,
+  .panel-close:focus-visible {
+    border-color: var(--color-primary);
+    color: var(--color-primary-darker);
+    background: var(--color-hover-bg);
+  }
+
+  .panel-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.30);
+
+
+
+
+    border: 1px solid var(--color-divider);
+  }
+
+  :global(html.dark-mode) .panel-tabs {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .panel-tab {
+    min-height: 38px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    box-shadow: none;
+  }
+
+  .panel-tab:hover {
+    background: var(--color-hover-bg);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+  }
+
+  .panel-tab.active {
+    background: var(--color-bg-primary);
+    color: var(--color-primary-darker);
+    border-color: var(--color-primary-light);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .panel-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .settings-section {
+    padding: 16px;
+    border-radius: 20px;
+    border: 1px solid var(--color-divider);
+    background: rgba(255, 255, 255, 0.28);
+
+
+
+
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
+  }
+
+  :global(html.dark-mode) .settings-section {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .settings-section--footer {
+    padding: 14px 16px;
+  }
+
+  .settings-section--appearance {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.10)),
+      rgba(255, 255, 255, 0.12);
+
+
+
+  }
+
   .appearance-layout {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .theme-column,
+  .mode-column {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .section-heading {
+    margin-bottom: 14px;
+  }
+
+  .section-heading h4 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .section-heading p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+  }
+
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+  }
+
+  .theme-option {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    min-height: 92px;
+    padding: 13px 14px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--color-border);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.40), rgba(255, 255, 255, 0.20));
+
+
+
+
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  }
+
+  .theme-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .theme-option:hover {
+    transform: translateY(-1px);
+    border-color: var(--color-primary-light);
+    box-shadow: var(--shadow-md);
+  }
+
+  .theme-option.active {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(198, 160, 246, 0.08), var(--shadow-md);
+    background: linear-gradient(180deg, rgba(198, 160, 246, 0.08), rgba(255, 255, 255, 0.22));
+
+
+
+
+  }
+
+  .theme-option__title {
+    font-size: 14px;
+    line-height: 1.45;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .theme-option__meta {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+  }
+
+  .mode-section {
+    margin-top: 0;
+  }
+
+  .mini-label {
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text-primary);
   }
 
   .mode-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
   }
-}
+
+  .mode-option {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 42px;
+    padding: 9px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    background: rgba(255, 255, 255, 0.20);
+
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    flex: 0 1 auto;
+  }
+
+  .mode-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .mode-option.active {
+    border-color: var(--color-success);
+    color: var(--color-text-primary);
+    background: rgba(166, 218, 149, 0.16);
+  }
+
+  .section-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 0 12px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    color: var(--color-text-primary);
+    text-align: left;
+  }
+
+  .section-toggle:hover {
+    background: transparent;
+    color: var(--color-text-primary);
+    border-color: transparent;
+  }
+
+  .section-toggle__title {
+    display: block;
+    font-size: 16px;
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .section-toggle__desc {
+    display: block;
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+  }
+
+  .section-toggle__state {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid transparent;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+  }
+
+  .section-toggle__state:hover,
+  .section-toggle__state:focus-visible,
+  .overview-card__action:hover,
+  .overview-card__action:focus-visible {
+    background: var(--color-hover-bg);
+    border-color: var(--color-border);
+  }
+
+  .section-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+    max-height: 1000px;
+    opacity: 1;
+    transition: max-height 0.25s ease, opacity 0.2s ease, transform 0.2s ease;
+  }
+
+  .section-body.is-collapsed {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+  }
+
+  .setting-row--toggle {
+    padding: 8px 0;
+  }
+
+  .setting-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .setting-name {
+    font-size: 14px;
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .setting-help {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-text-secondary);
+  }
+
+  .setting-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .setting-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .setting-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .setting-field--inline {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px 12px;
+    align-items: center;
+  }
+
+  .setting-field__label {
+    grid-column: 1 / -1;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  .setting-field__help {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-text-secondary);
+  }
+
+  .setting-field__control {
+    grid-column: 1 / -1;
+  }
+
+  .setting-field__control--narrow {
+    width: 110px;
+  }
+
+  .form-input,
+  .form-select {
+    width: 100%;
+    min-height: 42px;
+    border-radius: 14px;
+    border: 1px solid var(--color-border);
+    background: rgba(255, 255, 255, 0.25);
+
+
+
+
+    color: var(--color-text-primary);
+    font-size: 14px;
+  }
+
+  .form-input:focus,
+  .form-select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(198, 160, 246, 0.12);
+  }
+
+  .input-toggle {
+    display: inline-flex;
+    align-items: center;
+    width: 42px;
+    height: 26px;
+    position: relative;
+    flex: none;
+    margin-top: 2px;
+  }
+
+  .input-toggle input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+
+  .input-toggle .slider {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+    background-color: var(--color-border);
+    border-radius: 999px;
+    transition: background 0.2s ease;
+  }
+
+  .input-toggle .slider::before {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    top: 4px;
+    left: 4px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(76, 78, 120, 0.14);
+    transition: transform 0.22s ease;
+  }
+
+  .input-toggle input[type="checkbox"]:checked+.slider {
+    background-color: var(--color-primary);
+  }
+
+  .input-toggle input[type="checkbox"]:checked+.slider::before {
+    transform: translateX(16px);
+  }
+
+  .footer-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .panel-btn {
+    min-height: 40px;
+    padding: 8px 18px;
+    border-radius: 14px;
+    border: 1px solid var(--color-primary);
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .panel-btn:hover,
+  .panel-btn:focus-visible {
+    background: linear-gradient(90deg, var(--color-primary-light), var(--color-primary));
+    color: #fff;
+    border-color: var(--color-primary-dark);
+  }
+
+  @media (max-width: 480px) {
+    .control-panel {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      padding: 14px;
+    }
+
+    .appearance-layout,
+    .theme-grid,
+    .setting-grid,
+    .mode-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .setting-field--inline {
+      grid-template-columns: 1fr;
+    }
+
+    .panel-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .panel-close {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .appearance-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .mode-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
 </style>

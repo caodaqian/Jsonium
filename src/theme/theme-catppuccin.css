@@ -48,12 +48,20 @@ html.catppuccin.light-mode {
 }
 
 html.catppuccin.dark-mode {
-  --color-bg-primary: #24273a;
-  --color-bg-secondary: #363a4f;
-  --color-bg-tertiary: #494d64;
-  --color-text-primary: #cad3f5;
-  --color-text-secondary: #b8c5d6;
-  --color-text-tertiary: #a5adce;
+  /* 深色：在保留 Catppuccin 色系的前提下提高对比度和层次 */
+    --color-bg-primary: #171922;
+    /* 更深的背景，提升主体与背景对比 */
+    --color-bg-secondary: #252733;
+    /* 卡片/面板背景，与主背景有明显区分 */
+    --color-bg-tertiary: #323544;
+    /* 较浅的表面色，用于悬浮/分组 */
+  
+    --color-text-primary: #e6eefb;
+    /* 更明亮的主文字颜色，提升可读性 */
+    --color-text-secondary: #c8d2e8;
+    /* 次级文字，仍保留冷色调 */
+    --color-text-tertiary: #aeb9d4;
+    /* 细节文字 */
 
   --color-primary: #c6a0f6;
   --color-primary-light: #d8b4fe;
@@ -66,11 +74,15 @@ html.catppuccin.dark-mode {
   --color-error: #e78284;
   --color-info: #85c1dc;
 
-  --color-border: #5b6078;
-  --color-divider: #49506e;
+  --color-border: #2f3446;
+    /* 较暗但可见的边框，避免与背景混淆 */
+    --color-divider: #323645;
+    /* 分割线，低调但可读 */
 
-  --color-hover-bg: #494d64;
-  --color-active-bg: #565b73;
+  --color-hover-bg: #232635;
+    /* 悬浮时的背景，和主背景区分明显 */
+    --color-active-bg: #2b2e3b;
+    /* 激活/选中状态 */
 
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);

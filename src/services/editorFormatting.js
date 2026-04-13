@@ -10,6 +10,7 @@
  * @param {string} content
  * @returns {string}
  */
+import { getStringifyIndent } from '../utils/indent.js';
 import { approximateChangeRatio, ensureTrailingNewline, normalizeLineEndings } from '../utils/textUtils.js';
 import { runWorkerTask } from './computeWorkerManager.js';
 
@@ -19,7 +20,7 @@ export const WORKER_OFFLOAD_CHARS = 100 * 1024;
 
 export function formatJsonString(content) {
   const parsed = JSON.parse(content);
-  return JSON.stringify(parsed, null, 2);
+  return JSON.stringify(parsed, null, getStringifyIndent());
 }
 
 /**

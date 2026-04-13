@@ -1,6 +1,7 @@
 /**
  * JSON 对比引擎 - 用于检测两个 JSON 的结构差异
  */
+import { getStringifyIndent } from '../utils/indent.js';
 import { getValueAtJsonPath, setValueAtJsonPath, toJsonPath } from '../utils/pathUtils.js';
 
 /**
@@ -38,7 +39,7 @@ export function getDifferences(json1, json2, options = {}) {
 export function stringifySortedJson(source) {
   const data = typeof source === 'string' ? JSON.parse(source) : source;
   const sorted = sortObject(data);
-  return JSON.stringify(sorted, null, 2);
+  return JSON.stringify(sorted, null, getStringifyIndent());
 }
 
 /**
@@ -543,7 +544,7 @@ export function computeDiffStats(node) {
  */
 export function findLineForPath(source, path) {
   try {
-    const pretty = typeof source === 'string' ? source : JSON.stringify(source, null, 2);
+    const pretty = typeof source === 'string' ? source : JSON.stringify(source, null, getStringifyIndent());
     if (!pretty || !path) return null;
     const parts = String(path).split('.').filter(Boolean);
     let idx = -1;

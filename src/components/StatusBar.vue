@@ -5,6 +5,7 @@ import { jsonToGoStruct, jsonToJavaClass, jsonToJavaScript, jsonToPython, jsonTo
 import notify from '../services/notify.js';
 import { detectQueryType, queryJq, queryJsonPath, validateQuery } from '../services/queryEngine.js';
 import { useJsonStore } from '../store/index.js';
+  import { getStringifyIndent } from '../utils/indent.js';
 
 const store = useJsonStore();
 const props = defineProps({
@@ -340,7 +341,7 @@ const copyToClipboard = async (format) => {
       }
       default:
         try {
-          textToCopy = (typeof data === 'string') ? data : JSON.stringify(data, null, 2);
+          textToCopy = (typeof data === 'string') ? data : JSON.stringify(data, null, getStringifyIndent());
         } catch (e) {
           textToCopy = String(data);
         }
@@ -452,7 +453,7 @@ const unescapeJson = () => {
     const data = queryResult.value || JSON.parse(props.content);
     const str = typeof data === 'string' ? data : JSON.stringify(data);
     const unescaped = JSON.parse(str);
-    emit('unescape', JSON.stringify(unescaped, null, 2));
+    emit('unescape', JSON.stringify(unescaped, null, getStringifyIndent()));
     showCopyMenu.value = false;
   } catch (e) {
     notify.error('反转义失败: ' + e.message);
@@ -869,7 +870,12 @@ aria-label="帮助"
 
   /* small, unobtrusive scrollbar styling for webkit browsers */
   .actions-inline::-webkit-scrollbar { height: 8px; }
-  .actions-inline::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 999px; }
+
+    .actions-inline::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.04);
+      border-radius: 999px;
+    }
+ 
 }
 
 /* Large-screen: pin the status bar to the bottom and prefer a single-line actions area.

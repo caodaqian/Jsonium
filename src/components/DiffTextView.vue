@@ -245,6 +245,7 @@ onMounted(async () => {
       try { await import('monaco-editor/min/vs/editor/editor.main.css'); } catch (_) { /* ignore */ }
       try {
         const m = await import('monaco-editor/esm/vs/editor/editor.api');
+        try { await import('monaco-editor/esm/vs/editor/contrib/stickyScroll/browser/stickyScrollContribution'); } catch (_) { /* ignore */ }
         if (m && typeof m === 'object') {
           if (m.default && m.default.editor) monaco = m.default;
           else if (m.editor) monaco = m;
@@ -276,7 +277,7 @@ onMounted(async () => {
 
       try {
         if (monaco && monaco.languages && monaco.languages.json && monaco.languages.json.jsonDefaults && typeof monaco.languages.json.jsonDefaults.setDiagnosticsOptions === 'function') {
-          monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ validate: false, enableSchemaRequest: false, allowComments: true });
+          monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ validate: true, enableSchemaRequest: false, allowComments: true, schemas: [] });
         }
       } catch (_) { /* ignore */ }
     } catch (e) {
@@ -388,6 +389,7 @@ function initDiffEditor() {
       automaticLayout: true,
       folding: true,
       foldingStrategy: 'auto',
+      showFoldingControls: 'always',
       ...props.options,
       renderSideBySide: true,
       renderSideBySideInlineBreakpoint: 0,
@@ -435,8 +437,30 @@ function initDiffEditor() {
     try {
       const orig = diffEditor.getOriginalEditor();
       const mod = diffEditor.getModifiedEditor();
-      if (orig && typeof orig.updateOptions === 'function') orig.updateOptions({ folding: true, foldingStrategy: 'auto' });
-      if (mod && typeof mod.updateOptions === 'function') mod.updateOptions({ folding: true, foldingStrategy: 'auto' });
+      if (orig && typeof orig.updateOptions === 'function') {
+        orig.updateOptions({
+          folding: true,
+          foldingStrategy: 'auto',
+          showFoldingControls: 'always',
+          stickyScroll: {
+            enabled: true,
+            maxLineCount: 8,
+            defaultModel: 'foldingProviderModel'
+          }
+        });
+      }
+      if (mod && typeof mod.updateOptions === 'function') {
+        mod.updateOptions({
+          folding: true,
+          foldingStrategy: 'auto',
+          showFoldingControls: 'always',
+          stickyScroll: {
+            enabled: true,
+            maxLineCount: 8,
+            defaultModel: 'foldingProviderModel'
+          }
+        });
+      }
       setTimeout(() => { try { applyDiffDecorations(); } catch (_) {} }, 50);
     } catch (e) { /* ignore */ }
   } catch (e) {
@@ -735,5 +759,15 @@ function exportsApplyFold(ranges) {
 .diff-text-wrapper .fallback-pre .line.unchanged { color: var(--color-text-tertiary); padding:2px 6px; display:block; }
 .diff-text-wrapper .fallback-pre .inline-added { background: rgba(16,185,129,0.20); color: #064e3b; padding: 0 2px; border-radius: 2px; }
 .diff-text-wrapper .fallback-pre .inline-removed { background: rgba(239,68,68,0.12); color: #7f1d1d; text-decoration: line-through; padding: 0 2px; border-radius: 2px; }
-.diff-text-wrapper .fold-toggle { display:inline-block; padding:2px 8px; margin:6px 0; background: rgba(0,0,0,0.08); border-radius:12px; cursor:pointer; font-size:12px; color:var(--color-text-tertiary); }
+
+  .diff-text-wrapper .fold-toggle {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 6px 0;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+  }
 </style>

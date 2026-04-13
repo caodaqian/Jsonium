@@ -12,22 +12,24 @@ export const AI_PROVIDERS = {
   UTOOLS: 'utools'
 };
 
+import { getStringifyIndent } from '../utils/indent.js';
+
 /**
  * 调用 AI 处理 JSON
  */
 export async function processWithAI(jsonData, instruction, aiConfig) {
   try {
     const { provider = AI_PROVIDERS.OPENAI, apiKey, model = 'gpt-3.5-turbo', endpoint, timeout = 30000 } = aiConfig || {};
-    
+
     // utools provider 不需要 API Key；其它 provider 继续校验
     if (provider !== AI_PROVIDERS.UTOOLS && !apiKey) {
       return { success: false, error: 'API Key 未配置' };
     }
-    
+
     const prompt = buildPrompt(jsonData, instruction);
-    
+
     let result;
-    
+
     switch (provider) {
       case AI_PROVIDERS.OPENAI:
         result = await callOpenAI(prompt, apiKey, model, { timeout });
@@ -44,18 +46,18 @@ export async function processWithAI(jsonData, instruction, aiConfig) {
       default:
         return { success: false, error: `未知的 AI 提供商: ${provider}` };
     }
-    
+
     if (!result.success) {
       return result;
     }
-    
+
     // 尝试解析响应为 JSON；若失败且配置允许，则尝试一次“仅返回 JSON”的重试（可配置）
     try {
       // 先尝试直接解析整体响应
       const directParsed = JSON.parse(result.data);
       return {
         success: true,
-        data: JSON.stringify(directParsed, null, 2),
+        data: JSON.stringify(directParsed, null, getStringifyIndent()),
         rawResponse: result.data,
         originalFormat: 'JSON'
       };
@@ -67,7 +69,7 @@ export async function processWithAI(jsonData, instruction, aiConfig) {
           const parsedBlock = JSON.parse(jsonMatch[1]);
           return {
             success: true,
-            data: JSON.stringify(parsedBlock, null, 2),
+            data: JSON.stringify(parsedBlock, null, getStringifyIndent()),
             rawResponse: result.data,
             originalFormat: 'JSON'
           };
@@ -83,7 +85,7 @@ export async function processWithAI(jsonData, instruction, aiConfig) {
           if (retryResult && retryResult.parsed) {
             return {
               success: true,
-              data: JSON.stringify(retryResult.parsed, null, 2),
+              data: JSON.stringify(retryResult.parsed, null, getStringifyIndent()),
               rawResponse: retryResult.raw || result.data,
               originalFormat: 'JSON',
               retry: true
@@ -116,12 +118,12 @@ function buildPrompt(jsonData, instruction) {
   let jsonStr = jsonData;
   if (typeof jsonData !== 'string') {
     try {
-      jsonStr = JSON.stringify(jsonData, null, 2);
+      jsonStr = JSON.stringify(jsonData, null, getStringifyIndent());
     } catch (e) {
       jsonStr = String(jsonData);
     }
   }
-  
+
   return `你是一个 JSON 处理助手。根据以下指示操作提供的 JSON 数据。
 
 JSON 数据:
@@ -167,7 +169,7 @@ async function callOpenAI(prompt, apiKey, model) {
         max_tokens: 2000
       })
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       return {
@@ -175,14 +177,14 @@ async function callOpenAI(prompt, apiKey, model) {
         error: error.error?.message || '调用失败'
       };
     }
-    
+
     const data = await response.json();
     const content = data.choices[0]?.message?.content;
-    
+
     if (!content) {
       return { success: false, error: '未获取到响应' };
     }
-    
+
     return { success: true, data: content };
   } catch (e) {
     return { success: false, error: e.message };
@@ -212,7 +214,7 @@ async function callClaude(prompt, apiKey, model) {
         ]
       })
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       return {
@@ -220,14 +222,14 @@ async function callClaude(prompt, apiKey, model) {
         error: error.error?.message || '调用失败'
       };
     }
-    
+
     const data = await response.json();
     const content = data.content[0]?.text;
-    
+
     if (!content) {
       return { success: false, error: '未获取到响应' };
     }
-    
+
     return { success: true, data: content };
   } catch (e) {
     return { success: false, error: e.message };
@@ -242,7 +244,7 @@ async function callCustomAPI(prompt, apiKey, endpoint, model) {
     if (!endpoint) {
       return { success: false, error: '自定义端点未配置' };
     }
-    
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -255,21 +257,21 @@ async function callCustomAPI(prompt, apiKey, endpoint, model) {
         max_tokens: 2000
       })
     });
-    
+
     if (!response.ok) {
       return {
         success: false,
         error: `请求失败: ${response.statusText}`
       };
     }
-    
+
     const data = await response.json();
     let content = data.choices?.[0]?.text || data.content || data.result || data.message;
-    
+
     if (!content) {
       return { success: false, error: '未获取到响应' };
     }
-    
+
     return { success: true, data: content };
   } catch (e) {
     return { success: false, error: e.message };
@@ -473,20 +475,20 @@ export async function fetchUtoolsModels() {
  */
 export function validateAIConfig(config) {
   const { provider, apiKey } = config || {};
-  
+
   if (!provider) {
     return { valid: false, message: '未选择 AI 提供商' };
   }
-  
+
   // uTools provider 可以依赖宿主环境，不需要 API Key
   if (provider !== AI_PROVIDERS.UTOOLS && !apiKey) {
     return { valid: false, message: 'API Key 未设置' };
   }
-  
+
   if (provider === AI_PROVIDERS.CUSTOM && !config.endpoint) {
     return { valid: false, message: '自定义端点未设置' };
   }
-  
+
   return { valid: true };
 }
 
@@ -537,7 +539,7 @@ export const AI_INSTRUCTION_TEMPLATES = [
  */
 export function downloadAIResult(result, filename = 'ai-result.json') {
   try {
-    const content = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    const content = typeof result === 'string' ? result : JSON.stringify(result, null, getStringifyIndent());
     const blob = new Blob([content], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -545,7 +547,7 @@ export function downloadAIResult(result, filename = 'ai-result.json') {
     link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
-    
+
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };

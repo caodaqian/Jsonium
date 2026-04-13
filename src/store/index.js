@@ -224,6 +224,13 @@ export const useJsonStore = defineStore('json', () => {
     preserveWhitespaceOnCopy: true,
     // 新增：格式检测模式，'lenient' | 'strict'
     formatDetectorMode: 'lenient'
+    ,
+    // 新增：是否启用编辑器的粘性节点（sticky）功能
+    stickyEnabled: true
+    ,
+    // 新增：编辑缩进配置
+    useTab: true,
+    tabSize: 4
   });
 
   const showDiffSidebar = (leftContent = '') => {

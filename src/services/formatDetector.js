@@ -1,6 +1,7 @@
-import JSON5 from 'json5';
 import YAML from 'js-yaml';
+import JSON5 from 'json5';
 import { parseStringPromise } from 'xml2js';
+import { getStringifyIndent, getTabSize } from '../utils/indent.js';
 
 /**
  * 格式识别引擎 - 按优先级识别输入格式
@@ -22,7 +23,7 @@ export const FORMAT_TYPES = {
 export function isBase64(str) {
   if (typeof str !== 'string') return false;
   if (str.length < 10) return false;
-  
+
   try {
     const decoded = atob(str);
     // 尝试解析为 JSON
@@ -90,7 +91,7 @@ export function isJson5(str) {
   try {
     const trimmed = str.trim();
     if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
-    
+
     JSON5.parse(trimmed);
     // 检查是否包含 JSON5 特性
     return trimmed.includes("'") || trimmed.includes('//') || trimmed.includes('/*') || !trimmed.includes('"');
@@ -186,7 +187,7 @@ export function parseJson5(str) {
     const data = JSON5.parse(str);
     return {
       success: true,
-      data: JSON.stringify(data, null, 2),
+      data: JSON.stringify(data, null, getStringifyIndent()),
       format: FORMAT_TYPES.JSON5
     };
   } catch (e) {
@@ -202,7 +203,7 @@ export function parseYaml(str) {
     const data = YAML.load(str);
     return {
       success: true,
-      data: JSON.stringify(data, null, 2),
+      data: JSON.stringify(data, null, getStringifyIndent()),
       format: FORMAT_TYPES.YAML
     };
   } catch (e) {
@@ -218,7 +219,7 @@ export async function parseXml(str) {
     const data = await parseStringPromise(str);
     return {
       success: true,
-      data: JSON.stringify(data, null, 2),
+      data: JSON.stringify(data, null, getStringifyIndent()),
       format: FORMAT_TYPES.XML
     };
   } catch (e) {
@@ -234,7 +235,7 @@ export function formatJson(str) {
     const data = JSON.parse(str);
     return {
       success: true,
-      data: JSON.stringify(data, null, 2),
+      data: JSON.stringify(data, null, getStringifyIndent()),
       format: FORMAT_TYPES.JSON
     };
   } catch (e) {
@@ -264,7 +265,7 @@ export async function detectAndConvert(input, options = { mode: 'lenient' }) {
   // Two detection orders:
   // strict:
   //   JSON -> ESCAPED_JSON -> BASE64 -> JSON5 -> XML -> YAML
-  // lenient (legacy behavior similar to prior): 
+  // lenient (legacy behavior similar to prior):
   //   BASE64 -> ESCAPED_JSON -> JSON -> JSON5 -> XML -> YAML
 
   if (mode === 'strict') {
@@ -368,32 +369,32 @@ export async function detectAndConvert(input, options = { mode: 'lenient' }) {
 export async function toFormat(data, format) {
   try {
     let content;
-    
+
     if (typeof data === 'string') {
       content = JSON.parse(data);
     } else {
       content = data;
     }
-    
+
     switch (format) {
       case FORMAT_TYPES.JSON:
         return {
           success: true,
-          data: JSON.stringify(content, null, 2)
+          data: JSON.stringify(content, null, getStringifyIndent())
         };
-      
+
       case FORMAT_TYPES.JSON5:
         return {
           success: true,
-          data: JSON5.stringify(content, null, 2)
+          data: JSON5.stringify(content, null, getStringifyIndent())
         };
-      
+
       case FORMAT_TYPES.YAML:
         return {
           success: true,
-          data: YAML.dump(content, { indent: 2 })
+          data: YAML.dump(content, { indent: getTabSize() })
         };
-      
+
       case 'xml':
         // 简单的 JSON 转 XML（需要自定义实现）
         const xml = jsonToXml(content);
@@ -401,20 +402,20 @@ export async function toFormat(data, format) {
           success: true,
           data: xml
         };
-      
+
       case 'escaped':
         return {
           success: true,
           data: JSON.stringify(JSON.stringify(content))
         };
-      
+
       case 'base64':
         const jsonStr = JSON.stringify(content);
         return {
           success: true,
           data: btoa(jsonStr)
         };
-      
+
       default:
         return { success: false, error: `不支持的格式: ${format}` };
     }
@@ -429,16 +430,16 @@ export async function toFormat(data, format) {
 function jsonToXml(obj, rootName = 'root') {
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   xml += `<${rootName}>`;
-  
+
   function buildXml(obj) {
     if (obj === null || obj === undefined) {
       return '';
     }
-    
+
     if (typeof obj === 'string' || typeof obj === 'number' || typeof obj === 'boolean') {
       return String(obj);
     }
-    
+
     if (Array.isArray(obj)) {
       return obj.map((item) => {
         if (typeof item === 'object') {
@@ -447,7 +448,7 @@ function jsonToXml(obj, rootName = 'root') {
         return `<item>${escapeXml(String(item))}</item>`;
       }).join('');
     }
-    
+
     if (typeof obj === 'object') {
       return Object.entries(obj).map(([key, value]) => {
         const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -460,13 +461,13 @@ function jsonToXml(obj, rootName = 'root') {
         return `<${safeKey}>${escapeXml(String(value))}</${safeKey}>`;
       }).join('');
     }
-    
+
     return '';
   }
-  
+
   xml += buildXml(obj);
   xml += `</${rootName}>`;
-  
+
   return xml;
 }
 

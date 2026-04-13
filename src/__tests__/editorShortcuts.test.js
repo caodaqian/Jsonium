@@ -1,10 +1,10 @@
-import { mount, flushPromises } from '@vue/test-utils';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { nextTick } from 'vue';
-import { createPinia, setActivePinia } from 'pinia';
-import StatusBar from '../components/StatusBar.vue';
-import Editor from '../components/Editor.vue';
+import { flushPromises, mount } from '@vue/test-utils';
 import { KeyCode, KeyMod } from 'monaco-editor';
+import { createPinia, setActivePinia } from 'pinia';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
+import Editor from '../components/Editor.vue';
+import StatusBar from '../components/StatusBar.vue';
 
 const waitForEditorSetup = async () => {
   await flushPromises();

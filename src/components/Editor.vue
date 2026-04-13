@@ -13,6 +13,7 @@ import {
 } from '../services/editorFormatting.js';
 import { extractPathFromText } from '../services/pathExtraction.js';
 import { useJsonStore } from '../store/index.js';
+  import { getStringifyIndent } from '../utils/indent.js';
 
   const props = defineProps({
     content: {
@@ -56,6 +57,12 @@ import { useJsonStore } from '../store/index.js';
   let adjustWrap = null;
   let themeAppliedHandler = null;
   let themeRefreshRaf = null;
+  let markerChangeDisposable = null;
+  const jsonErrors = ref([]);
+  const jsonValidationReady = ref(false);
+
+  const firstJsonError = computed(() => jsonErrors.value[0] || null);
+  const hasJsonError = computed(() => jsonErrors.value.length > 0);
 
   // modifierHandler keeps track of modifier keys across separate key events (helps when Alt/Shift are pressed in sequence)
   const modifierHandler = (e) => {
@@ -320,6 +327,7 @@ import { useJsonStore } from '../store/index.js';
       // 优先加载 ESM 编辑器 API（兼容 vite 的打包方式）
       try {
         const m = await import('monaco-editor/esm/vs/editor/editor.api');
+        try { await import('monaco-editor/esm/vs/editor/contrib/stickyScroll/browser/stickyScrollContribution'); } catch (_) { /* ignore */ }
         // normalize module shape: prefer default.editor, then module.editor, then window.monaco
         if (m && Object.keys(m).length) {
           monaco = (m.default && m.default.editor) ? m.default : m;
@@ -353,9 +361,8 @@ import { useJsonStore } from '../store/index.js';
       // 配置 JSON 诊断/校验选项（若可用）
     if (monaco && monaco.languages && monaco.languages.json && monaco.languages.json.jsonDefaults) {
       try {
-        // 禁用远程 schema 请求与代码验证以避免 worker 发起 fetch/loadForeignModule 导致错误
         monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-          validate: false,
+          validate: true,
           enableSchemaRequest: false,
           allowComments: true,
           schemas: [] // 可在此加入 JSON Schema 强化自动补全与校验
@@ -383,6 +390,12 @@ import { useJsonStore } from '../store/index.js';
     cancelScheduledAutoFormat(scheduleState);
     hideEditorContextMenu();
     try {
+      try {
+        if (markerChangeDisposable && typeof markerChangeDisposable.dispose === 'function') {
+          markerChangeDisposable.dispose();
+        }
+      } catch (_) { }
+      markerChangeDisposable = null;
       try {
         if (themeAppliedHandler && typeof window !== 'undefined') {
           window.removeEventListener('jsonium-theme-applied', themeAppliedHandler);
@@ -660,16 +673,54 @@ function initEditor() {
       fontFamily: settings.fontFamily || undefined,
       minimap: { enabled: settings.minimap !== false },
       folding: settings.folding !== false,
+      foldingStrategy: 'auto',
+      showFoldingControls: 'always',
       lineNumbers: settings.lineNumbers !== false ? 'on' : 'off',
+      stickyScroll: {
+        enabled: !!settings.stickyEnabled,
+        maxLineCount: 8,
+        defaultModel: 'foldingProviderModel'
+      },
       wordWrap: initialWordWrap,
       wordWrapColumn: initialWordWrapColumn,
       automaticLayout: true,
-      tabSize: 2,
-      insertSpaces: true,
+      tabSize: (typeof settings.tabSize === 'number' ? settings.tabSize : 2),
+      insertSpaces: !settings.useTab,
       formatOnPaste: true,
       scrollBeyondLastLine: false,
       'bracketPairColorization.enabled': true
     });
+
+  const refreshJsonErrors = () => {
+    try {
+      if (!monaco || !editor || !editor.getModel) return;
+      const model = editor.getModel();
+      if (!model || !model.uri || !monaco.editor || typeof monaco.editor.getModelMarkers !== 'function') return;
+      const markers = monaco.editor.getModelMarkers({ resource: model.uri }) || [];
+      const onlyErrors = markers.filter((m) => m && m.severity === monaco.MarkerSeverity.Error);
+      jsonErrors.value = onlyErrors;
+      jsonValidationReady.value = true;
+    } catch (_) {
+      jsonErrors.value = [];
+      jsonValidationReady.value = true;
+    }
+  };
+
+  try {
+    if (markerChangeDisposable && typeof markerChangeDisposable.dispose === 'function') {
+      markerChangeDisposable.dispose();
+    }
+    markerChangeDisposable = monaco.editor.onDidChangeMarkers((resources) => {
+      try {
+        const model = editor && editor.getModel ? editor.getModel() : null;
+        if (!model || !model.uri || !Array.isArray(resources)) return;
+        const hit = resources.some((u) => String(u) === String(model.uri));
+        if (hit) refreshJsonErrors();
+      } catch (_) { }
+    });
+  } catch (_) { }
+
+  try { setTimeout(refreshJsonErrors, 0); } catch (_) { }
 
     // Ensure initial wrap reflects current settings immediately
     try { adjustWrap && adjustWrap(); } catch (_) {}
@@ -718,7 +769,17 @@ function initEditor() {
       { deep: true }
     );
   } catch (_) {}
-  installThemeRefreshListener();
+        installThemeRefreshListener();
+        // 监听粘性节点设置变更，动态更新编辑器选项
+        try {
+          watch(() => store.editorSettings.stickyEnabled, (nv) => {
+            try {
+              if (editor && typeof editor.updateOptions === 'function') {
+                editor.updateOptions({ stickyScroll: { enabled: !!nv } });
+              }
+            } catch (_) { }
+          });
+        } catch (_) { }
         resizeObserver.observe(editorContainer.value);
       } else {
         // fallback to window resize
@@ -736,6 +797,11 @@ function initEditor() {
         // watch font size / family and apply to editor options
         watch(() => store.editorSettings.fontSize, (n) => { try { if (editor) editor.updateOptions({ fontSize: n || 14 }); } catch (_) {} });
         watch(() => store.editorSettings.fontFamily, (f) => { try { if (editor) editor.updateOptions({ fontFamily: f || undefined }); } catch (_) {} });
+        // watch tab size and tab style (useTab) and apply to editor
+        try {
+          watch(() => store.editorSettings.tabSize, (n) => { try { if (editor) editor.updateOptions({ tabSize: n || 2 }); } catch (_) { } });
+          watch(() => store.editorSettings.useTab, (v) => { try { if (editor) editor.updateOptions({ insertSpaces: !v }); } catch (_) { } });
+        } catch (_) { }
       } catch (_) {}
     } catch (_) {}
 
@@ -755,6 +821,7 @@ function initEditor() {
       if (__applyingEdit) return;
       const content = editor.getValue();
       emit('change', content);
+      try { refreshJsonErrors(); } catch (_) { }
 
       if (!props.autoFormat) return;
 
@@ -1058,6 +1125,24 @@ function initEditor() {
     try { window.addEventListener('keyup', modifierHandler); } catch (e) { }
   }
 
+  function focusFirstJsonError() {
+    try {
+      if (!editor || !firstJsonError.value) return;
+      const marker = firstJsonError.value;
+      const lineNumber = marker.startLineNumber || 1;
+      const column = marker.startColumn || 1;
+      if (typeof editor.revealPositionInCenter === 'function') {
+        editor.revealPositionInCenter({ lineNumber, column });
+      }
+      if (typeof editor.setPosition === 'function') {
+        editor.setPosition({ lineNumber, column });
+      }
+      if (typeof editor.focus === 'function') {
+        editor.focus();
+      }
+    } catch (_) { }
+  }
+
   /**
    * formatJson: unified formatting entry.
    * Delegates to runEditorFormat which uses the registered formatting provider (incremental edits)
@@ -1227,7 +1312,7 @@ function initEditor() {
     const parsed = JSON.parse(String(text));
     const source = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
     const unescaped = JSON.parse(source);
-    return JSON.stringify(unescaped, null, 2);
+    return JSON.stringify(unescaped, null, getStringifyIndent());
   }
 
   async function escapeCurrentDocument() {
@@ -1259,7 +1344,7 @@ function initEditor() {
         unescaped = unescapeWholeDocument(source);
       } catch (_) {
         const parsed = JSON.parse(JSON.parse(String(source)));
-        unescaped = JSON.stringify(parsed, null, 2);
+        unescaped = JSON.stringify(parsed, null, getStringifyIndent());
       }
 
       applyEdit(unescaped);
@@ -1514,11 +1599,11 @@ function initEditor() {
       let out = txt;
       try {
         const parsed = JSON.parse(String(txt));
-        out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+        out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, getStringifyIndent());
       } catch (e) {
         try {
           const parsed = JSON.parse(JSON.parse(String(txt)));
-          out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+          out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, getStringifyIndent());
         } catch (_) {
           out = String(txt);
         }
@@ -1543,6 +1628,19 @@ function initEditor() {
 
 <template>
   <div class="editor-wrapper">
+    <div v-if="jsonValidationReady" class="json-validation-bar" :class="hasJsonError ? 'is-error' : 'is-ok'">
+      <div class="json-validation-main">
+        <span class="json-validation-dot"></span>
+        <span v-if="hasJsonError" class="json-validation-text">
+          JSON 无效: 第 {{ firstJsonError.startLineNumber }} 行, 第 {{ firstJsonError.startColumn }} 列 -
+          {{ firstJsonError.message }}
+        </span>
+        <span v-else class="json-validation-text">JSON 有效</span>
+      </div>
+      <button v-if="hasJsonError" type="button" class="json-validation-action" @click="focusFirstJsonError">
+        定位到错误
+      </button>
+    </div>
     <div ref="editorContainer" class="editor-container"></div>
   </div>
 
@@ -1580,6 +1678,71 @@ function initEditor() {
     display: flex;
     flex-direction: column;
     background: var(--color-bg-primary);
+  }
+
+  .json-validation-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--color-divider);
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .json-validation-main {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .json-validation-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+  }
+
+  .json-validation-text {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .json-validation-bar.is-error {
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+    color: var(--color-danger);
+  }
+
+  .json-validation-bar.is-error .json-validation-dot {
+    background: var(--color-danger);
+  }
+
+  .json-validation-bar.is-ok {
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    color: var(--color-success);
+  }
+
+  .json-validation-bar.is-ok .json-validation-dot {
+    background: var(--color-success);
+  }
+
+  .json-validation-action {
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+
+  .json-validation-action:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
   }
 
   .editor-container {

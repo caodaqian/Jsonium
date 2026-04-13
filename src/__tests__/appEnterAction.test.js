@@ -100,4 +100,26 @@ describe('App plugin enter integration', () => {
 		expect(capturedJsonProcessorProps.enterAction.code).toBe('process');
 		expect(capturedJsonProcessorProps.enterAction.type).toBe('regex');
 	});
+
+	it('reads clipboard text on command entry when payload is not structured content', async () => {
+		mount(App, {
+			global: {
+				stubs: {
+					Hello: true,
+					Toast: true
+				}
+			}
+		});
+
+		expect(typeof pluginEnterCallback).toBe('function');
+
+		await pluginEnterCallback({ code: 'process', type: 'cmd', payload: 'json' });
+		await flushPromises();
+		await nextTick();
+
+		expect(window.services.readClipboardText).toHaveBeenCalled();
+		expect(capturedJsonProcessorProps.enterAction.text).toBe('{"fromClipboard":true}');
+		expect(capturedJsonProcessorProps.enterAction.code).toBe('process');
+		expect(capturedJsonProcessorProps.enterAction.type).toBe('cmd');
+	});
 });
