@@ -405,7 +405,7 @@ export function extractPathFromText(text, options = {}) {
 			&& options.selectionEnd > options.selectionStart
 		) {
 			const selectionNode = findDeepestNodeForRange(root, options.selectionStart, options.selectionEnd);
-			if (selectionNode) {
+			if (selectionNode && Array.isArray(selectionNode.path) && selectionNode.path.length > 0) {
 				node = selectionNode;
 				source = 'selection';
 			}

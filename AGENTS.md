@@ -9,9 +9,6 @@ Quick commands
 Use the npm scripts declared in `package.json`.
 
 ```
-# Start dev server (Vite)
-npm run dev
-
 # Build for production
 npm run build
 

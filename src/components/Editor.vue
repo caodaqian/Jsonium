@@ -1264,16 +1264,16 @@ function initEditor() {
         allowFallback: true,
         monacoInstance: monaco
       });
-      
+
       // Only trigger layout if formatting actually applied or noop
       if (result && (result.status === 'applied' || result.status === 'no-op')) {
         // Recalculate editor layout and scrollbar after formatting
         // This is especially important when a long single-line JSON is formatted into multiple lines
-        
+
         if (editor && typeof editor.layout === 'function') {
           // Immediate layout call
           editor.layout();
-          
+
           // Force viewport width recalculation by temporarily modifying container
           await new Promise(resolve => {
             requestAnimationFrame(() => {
@@ -1288,7 +1288,7 @@ function initEditor() {
               resolve();
             });
           });
-          
+
           // Final RAF cycle to stabilize
           await new Promise(resolve => {
             requestAnimationFrame(() => {
@@ -1922,14 +1922,12 @@ function initEditor() {
   }
 
   /* Ensure Monaco's find widget floats over the editor and matches theme colors */
-  /* Show when find-widget is expanded (.replaceToggled or .visible classes) */
-  ::v-deep .editor-widget.find-widget.visible,
-  ::v-deep .editor-widget.find-widget.replaceToggled {
+  /* Only show while Monaco marks it visible; replaceToggled can remain set after close */
+  ::v-deep .editor-widget.find-widget.visible {
     position: absolute !important;
     top: 12px !important;
     right: 12px !important;
     left: auto !important;
-    width: auto !important;
     height: auto !important;
     min-height: auto !important;
     min-width: 260px;
@@ -2008,14 +2006,32 @@ function initEditor() {
   }
 
   /* Hide find-widget when not active */
-  ::v-deep .editor-widget.find-widget:not(.visible):not(.replaceToggled) {
+  ::v-deep .editor-widget.find-widget:not(.visible) {
     opacity: 0 !important;
     pointer-events: none !important;
     display: none !important;
     transform: translateY(-4px) scale(0.98) !important;
   }
 
+  /* Force inner Monaco find inputs to align with visible UI and remove transforms that shift click target */
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox .monaco-inputbox-input,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox textarea,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox .input {
+    position: static !important;
+    display: block !important;
+    width: calc(100% - 86px) !important;
+    height: 28px !important;
+    box-sizing: border-box !important;
+    transform: none !important;
+    margin: 0 !important;
+    padding: 6px 8px !important;
+  }
 
+  /* ensure container uses normal flow so click area matches visual */
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox {
+    position: static !important;
+    transform: none !important;
+  }
 
   .editor-context-menu {
     position: fixed;

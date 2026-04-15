@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import { flushPromises, mount } from '@vue/test-utils';
 import { KeyCode, KeyMod } from 'monaco-editor';
 import { createPinia, setActivePinia } from 'pinia';
@@ -13,11 +16,19 @@ const waitForEditorSetup = async () => {
   await nextTick();
 };
 
+const waitForMonacoEditor = async () => {
+  for (let attempts = 0; attempts < 50 && !globalThis.__monacoLastEditor; attempts += 1) {
+    await flushPromises();
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+};
+
 describe('editor shortcut registrations', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     globalThis.__monacoLastEditor = null;
-    window.utools = { copyText: vi.fn() };
+    globalThis.utools = { copyText: vi.fn() };
   });
 
   afterEach(() => {
@@ -32,6 +43,7 @@ describe('editor shortcut registrations', () => {
     });
 
     await waitForEditorSetup();
+    await waitForMonacoEditor();
 
     const editor = globalThis.__monacoLastEditor;
     expect(editor).toBeTruthy();
@@ -72,5 +84,15 @@ describe('editor shortcut registrations', () => {
 
     expect(wrapper.text()).toContain('格式化：Shift + Alt + F（备用：Cmd/Ctrl + Shift + F）');
     expect(wrapper.text()).toContain('复制当前 JSON：Shift + Alt + J（备用：Cmd/Ctrl + Shift + J）');
+  });
+
+  it('hides a closed replace-mode find widget even if replaceToggled stays on the element', async () => {
+    const sourcePath = path.resolve(process.cwd(), 'src/components/Editor.vue');
+    const source = readFileSync(sourcePath, 'utf8');
+
+    expect(source).toContain('::v-deep .editor-widget.find-widget.visible {');
+    expect(source).toContain('::v-deep .editor-widget.find-widget:not(.visible) {');
+    expect(source).not.toContain('::v-deep .editor-widget.find-widget.replaceToggled {');
+    expect(source).not.toContain(':not(.visible):not(.replaceToggled)');
   });
 });

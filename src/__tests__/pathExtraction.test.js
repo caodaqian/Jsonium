@@ -45,6 +45,23 @@ describe('pathExtraction', () => {
 		expect(result.jsonpath).toBe('$.store.book[0].title');
 	});
 
+	it('falls back to cursor when selection covers the full document', () => {
+		const text = '{"store":{"book":[{"title":"JS"}]}}';
+		const selectionStart = 0;
+		const selectionEnd = text.length;
+
+		const result = extractPathFromText(text, {
+			selectionStart,
+			selectionEnd,
+			cursorOffset: text.indexOf('JS')
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.source).toBe('cursor');
+		expect(result.jsonpath).toBe('$.store.book[0].title');
+		expect(result.jq).toBe('.store.book[0].title');
+	});
+
 	it('supports comments, single quotes, and trailing commas', () => {
 		const text = `
     {
