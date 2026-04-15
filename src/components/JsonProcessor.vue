@@ -724,6 +724,7 @@ onMounted(() => {
   flex: 1;
     position: relative;
 
+
  
   overflow: hidden;
   gap: 1px;
@@ -753,6 +754,7 @@ onMounted(() => {
   z-index: 10;
   flex-shrink: 0;
     box-shadow: -4px 0 12px rgba(0, 0, 0, 0.06);
+
  
 }
 
@@ -780,7 +782,8 @@ onMounted(() => {
   bottom: 60px;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-divider);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.16);
+
  
   z-index: 200000;
   display: flex;
@@ -812,6 +815,8 @@ onMounted(() => {
   flex: 0 0 340px;
   border-right: 1px solid var(--color-divider);
   overflow: auto;
+    background: var(--color-bg-secondary);
+ 
 }
 
 @media (max-width: 900px) {
@@ -830,21 +835,25 @@ onMounted(() => {
     max-width: 640px;
     z-index: 300001;
       box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+
  
     border-right: none;
-    border-radius: 8px;
+      border-radius: 4px;
+ 
     overflow: hidden;
   }
   .drawer-overlay {
     position: fixed;
     inset: 0;
       background: rgba(0, 0, 0, 0.12);
+
  
     z-index: 300000;
   }
   .control-panel-drawer {
     position: relative;
-    background: var(--color-bg-primary);
+      background: var(--color-bg-secondary);
+ 
     height: 100%;
     overflow: auto;
     padding: 12px;
@@ -867,6 +876,7 @@ onMounted(() => {
   position: fixed;
   inset: 0;
     background: rgba(0, 0, 0, 0.12);
+
  
   display: flex;
   align-items: center;
@@ -879,11 +889,13 @@ onMounted(() => {
   max-height: 80vh;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+    border-radius: 4px;
+ 
   display: flex;
   flex-direction: column;
   overflow: hidden;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+
  
 }
 .ai-raw-header {
@@ -944,9 +956,11 @@ onMounted(() => {
   transform: translateY(-50%);
   width: 44px;
   height: 44px;
-  border-radius: 999px;
+    border-radius: 4px;
+ 
   background: var(--color-bg-secondary);
-  backdrop-filter: blur(10px);
+    backdrop-filter: none;
+ 
   border: 1px solid var(--color-divider);
   display: flex;
   align-items: center;
@@ -963,14 +977,16 @@ onMounted(() => {
   opacity: 1;
   transform: translateY(-50%) scale(1.04);
   background: var(--color-bg-primary);
-  border-color: var(--color-primary-light);
+    border-color: var(--color-primary);
+ 
 }
 
 .global-sidebar-toggle.is-active {
   background: var(--color-primary);
   color: #fff;
   border-color: var(--color-primary);
-    box-shadow: 0 8px 24px rgba(198, 160, 246, 0.16);
+    box-shadow: none;
+
  
 }
 </style>

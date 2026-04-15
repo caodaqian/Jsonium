@@ -1,29 +1,27 @@
 /* Jsonium - 主题系统 */
 
 :root {
-  /* ======= Modern UI 全局圆角卡片变量 by frontend-design ======= */
-  --radius-card: 18px;
-  --radius-btn: 11px;
-  --radius-field: 8px;
-  --card-blur: blur(10px);
-  --card-shadow: 0 6px 28px 0 rgba(80, 78, 143, 0.12), 0 1.5px 4px 0 rgba(0, 0, 0, 0.06);
-  --nav-blur: blur(8px);
-  --transition-main: background 0.26s cubic-bezier(.4,.2,.3,1), color 0.22s, box-shadow .12s;
-  /* ======= End Modern UI variables ======= */
-  /* 浅色模式 - Catppuccin Latte */
-  --color-bg-primary: #eff1f5;
-  --color-bg-secondary: #e6e9f0;
-  --color-bg-tertiary: #dce0e8;
-  --color-text-primary: #4c4f69;
-  --color-text-secondary: #5c5f77;
-  --color-text-tertiary: #6c6f85;
+  --radius-card: 4px;
+    --radius-btn: 4px;
+    --radius-field: 4px;
+    --card-blur: none;
+    --card-shadow: none;
+    --nav-blur: none;
+    --transition-main: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    /* VS Code-like light surfaces with the current accent palette */
+    --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f3f3f3;
+    --color-bg-tertiary: #ececec;
+    --color-text-primary: #1e1e1e;
+    --color-text-secondary: #424242;
+    --color-text-tertiary: #6b6b6b;
 
-  /* Catppuccin Mauve - 紫色主色 */
-  --color-primary: #c6a0f6;
-  --color-primary-light: #d8b4fe;
-  --color-primary-lighter: #e5d5ff;
-  --color-primary-dark: #b47fd6;
-  --color-primary-darker: #a267c6;
+  /* Accent kept from the current theme system */
+    --color-primary: #007acc;
+    --color-primary-light: #66afe9;
+    --color-primary-lighter: #cfe8ff;
+    --color-primary-dark: #005a9e;
+    --color-primary-darker: #004578;
 
   /* 状态颜色 - Catppuccin */
   --color-success: #a6da95;
@@ -32,17 +30,17 @@
   --color-info: #85c1dc;
 
   /* 边框和分割线 */
-  --color-border: #bcc0cc;
-  --color-divider: #acb0be;
+  --color-border: #d0d0d0;
+    --color-divider: #e5e5e5;
 
   /* 其他 */
-  --color-hover-bg: #dfe1ea;
-  --color-active-bg: #d0d3e0;
+  --color-hover-bg: #e8e8e8;
+    --color-active-bg: #dcdcdc;
 
   /* 阴影 */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06);
+  --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
   /* 间距 */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -66,65 +64,64 @@
 /* 深色模式 - Catppuccin Macchiato */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg-primary: #24273a;
-    --color-bg-secondary: #363a4f;
-    --color-bg-tertiary: #494d64;
-    --color-text-primary: #cad3f5;
-    --color-text-secondary: #b8c5d6;
-    --color-text-tertiary: #a5adce;
+    --color-bg-primary: #1e1e1e;
+      --color-bg-secondary: #252526;
+      --color-bg-tertiary: #2d2d2d;
+      --color-text-primary: #d4d4d4;
+      --color-text-secondary: #c8c8c8;
+      --color-text-tertiary: #a0a0a0;
 
-    /* Catppuccin Mauve - 紫色主色 */
-    --color-primary: #c6a0f6;
-    --color-primary-light: #d8b4fe;
-    --color-primary-lighter: #e5d5ff;
-    --color-primary-dark: #b47fd6;
-    --color-primary-darker: #a267c6;
+    --color-primary: #3794ff;
+      --color-primary-light: #79c0ff;
+      --color-primary-lighter: #cfe8ff;
+      --color-primary-dark: #0e639c;
+      --color-primary-darker: #094771;
 
     /* 边框 */
-    --color-border: #5b6078;
-    --color-divider: #49506e;
+    --color-border: #3c3c3c;
+      --color-divider: #3f3f46;
 
     /* 其他 */
-    --color-hover-bg: #494d64;
-    --color-active-bg: #565b73;
+    --color-hover-bg: #2a2d2e;
+      --color-active-bg: #333333;
   }
 }
 
 /* 允许手动切换 */
 html.light-mode {
-  --color-bg-primary: #eff1f5;
-  --color-bg-secondary: #e6e9f0;
-  --color-bg-tertiary: #dce0e8;
-  --color-text-primary: #4c4f69;
-  --color-text-secondary: #5c5f77;
-  --color-text-tertiary: #6c6f85;
-  --color-primary: #c6a0f6;
-  --color-primary-light: #d8b4fe;
-  --color-primary-lighter: #e5d5ff;
-  --color-primary-dark: #b47fd6;
-  --color-primary-darker: #a267c6;
-  --color-border: #bcc0cc;
-  --color-divider: #acb0be;
-  --color-hover-bg: #dfe1ea;
-  --color-active-bg: #d0d3e0;
+  --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f3f3f3;
+    --color-bg-tertiary: #ececec;
+    --color-text-primary: #1e1e1e;
+    --color-text-secondary: #424242;
+    --color-text-tertiary: #6b6b6b;
+    --color-primary: #007acc;
+    --color-primary-light: #66afe9;
+    --color-primary-lighter: #cfe8ff;
+    --color-primary-dark: #005a9e;
+    --color-primary-darker: #004578;
+    --color-border: #d0d0d0;
+    --color-divider: #e5e5e5;
+    --color-hover-bg: #e8e8e8;
+    --color-active-bg: #dcdcdc;
 }
 
 html.dark-mode {
-  --color-bg-primary: #24273a;
-  --color-bg-secondary: #363a4f;
-  --color-bg-tertiary: #494d64;
-  --color-text-primary: #cad3f5;
-  --color-text-secondary: #b8c5d6;
-  --color-text-tertiary: #a5adce;
-  --color-primary: #c6a0f6;
-  --color-primary-light: #d8b4fe;
-  --color-primary-lighter: #e5d5ff;
-  --color-primary-dark: #b47fd6;
-  --color-primary-darker: #a267c6;
-  --color-border: #5b6078;
-  --color-divider: #49506e;
-  --color-hover-bg: #494d64;
-  --color-active-bg: #565b73;
+  --color-bg-primary: #1e1e1e;
+    --color-bg-secondary: #252526;
+    --color-bg-tertiary: #2d2d2d;
+    --color-text-primary: #d4d4d4;
+    --color-text-secondary: #c8c8c8;
+    --color-text-tertiary: #a0a0a0;
+    --color-primary: #3794ff;
+    --color-primary-light: #79c0ff;
+    --color-primary-lighter: #cfe8ff;
+    --color-primary-dark: #0e639c;
+    --color-primary-darker: #094771;
+    --color-border: #3c3c3c;
+    --color-divider: #3f3f46;
+    --color-hover-bg: #2a2d2e;
+    --color-active-bg: #333333;
 }
 
 /* 全局重置 */
@@ -140,7 +137,7 @@ html, body, #app {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-normal);
   line-height: 1.5;
@@ -154,13 +151,12 @@ button {
   font-family: inherit;
   font-size: inherit;
   cursor: pointer;
-  border: none;
-  border-radius: var(--radius-btn, 11px);
+  border-radius: var(--radius-btn, 4px);
   padding: var(--spacing-sm) var(--spacing-md);
   background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
-  box-shadow: 0 1.5px 6px rgba(76,78,120,0.08);
+  box-shadow: none;
   transition:
       background-color 0.18s,
       border-color 0.18s,
@@ -175,7 +171,6 @@ button {
 button:hover {
   background-color: var(--color-hover-bg);
   border-color: var(--color-primary);
-  color: var(--color-primary);
 }
 
 button:active {
@@ -189,18 +184,17 @@ button:disabled {
 }
 
 button.primary {
-  background: transparent;
-    /* 边框型主按钮：默认展示文字色，悬浮时填充主色以提高可读性 */
-    color: var(--color-primary);
-    border: 1.5px solid var(--color-primary);
+  background: var(--color-primary);
+    color: #ffffff;
+    border: 1px solid var(--color-primary-dark);
     box-shadow: none;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em;
 }
 
 button.primary:hover {
-  background-color: var(--color-primary);
-    border-color: var(--color-primary);
+  background-color: var(--color-primary-dark);
+    border-color: var(--color-primary-darker);
   color: #ffffff;
 }
 
@@ -215,17 +209,17 @@ input, textarea, select {
   font-size: var(--font-size-base);
   padding: var(--spacing-sm);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-field, 8px);
+  border-radius: var(--radius-field, 4px);
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   transition: box-shadow 0.16s, border-color 0.16s, background-color .22s;
-  box-shadow: 0 1.5px 6px rgba(76,78,120,0.065);
+  box-shadow: none;
 }
 
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(198, 160, 246, 0.06);
+  box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 select {
@@ -253,12 +247,12 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-primary-light);
+  background: #c1c1c1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-primary);
+  background: #a8a8a8;
 }
 
 /* 通用类 */
@@ -455,30 +449,30 @@ input[type="checkbox"] {
   padding: 7px 20px;
   font-size: 15px;
   font-weight: 500;
-  border-radius: var(--radius-btn, 11px);
-  border: 1px solid var(--color-primary, #c6a0f6);
-  background: linear-gradient(90deg, #ececff 70%, var(--color-primary-light, #d8b4fe) 100%);
-  color: var(--color-primary-darker, #a267c6);
+  border-radius: var(--radius-btn, 4px);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
   margin-right: 8px;
   margin-top: 3px;
   margin-bottom: 3px;
-  box-shadow: 0 1.5px 6px rgba(76, 78, 120, 0.035), 0 1.5px 6px rgba(198, 160, 246, 0.04);
+  box-shadow: none;
   transition: background .18s, border .18s, color .17s, box-shadow .14s;
 }
 .panel-btn.primary {
-  background: linear-gradient(92deg, var(--color-primary-light, #d8b4fe), var(--color-primary, #c6a0f6));
+  background: var(--color-primary, #007acc);
   color: #fff;
-  border-color: var(--color-primary, #c6a0f6);
-  box-shadow: 0 3px 14px -2px var(--color-primary-light, #d8b4fe);
+  border-color: var(--color-primary-dark, #005a9e);
+    box-shadow: none;
 }
 .panel-btn:hover,
 .panel-btn:focus {
-  background: var(--color-hover-bg, #dfe1ea);
-  color: var(--color-primary-darker, #a267c6);
-  border-color: var(--color-primary, #c6a0f6);
+  background: var(--color-hover-bg, #e8e8e8);
+    color: var(--color-text-primary);
+    border-color: var(--color-primary, #007acc);
 }
 .panel-btn.primary:hover,
 .panel-btn.primary:focus {
-  background: var(--color-primary-light, #d8b4fe);
+  background: var(--color-primary-dark, #005a9e);
   color: #fff;
 }

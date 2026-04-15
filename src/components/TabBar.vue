@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+  import { nextTick, ref, watch } from 'vue';
 
 const props = defineProps({
   tabs: {
@@ -50,6 +50,7 @@ const showMenu = ref(false);
 const menuX = ref(0);
 const menuY = ref(0);
 const menuTabId = ref(null);
+  const menuRef = ref(null);
 
 function onContextmenu(tab, e) {
   try {
@@ -58,6 +59,37 @@ function onContextmenu(tab, e) {
     menuX.value = e.clientX || 0;
     menuY.value = e.clientY || 0;
     e.preventDefault && e.preventDefault();
+
+    // Wait for menu element to render, then adjust to keep it inside viewport
+    nextTick(() => {
+      try {
+        const el = menuRef.value;
+        if (!el || typeof window === 'undefined') return;
+        const rect = el.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let left = menuX.value;
+        let top = menuY.value;
+
+        // If menu would overflow right edge, shift it left
+        if (left + rect.width > vw) {
+          left = Math.max(8, vw - rect.width - 8);
+        }
+
+        // If menu would overflow bottom edge, shift it up
+        if (top + rect.height > vh) {
+          top = Math.max(8, vh - rect.height - 8);
+        }
+
+        // If menu would overflow left/top (rare), clamp to small margin
+        if (left < 8) left = 8;
+        if (top < 8) top = 8;
+
+        menuX.value = left;
+        menuY.value = top;
+      } catch (_) { }
+    });
   } catch (err) {
     // ignore
   }
@@ -126,7 +158,8 @@ watch(showMenu, (v) => {
       </div>
     </div>
 
-    <div v-if="showMenu" class="tab-context-menu" :style="{ left: menuX + 'px', top: menuY + 'px' }" @click.stop>
+    <div v-if="showMenu" ref="menuRef" class="tab-context-menu" :style="{ left: menuX + 'px', top: menuY + 'px' }"
+      @click.stop>
       <ul class="menu-list">
         <li @click.stop="onMenuAction('close')">关闭此标签页</li>
         <li @click.stop="onMenuAction('closeOthers')">关闭其他标签页</li>
@@ -147,17 +180,20 @@ watch(showMenu, (v) => {
 <style scoped>
 .tab-bar {
   display: flex;
-  gap: 2px;
+    gap: 1px;
+ 
   background: var(--color-bg-secondary);
-  padding: 3px;
-  border-radius: 4px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--color-divider);
+ 
   align-items: center;
   overflow-x: auto;
 }
 
 .tabs-scroll {
   display: flex;
-  gap: 2px;
+    gap: 1px;
+ 
   flex: 1;
   overflow-x: auto;
   min-width: 0;
@@ -166,29 +202,34 @@ watch(showMenu, (v) => {
 .tab {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 6px;
+    gap: 6px;
+    padding: 8px 10px 9px;
+ 
   background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: 3px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+ 
   cursor: pointer;
   white-space: nowrap;
-  font-size: 11px;
+    font-size: 12px;
+ 
   transition: all 0.2s;
   flex-shrink: 0;
   color: var(--color-text-primary);
 }
 
 .tab:hover {
-  background: var(--color-hover-bg);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-bg-primary) 90%, var(--color-bg-secondary));
+ 
 }
 
 .tab.active {
   background: var(--color-bg-primary);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+    border-color: var(--color-divider);
+    border-bottom-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+ 
   font-weight: 500;
 }
 
@@ -211,10 +252,13 @@ watch(showMenu, (v) => {
 }
 
 .tab-star {
-  margin-right: 6px;
+    margin-right: 2px;
+ 
   color: var(--color-primary);
-  font-size: 12px;
+    font-size: 11px;
+ 
 }
+
 
  
 .tab-context-menu {
@@ -222,10 +266,11 @@ watch(showMenu, (v) => {
   z-index: 99999;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.09);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
  
   border-radius: 4px;
-  padding: 6px 0;
+    padding: 4px 0;
+ 
   min-width: 140px;
 }
 
@@ -252,10 +297,12 @@ watch(showMenu, (v) => {
 
 .tab-input {
   width: 80px;
-  padding: 2px 4px;
+    padding: 2px 6px;
+ 
   border: 1px solid var(--color-primary);
-  border-radius: 2px;
-  font-size: 11px;
+    border-radius: 3px;
+    font-size: 12px;
+ 
   outline: none;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
@@ -270,9 +317,11 @@ watch(showMenu, (v) => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 14px;
+    font-size: 16px;
+ 
   color: var(--color-text-tertiary);
-  padding: 0 2px;
+    padding: 0 4px;
+ 
   line-height: 1;
   transition: color 0.2s;
 }
@@ -285,10 +334,12 @@ watch(showMenu, (v) => {
   background: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 3px;
-  padding: 3px 6px;
+    border-radius: 4px;
+    padding: 4px 8px;
+ 
   cursor: pointer;
-  font-size: 12px;
+    font-size: 13px;
+ 
   font-weight: bold;
   transition: background 0.2s;
   flex-shrink: 0;

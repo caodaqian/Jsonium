@@ -138,7 +138,8 @@ onBeforeUnmount(() => {
 .settings-overlay {
   position: fixed;
   inset: 0;
-    background: rgba(0, 0, 0, 0.10);
+    background: rgba(0, 0, 0, 0.14);
+
  
   display: flex;
   align-items: center;
@@ -147,9 +148,10 @@ onBeforeUnmount(() => {
 }
 .settings-panel {
   min-width: 340px;
-  background: var(--color-bg-secondary, #fff);
-  border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.10);
+    background: var(--color-bg-primary, #fff);
+    border-radius: 4px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+
  
   border: 1px solid var(--color-divider, #eee);
   display: flex;
@@ -159,20 +161,26 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 18px 8px 18px;
+    padding: 14px 16px 10px 16px;
+ 
   font-weight: 600;
-  font-size: 18px;
+    font-size: 15px;
+ 
   color: var(--color-text-primary, #333);
+    border-bottom: 1px solid var(--color-divider, #e5e5e5);
+ 
 }
 .close-btn {
   background: none;
   border: none;
-  font-size: 20px;
+    font-size: 18px;
+ 
   cursor: pointer;
   color: var(--color-text-tertiary, #aaa);
 }
 .settings-body {
-  padding: 8px 24px 18px 24px;
+    padding: 12px 18px 18px 18px;
+ 
 }
 .section {
   margin-bottom: 18px;
@@ -205,6 +213,7 @@ onBeforeUnmount(() => {
   }
 
 
+
  
 input[type="radio"] {
   accent-color: var(--color-primary, #42b883);
@@ -230,7 +239,7 @@ input[type="radio"] {
     font-size: 12px;
     line-height: 1;
     cursor: help;
-    border: 1px solid rgba(0, 0, 0, 0.02);
+    border: 1px solid var(--color-divider, #e5e5e5);
   }
 
   .info-icon:focus {

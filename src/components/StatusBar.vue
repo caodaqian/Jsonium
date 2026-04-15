@@ -291,6 +291,12 @@ const handleKeyDown = (e) => {
   }
 };
 
+  const clearQuery = () => {
+    queryExpression.value = '';
+    queryError.value = '';
+    queryResult.value = null;
+  };
+
 const copyToClipboard = async (format) => {
   // if no query result and content is empty-ish, do nothing
   if (!queryResult.value && (props.content === undefined || props.content === null || String(props.content).trim() === '')) return;
@@ -493,6 +499,10 @@ const unescapeJson = () => {
 
       <button class="query-btn primary" @click="executeQuery">⚙️</button>
 
+      <button class="query-close-btn" @click="clearQuery" title="清除查询" aria-label="清除查询">
+        ✕
+      </button>
+
       <div class="actions-inline" ref="actionsInlineRef">
         <!-- Format button removed: use editor context menu / Shift+Alt+F -->
 
@@ -655,7 +665,8 @@ aria-label="帮助"
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+    gap: 6px;
+ 
   width: 100%;
   margin-bottom: 0;
   /* prefer single-line layout; allow horizontal scroll instead of wrapping so buttons remain visible */
@@ -673,10 +684,12 @@ aria-label="帮助"
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 10px;
+    padding: 6px 8px;
+ 
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+    border-radius: 4px;
+ 
   font-weight: 600;
   font-size: var(--font-size-xs);
   color: var(--color-text-primary);
@@ -689,12 +702,14 @@ aria-label="帮助"
 
 .query-type-badge:hover {
   border-color: var(--color-primary);
-  color: var(--color-primary);
+    color: var(--color-text-primary);
+ 
   background: var(--color-hover-bg);
 }
 
 .query-type-badge.override {
-  background: rgba(79, 172, 254, 0.1);
+    background: color-mix(in srgb, var(--color-primary-lighter) 35%, var(--color-bg-primary));
+ 
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
@@ -763,6 +778,10 @@ aria-label="帮助"
     width: 0;
     max-width: none;
     padding: 6px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+
+
 
   border: 1px solid var(--color-border);
   border-radius: 4px;
@@ -783,6 +802,26 @@ aria-label="帮助"
   white-space: nowrap;
 }
 
+  .query-close-btn {
+    padding: 6px 10px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    transition: background 0.12s, color 0.12s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .query-close-btn:hover {
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+  }
+
+ 
 .query-error {
   padding: 6px 8px;
   background: rgba(239, 68, 68, 0.1);
@@ -795,10 +834,12 @@ aria-label="帮助"
 
 
 .action-btn {
-  padding: 6px;
+    padding: 5px 8px;
+ 
   background: transparent;
   border: none;
-  border-radius: 6px;
+    border-radius: 4px;
+ 
   cursor: pointer;
   font-size: var(--font-size-xs);
   transition: background 0.12s, transform 0.12s;
@@ -832,7 +873,8 @@ aria-label="帮助"
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   padding: 6px 8px;
-  border-radius: 6px;
+    border-radius: 4px;
+ 
   white-space: nowrap;
   box-shadow: var(--shadow-lg);
   font-size: var(--font-size-xs);
@@ -872,9 +914,10 @@ aria-label="帮助"
   .actions-inline::-webkit-scrollbar { height: 8px; }
 
     .actions-inline::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.04);
+      background: rgba(0, 0, 0, 0.12);
       border-radius: 999px;
     }
+
  
 }
 
@@ -888,8 +931,9 @@ aria-label="帮助"
     bottom: 0;
     margin: 0;
     padding: 10px 20px 12px calc(12px + env(safe-area-inset-left));
-    background: linear-gradient(180deg, var(--color-bg-secondary), rgba(0,0,0,0));
-    box-shadow: 0 -6px 18px rgba(0,0,0,0.06);
+      background: var(--color-bg-secondary);
+      box-shadow: none;
+ 
     max-height: none;
   }
 

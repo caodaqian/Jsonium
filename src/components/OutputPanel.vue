@@ -187,7 +187,8 @@ const showInSidebar = () => {
   background: var(--color-bg-primary);
   border-left: 1px solid var(--color-divider);
   overflow: hidden;
-  box-shadow: inset 1px 0 0 var(--color-divider);
+    box-shadow: none;
+ 
 }
 
 .output-header {
@@ -209,7 +210,8 @@ const showInSidebar = () => {
 }
 
 .output-tab {
-  padding: 6px 12px;
+    padding: 6px 10px;
+ 
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
@@ -228,9 +230,10 @@ const showInSidebar = () => {
 }
 
 .output-tab.active {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
+    background: var(--color-bg-primary);
+    color: var(--color-primary);
+    border-color: var(--color-divider);
+ 
 }
 
 .output-close {
@@ -260,7 +263,8 @@ const showInSidebar = () => {
   overflow: auto;
   margin: 0;
   padding: var(--spacing-md);
-  background: var(--color-bg-secondary);
+    background: var(--color-bg-primary);
+ 
   color: var(--color-text-primary);
   font-size: 12px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
@@ -300,7 +304,8 @@ const showInSidebar = () => {
   justify-content: center;
   gap: 6px;
   padding: 7px 12px;
-  border-radius: 999px;
+    border-radius: 4px;
+ 
   border: 1px solid var(--color-divider);
   background: color-mix(in srgb, var(--color-bg-secondary) 90%, var(--color-bg-primary));
   color: var(--color-text-primary);
@@ -325,8 +330,9 @@ const showInSidebar = () => {
 
 .output-action-btn--primary {
   border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-divider));
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-bg-secondary));
-  color: color-mix(in srgb, var(--color-primary) 72%, var(--color-text-primary));
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-primary));
+    color: var(--color-primary);
+ 
 }
 
 .output-action-btn--primary:hover {

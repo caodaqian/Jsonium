@@ -1,6 +1,9 @@
 <script setup>
   let monaco = null;
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+  // Ensure Monaco find/replace contributions are bundled (side-effect imports)
+  import 'monaco-editor/esm/vs/editor/contrib/find/browser/findController.js';
+  import 'monaco-editor/esm/vs/editor/contrib/find/browser/findWidget.js';
 import {
     cancelScheduledAutoFormat,
     computeMinimalEdits,
@@ -60,6 +63,67 @@ import { useJsonStore } from '../store/index.js';
   let markerChangeDisposable = null;
   const jsonErrors = ref([]);
   const jsonValidationReady = ref(false);
+
+  // --- 使用 Monaco 原生查找/替换 控件 ---
+  function openMonacoFind() {
+    try {
+      if (!editor) return;
+      // prefer action run if available
+      try {
+        const a = editor.getAction && editor.getAction('actions.find');
+        if (a && typeof a.run === 'function') { a.run(); return; }
+      } catch (_) { }
+      try { editor.trigger('keyboard', 'actions.find', null); } catch (_) { }
+
+      // After opening find widget, compensate for any layout shift by resetting scroll position
+      setTimeout(() => {
+        try {
+          if (editor && typeof editor.layout === 'function') {
+            editor.layout();
+          }
+        } catch (_) { }
+      }, 50);
+    } catch (_) { }
+  }
+
+  function openMonacoReplace() {
+    try {
+      if (!editor) return;
+      // open find+replace widget
+      try {
+        editor.trigger('keyboard', 'editor.action.startFindReplaceAction', null);
+        // After opening find-replace widget, compensate for layout shift
+        setTimeout(() => {
+          try {
+            if (editor && typeof editor.layout === 'function') {
+              editor.layout();
+            }
+          } catch (_) { }
+        }, 50);
+        return;
+      } catch (_) { }
+      try {
+        const a = editor.getAction && editor.getAction('editor.action.startFindReplaceAction');
+        if (a && typeof a.run === 'function') a.run();
+        // After opening find-replace widget, compensate for layout shift
+        setTimeout(() => {
+          try {
+            if (editor && typeof editor.layout === 'function') {
+              editor.layout();
+            }
+          } catch (_) { }
+        }, 50);
+      } catch (_) { }
+    } catch (_) { }
+  }
+
+  function monacoFindNext() {
+    try { if (!editor) return; editor.trigger('keyboard', 'editor.action.nextMatchFindAction', null); } catch (_) { }
+  }
+
+  function monacoFindPrev() {
+    try { if (!editor) return; editor.trigger('keyboard', 'editor.action.previousMatchFindAction', null); } catch (_) { }
+  }
 
   const firstJsonError = computed(() => jsonErrors.value[0] || null);
   const hasJsonError = computed(() => jsonErrors.value.length > 0);
@@ -369,6 +433,18 @@ import { useJsonStore } from '../store/index.js';
         });
       } catch (_) { /* ignore */ }
     }
+    } catch (_) { /* ignore */ }
+
+    // Ensure find/replace contributions are loaded so commands like actions.find exist
+    try {
+      try {
+        const base = 'monaco-editor/esm/vs/editor/contrib/find/browser/';
+        await import(base + 'findController');
+      } catch (_) { /* ignore */ }
+      try {
+        const base2 = 'monaco-editor/esm/vs/editor/contrib/find/browser/';
+        await import(base2 + 'findWidget');
+      } catch (_) { /* ignore */ }
     } catch (_) { /* ignore */ }
 
     initEditor();
@@ -691,6 +767,9 @@ function initEditor() {
       'bracketPairColorization.enabled': true
     });
 
+  // expose editor instance for debugging (temporary)
+  try { if (typeof window !== 'undefined') window.__jsonium_editor = editor; } catch (_) { }
+
   const refreshJsonErrors = () => {
     try {
       if (!monaco || !editor || !editor.getModel) return;
@@ -885,6 +964,25 @@ function initEditor() {
       );
     } catch (e) { }
 
+  // Cmd/Ctrl+H: open find+replace widget (common shortcut fallback)
+  try {
+    editor.addAction({
+      id: 'open-find-replace',
+      label: '查找并替换',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.6,
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH],
+      run: () => { try { openMonacoReplace(); } catch (e) { /* ignore */ } }
+    });
+  } catch (e) { }
+
+  try {
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH,
+      () => { try { openMonacoReplace(); } catch (e) { /* ignore */ } }
+    );
+  } catch (e) { }
+
     try {
       editor.addAction({
         id: 'json-copy-current',
@@ -1043,8 +1141,13 @@ function initEditor() {
     // fallback keydown listener: attach on editor DOM (capture) and window as fallback
     domKeydownHandler = (e) => {
       try {
+        // close context menu or find bar with Escape
         if (showEditorContextMenu.value && e.key === 'Escape') {
           hideEditorContextMenu();
+          return;
+        }
+        // For Cmd/Ctrl+F: do not intercept — allow Monaco's native keybinding to handle it
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.code === 'KeyF')) {
           return;
         }
 
@@ -1155,12 +1258,46 @@ function initEditor() {
     cancelScheduledAutoFormat(scheduleState);
 
     try {
-      await runEditorFormat(editor, {
+      const result = await runEditorFormat(editor, {
         fallbackFormatter: formatJsonString,
         reason,
         allowFallback: true,
         monacoInstance: monaco
       });
+      
+      // Only trigger layout if formatting actually applied or noop
+      if (result && (result.status === 'applied' || result.status === 'no-op')) {
+        // Recalculate editor layout and scrollbar after formatting
+        // This is especially important when a long single-line JSON is formatted into multiple lines
+        
+        if (editor && typeof editor.layout === 'function') {
+          // Immediate layout call
+          editor.layout();
+          
+          // Force viewport width recalculation by temporarily modifying container
+          await new Promise(resolve => {
+            requestAnimationFrame(() => {
+              const container = editor.getContainerDomNode();
+              if (container) {
+                const originalWidth = container.style.width;
+                container.style.width = (container.offsetWidth - 1) + 'px';
+                editor.layout();
+                container.style.width = originalWidth;
+                editor.layout();
+              }
+              resolve();
+            });
+          });
+          
+          // Final RAF cycle to stabilize
+          await new Promise(resolve => {
+            requestAnimationFrame(() => {
+              editor.layout();
+              resolve();
+            });
+          });
+        }
+      }
     } catch (e) {
       // swallow formatting errors to avoid interrupting user input
       // eslint-disable-next-line no-console
@@ -1641,6 +1778,7 @@ function initEditor() {
         定位到错误
       </button>
     </div>
+
     <div ref="editorContainer" class="editor-container"></div>
   </div>
 
@@ -1751,7 +1889,133 @@ function initEditor() {
     background: var(--color-bg-primary);
     /* 防止父布局收缩导致编辑器高度为 0 的问题，设置一个保底高度 */
     min-height: 240px;
+    position: relative;
+    /* 作为 Monaco widget 的定位父容器，允许查找浮动覆盖 */
   }
+
+  .editor-actions {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--color-divider);
+    background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
+  }
+
+  .editor-action {
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+  }
+
+  /* Prevent editor from shifting content when find-widget appears */
+  ::v-deep .monaco-editor .view-lines {
+    /* Prevent any top margin/padding adjustments */
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  ::v-deep .decorator-wrap {
+    top: 0 !important;
+  }
+
+  /* Ensure Monaco's find widget floats over the editor and matches theme colors */
+  /* Show when find-widget is expanded (.replaceToggled or .visible classes) */
+  ::v-deep .editor-widget.find-widget.visible,
+  ::v-deep .editor-widget.find-widget.replaceToggled {
+    position: absolute !important;
+    top: 12px !important;
+    right: 12px !important;
+    left: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: auto !important;
+    min-width: 260px;
+    max-width: calc(100% - 40px);
+    background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent) !important;
+    color: var(--color-text-primary) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--color-shadow, rgba(2, 6, 23, 0.08)) 80%, transparent) !important;
+    z-index: 9999 !important;
+    transform: none !important;
+    overflow: visible !important;
+    border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent) !important;
+    backdrop-filter: blur(6px) !important;
+    opacity: 1 !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible * {
+    color: var(--color-text-primary) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput {
+    background: color-mix(in srgb, var(--color-bg-primary) 88%, transparent) !important;
+    border-radius: 6px !important;
+    border: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findWidget-actions,
+  ::v-deep .editor-widget.find-widget.visible .find-actions,
+  ::v-deep .editor-widget.find-widget.visible .replace-actions {
+    opacity: 0.95 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox .monaco-inputbox-input {
+    color: var(--color-text-primary) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button,
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    min-height: 24px !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 2px !important;
+    padding: 0 !important;
+    flex: 0 0 24px !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button.toggle.left {
+    width: 32px !important;
+    min-width: 32px !important;
+    flex: 0 0 32px !important;
+    margin-right: 6px !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    position: relative !important;
+    z-index: 2 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .find-part {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button.codicon::before,
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle::before {
+    font-size: 14px !important;
+    line-height: 1 !important;
+  }
+
+  /* Hide find-widget when not active */
+  ::v-deep .editor-widget.find-widget:not(.visible):not(.replaceToggled) {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    display: none !important;
+    transform: translateY(-4px) scale(0.98) !important;
+  }
+
+
 
   .editor-context-menu {
     position: fixed;
