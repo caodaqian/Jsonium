@@ -5,7 +5,7 @@ import { jsonToGoStruct, jsonToJavaClass, jsonToJavaScript, jsonToPython, jsonTo
 import notify from '../services/notify.js';
 import { detectQueryType, queryJq, queryJsonPath, validateQuery } from '../services/queryEngine.js';
 import { useJsonStore } from '../store/index.js';
-  import { getStringifyIndent } from '../utils/indent.js';
+import { getStringifyIndent } from '../utils/indent.js';
 
 const store = useJsonStore();
 const props = defineProps({
@@ -232,7 +232,7 @@ onBeforeUnmount(() => {
   }
 });
 
-const executeQuery = () => {
+const executeQuery = async () => {
   try {
     queryError.value = '';
     queryResult.value = null;
@@ -255,7 +255,7 @@ const executeQuery = () => {
     if (queryType.value === 'jsonpath') {
       result = queryJsonPath(props.content, queryExpression.value);
     } else {
-      result = queryJq(props.content, queryExpression.value);
+      result = await queryJq(props.content, queryExpression.value);
     }
 
     const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
@@ -666,7 +666,7 @@ aria-label="帮助"
   flex-direction: row;
   align-items: center;
     gap: 6px;
- 
+
   width: 100%;
   margin-bottom: 0;
   /* prefer single-line layout; allow horizontal scroll instead of wrapping so buttons remain visible */
@@ -685,11 +685,11 @@ aria-label="帮助"
   align-items: center;
   gap: 4px;
     padding: 6px 8px;
- 
+
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
     border-radius: 4px;
- 
+
   font-weight: 600;
   font-size: var(--font-size-xs);
   color: var(--color-text-primary);
@@ -703,13 +703,13 @@ aria-label="帮助"
 .query-type-badge:hover {
   border-color: var(--color-primary);
     color: var(--color-text-primary);
- 
+
   background: var(--color-hover-bg);
 }
 
 .query-type-badge.override {
     background: color-mix(in srgb, var(--color-primary-lighter) 35%, var(--color-bg-primary));
- 
+
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
@@ -821,7 +821,7 @@ aria-label="帮助"
     color: var(--color-text-primary);
   }
 
- 
+
 .query-error {
   padding: 6px 8px;
   background: rgba(239, 68, 68, 0.1);
@@ -835,11 +835,11 @@ aria-label="帮助"
 
 .action-btn {
     padding: 5px 8px;
- 
+
   background: transparent;
   border: none;
     border-radius: 4px;
- 
+
   cursor: pointer;
   font-size: var(--font-size-xs);
   transition: background 0.12s, transform 0.12s;
@@ -874,7 +874,7 @@ aria-label="帮助"
   border: 1px solid var(--color-border);
   padding: 6px 8px;
     border-radius: 4px;
- 
+
   white-space: nowrap;
   box-shadow: var(--shadow-lg);
   font-size: var(--font-size-xs);
@@ -918,7 +918,7 @@ aria-label="帮助"
       border-radius: 999px;
     }
 
- 
+
 }
 
 /* Large-screen: pin the status bar to the bottom and prefer a single-line actions area.
@@ -933,7 +933,7 @@ aria-label="帮助"
     padding: 10px 20px 12px calc(12px + env(safe-area-inset-left));
       background: var(--color-bg-secondary);
       box-shadow: none;
- 
+
     max-height: none;
   }
 

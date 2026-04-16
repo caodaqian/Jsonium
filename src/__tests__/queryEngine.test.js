@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  queryJsonPath,
+  detectQueryType,
   queryJq,
+  queryJsonPath,
   validateQuery
 } from '../services/queryEngine.js';
 
@@ -59,38 +60,49 @@ describe('JSON 查询引擎', () => {
   });
 
   describe('jq 查询', () => {
-    it('should query simple property', () => {
-      const result = queryJq(testJsonString, '.store.name');
+    it('should query simple property', async () => {
+      const result = await queryJq(testJsonString, '.store.name');
       expect(result.success).toBe(true);
       expect(result.results[0]).toBe('My Store');
     });
 
-    it('should query array elements', () => {
-      const result = queryJq(testJsonString, '.store.book[].title');
+    it('should support select filters in jq expressions', async () => {
+      const result = await queryJq(testJsonString, '.store.book[] | select(.price > 10) | .title');
+      expect(result.success).toBe(true);
+      expect(result.count).toBe(1);
+      expect(result.results[0]).toBe('Book 2');
+    });
+
+    it('should query array elements', async () => {
+      const result = await queryJq(testJsonString, '.store.book[].title');
       expect(result.success).toBe(true);
       expect(result.count).toBe(3);
       expect(result.results).toContain('Book 1');
     });
 
-    it('should query specific array index', () => {
-      const result = queryJq(testJsonString, '.store.book[0]');
+    it('should query specific array index', async () => {
+      const result = await queryJq(testJsonString, '.store.book[0]');
       expect(result.success).toBe(true);
       expect(result.results[0].title).toBe('Book 1');
     });
 
-    it('should handle simple case', () => {
-      const result = queryJq(testJsonString, '.');
+    it('should handle simple case', async () => {
+      const result = await queryJq(testJsonString, '.');
       expect(result.success).toBe(true);
     });
 
-    it('should handle invalid jq', () => {
-      const result = queryJq(testJsonString, '.invalid.path.deep');
+    it('should handle invalid jq', async () => {
+      const result = await queryJq(testJsonString, '.invalid.path.deep');
       expect(result.success).toBe(true);
       // 可能返回 null 或空结果
     });
   });
 
   describe('查询验证', () => {
+    it('should detect bare jq function expressions', () => {
+      expect(detectQueryType('select(.price > 10)')).toBe('jq');
+    });
+
     it('should validate JSONPath format', () => {
       const result = validateQuery('$.store.book', 'jsonpath');
       expect(result.valid).toBe(true);
@@ -119,8 +131,8 @@ describe('JSON 查询引擎', () => {
       expect(result.error).toBeDefined();
     });
 
-    it('should handle null input for jq', () => {
-      const result = queryJq(null, '.foo');
+    it('should handle null input for jq', async () => {
+      const result = await queryJq(null, '.foo');
       expect(result.success).toBe(false);
     });
   });

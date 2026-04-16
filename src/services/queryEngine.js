@@ -1,6 +1,8 @@
 import { JSONPath } from 'jsonpath-plus';
 import { getValueAtJsonPath, toJsonPath } from '../utils/pathUtils.js';
 
+let jqRuntimePromise = null;
+
 /**
  * JSON 查询引擎 - 支持 JSONPath 和 jq 表达式
  */
@@ -26,12 +28,17 @@ export function detectQueryType(expression) {
   if (trimmed.startsWith('.')) return 'jq';
   if (trimmed === '.' || trimmed === '.[]') return 'jq';
   if (trimmed.includes('|')) return 'jq'; // 管道符
-  
+  if (looksLikeJqFunctionExpression(trimmed)) return 'jq';
+
   // 如果都不符合，尝试检查括号形式
   if (trimmed.startsWith('[') && !trimmed.includes('..')) return 'jq'; // jq 风格的数组索引
 
   // 默认返回 jsonpath
   return 'jsonpath';
+}
+
+function looksLikeJqFunctionExpression(expression) {
+  return /^(select|map|reduce|walk|paths|keys|has|length|type|flatten|unique|sort|sort_by|group_by|to_entries|from_entries|tostring|tonumber|toboolean|del|any|all|first|last|limit|indices|join|split|empty|range|match|test|capture|sub|gsub)\b/.test(expression);
 }
 
 /**
@@ -75,7 +82,7 @@ export function queryJsonPath(data, expression) {
  * 支持常见的 jq 表达式
  * 例: .store.book[].price
  */
-export function queryJq(data, expression) {
+export async function queryJq(data, expression) {
   try {
     if (data === null || data === undefined) {
       throw new Error('输入数据为空');
@@ -84,12 +91,7 @@ export function queryJq(data, expression) {
       data = JSON.parse(data);
     }
 
-    const results = evalJqExpression(data, expression);
-    const rawList = Array.isArray(results)
-      ? results
-      : results === null || results === undefined
-        ? []
-        : [results];
+    const rawList = await evalJqExpression(data, expression);
     const display = rawList.length === 0 ? null : normalizeForPanel(rawList);
 
     return {
@@ -113,70 +115,47 @@ export function queryJq(data, expression) {
 /**
  * 解析并执行 jq 表达式
  */
-function evalJqExpression(data, expr) {
+async function evalJqExpression(data, expr) {
   try {
-    if (expr.startsWith('.')) {
-      expr = expr.substring(1);
-    }
-
-    if (expr === '' || expr === '[]') {
-      return Array.isArray(data) ? data : [data];
-    }
-
-    if (!expr) {
-      return data;
-    }
-
-    const parts = parseJqPath(expr);
-    let current = data;
-    const results = [];
-
-    function traverse(obj, parts, index) {
-      if (index >= parts.length) {
-        results.push(obj);
-        return;
-      }
-
-      const part = parts[index];
-
-      if (part.type === 'property') {
-        if (obj && typeof obj === 'object' && part.name in obj) {
-          traverse(obj[part.name], parts, index + 1);
-        }
-      } else if (part.type === 'iterator') {
-        if (Array.isArray(obj)) {
-          obj.forEach(item => traverse(item, parts, index + 1));
-        } else if (typeof obj === 'object' && obj !== null) {
-          Object.values(obj).forEach(item => traverse(item, parts, index + 1));
-        }
-      } else if (part.type === 'index') {
-        if (Array.isArray(obj) && part.index < obj.length) {
-          traverse(obj[part.index], parts, index + 1);
-        }
-      } else if (part.type === 'slice') {
-        if (Array.isArray(obj)) {
-          const start = part.start || 0;
-          const end = part.end || obj.length;
-          for (let i = start; i < end && i < obj.length; i++) {
-            traverse(obj[i], parts, index + 1);
-          }
-        }
-      } else if (part.type === 'filter') {
-        if (Array.isArray(obj)) {
-          obj.forEach(item => {
-            if (matchesFilter(item, part.condition)) {
-              traverse(item, parts, index + 1);
-            }
-          });
-        }
-      }
-    }
-
-    traverse(current, parts, 0);
-
-    return results.length === 0 ? null : results.length === 1 ? results[0] : results;
+    const runtime = await loadJqRuntime();
+    const rawResult = await runtime.raw(data, expr, ['-c']);
+    return parseJqRawResult(rawResult);
   } catch (e) {
     throw new Error(`jq 表达式解析失败: ${e.message}`);
+  }
+}
+
+async function loadJqRuntime() {
+  if (!jqRuntimePromise) {
+    jqRuntimePromise = import('jq-wasm').then((module) => module?.raw ? module : (module?.default ?? module));
+  }
+
+  return jqRuntimePromise;
+}
+
+function parseJqRawResult(rawResult) {
+  const stdout = typeof rawResult?.stdout === 'string' ? rawResult.stdout : '';
+  const stderr = typeof rawResult?.stderr === 'string' ? rawResult.stderr : '';
+  const exitCode = Number.isInteger(rawResult?.exitCode) ? rawResult.exitCode : 0;
+
+  if (exitCode !== 0) {
+    throw new Error(stderr || `jq 退出码 ${exitCode}`);
+  }
+
+  if (stderr.trim()) {
+    throw new Error(stderr.trim());
+  }
+
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const lines = trimmed.split('\n').filter(Boolean);
+  try {
+    return lines.map(line => JSON.parse(line));
+  } catch (e) {
+    throw new Error(`jq 输出解析失败: ${e.message}`);
   }
 }
 
@@ -340,8 +319,8 @@ export function validateQuery(expression, type = 'jsonpath') {
         return { valid: false, message: 'JSONPath 必须以 $ 开头' };
       }
     } else if (type === 'jq') {
-      if (!expression.startsWith('.') && expression !== '.') {
-        return { valid: false, message: 'jq 表达式应以 . 开头' };
+      if (!expression || !expression.trim()) {
+        return { valid: false, message: 'jq 表达式不能为空' };
       }
     }
 

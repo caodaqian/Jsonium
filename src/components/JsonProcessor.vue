@@ -8,7 +8,7 @@ import notify from '../services/notify.js';
 import { queryJq, queryJsonPath } from '../services/queryEngine.js';
 import { useJsonStore } from '../store/index.js';
 import { getFormatName } from '../utils/formatNames.js';
-  import { getStringifyIndent } from '../utils/indent.js';
+import { getStringifyIndent } from '../utils/indent.js';
 import ControlPanel from './ControlPanel.vue';
 import DiffSidebar from './DiffSidebar.vue';
 import DiffView from './DiffView.vue';
@@ -307,7 +307,7 @@ const handleQuery = async (expression, type) => {
     if (type === 'jsonpath') {
       result = queryJsonPath(activeTab.value.content, expression);
     } else {
-      result = queryJq(activeTab.value.content, expression);
+      result = await queryJq(activeTab.value.content, expression);
     }
 
     if (result.success) {
@@ -725,7 +725,7 @@ onMounted(() => {
     position: relative;
 
 
- 
+
   overflow: hidden;
   gap: 1px;
 }
@@ -755,7 +755,7 @@ onMounted(() => {
   flex-shrink: 0;
     box-shadow: -4px 0 12px rgba(0, 0, 0, 0.06);
 
- 
+
 }
 
 .editor-section {
@@ -784,7 +784,7 @@ onMounted(() => {
   border: 1px solid var(--color-divider);
     box-shadow: 0 18px 36px rgba(0, 0, 0, 0.16);
 
- 
+
   z-index: 200000;
   display: flex;
   flex-direction: column;
@@ -816,7 +816,7 @@ onMounted(() => {
   border-right: 1px solid var(--color-divider);
   overflow: auto;
     background: var(--color-bg-secondary);
- 
+
 }
 
 @media (max-width: 900px) {
@@ -836,10 +836,10 @@ onMounted(() => {
     z-index: 300001;
       box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
 
- 
+
     border-right: none;
       border-radius: 4px;
- 
+
     overflow: hidden;
   }
   .drawer-overlay {
@@ -847,13 +847,13 @@ onMounted(() => {
     inset: 0;
       background: rgba(0, 0, 0, 0.12);
 
- 
+
     z-index: 300000;
   }
   .control-panel-drawer {
     position: relative;
       background: var(--color-bg-secondary);
- 
+
     height: 100%;
     overflow: auto;
     padding: 12px;
@@ -877,7 +877,7 @@ onMounted(() => {
   inset: 0;
     background: rgba(0, 0, 0, 0.12);
 
- 
+
   display: flex;
   align-items: center;
   justify-content: center;
@@ -890,13 +890,13 @@ onMounted(() => {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
     border-radius: 4px;
- 
+
   display: flex;
   flex-direction: column;
   overflow: hidden;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
 
- 
+
 }
 .ai-raw-header {
   display: flex;
@@ -957,10 +957,10 @@ onMounted(() => {
   width: 44px;
   height: 44px;
     border-radius: 4px;
- 
+
   background: var(--color-bg-secondary);
     backdrop-filter: none;
- 
+
   border: 1px solid var(--color-divider);
   display: flex;
   align-items: center;
@@ -978,7 +978,7 @@ onMounted(() => {
   transform: translateY(-50%) scale(1.04);
   background: var(--color-bg-primary);
     border-color: var(--color-primary);
- 
+
 }
 
 .global-sidebar-toggle.is-active {
@@ -987,6 +987,6 @@ onMounted(() => {
   border-color: var(--color-primary);
     box-shadow: none;
 
- 
+
 }
 </style>
