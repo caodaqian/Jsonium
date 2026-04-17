@@ -99,7 +99,7 @@ export const useJsonStore = defineStore('json', () => {
   const diffSidebar = reactive({
     visible: false,
     collapsed: false,
-    mode: 'input', // 'input' | 'result'
+    mode: 'input', // 'input' | 'result' | 'output'
     // 停靠偏好：'auto' | 'panel' | 'sidebar'
     dockMode: 'auto',
     leftInput: '',
@@ -252,15 +252,9 @@ export const useJsonStore = defineStore('json', () => {
     // 先写入结果数据
     setDiffResult(leftContent, rightContent, payload || {});
     // 决定显示位置：优先使用 editorSettings.diffDock，其次使用 diffSidebar.dockMode
-    const dock = editorSettings.diffDock || diffSidebar.dockMode || 'auto';
-    if (dock === 'panel') {
-      outputPanel.visible = true;
-      outputPanel.currentTab = 'diff';
-    } else {
-      diffSidebar.visible = true;
-      diffSidebar.collapsed = false;
-      diffSidebar.mode = 'result';
-    }
+    diffSidebar.visible = true;
+    diffSidebar.collapsed = false;
+    diffSidebar.mode = 'result';
   };
 
   const setDiffResult = (leftContent, rightContent, payload = {}) => {
@@ -276,6 +270,9 @@ export const useJsonStore = defineStore('json', () => {
 
   const hideDiffSidebar = () => {
     diffSidebar.visible = false;
+    if (diffSidebar.mode === 'output') {
+      outputPanel.visible = false;
+    }
     // 可选：清理临时数据
     diffSidebar.leftInput = '';
     diffSidebar.leftContent = '';
@@ -565,6 +562,11 @@ export const useJsonStore = defineStore('json', () => {
 
   const hideOutputPanel = () => {
     outputPanel.visible = false;
+    if (diffSidebar.mode === 'output') {
+      diffSidebar.visible = false;
+      diffSidebar.collapsed = false;
+      diffSidebar.mode = 'input';
+    }
   };
 
   const showOutputPanel = (tab, payload = emptyPanel()) => {
@@ -578,27 +580,31 @@ export const useJsonStore = defineStore('json', () => {
       const right = payload && payload.right ? payload.right : (diffSidebar.rightContent || (getActiveTab() ? getActiveTab().content : '') || '');
       const diffPayload = payload && payload.diffPayload ? payload.diffPayload : (payload && payload.value && typeof payload.value === 'object' ? payload.value : {});
       setDiffResult(left, right, diffPayload || {});
-      // 若用户偏好底部面板，则展示之，否则展示侧栏
-      const dock = editorSettings.diffDock || diffSidebar.dockMode || 'auto';
-      if (dock === 'panel') {
-        outputPanel.visible = true;
-        outputPanel.currentTab = 'diff';
-      } else {
-        diffSidebar.visible = true;
-        diffSidebar.collapsed = false;
-        diffSidebar.mode = 'result';
-      }
+      outputPanel.visible = true;
+      outputPanel.currentTab = 'diff';
+      diffSidebar.visible = true;
+      diffSidebar.collapsed = false;
+      diffSidebar.mode = 'output';
       return;
     }
 
     outputPanel.visible = true;
     outputPanel.currentTab = tab;
     outputPanel.content[tab] = payload;
+    diffSidebar.visible = true;
+    diffSidebar.collapsed = false;
+    diffSidebar.mode = 'output';
   };
 
   const switchOutputTab = (tab) => {
+    if (!outputTabs.includes(tab)) {
+      return;
+    }
     outputPanel.currentTab = tab;
     outputPanel.visible = true;
+    diffSidebar.visible = true;
+    diffSidebar.collapsed = false;
+    diffSidebar.mode = 'output';
   };
 
   const clearOutput = (tab = null) => {

@@ -75,6 +75,28 @@ vi.mock('../components/TabBar.vue', async () => {
   };
 });
 
+vi.mock('../components/DiffView.vue', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'DiffViewStub',
+      props: {
+        leftContent: {
+          type: String,
+          default: ''
+        },
+        rightContent: {
+          type: String,
+          default: ''
+        }
+      },
+      setup(props) {
+        return () => h('div', { 'data-testid': 'diff-view-stub' }, `${props.leftContent}|${props.rightContent}`);
+      }
+    })
+  };
+});
+
 vi.mock('../components/OutputPanel.vue', async () => {
   const { defineComponent, h } = await import('vue');
   return {
@@ -92,8 +114,14 @@ vi.mock('../components/DiffSidebar.vue', async () => {
   return {
     default: defineComponent({
       name: 'DiffSidebarStub',
-      setup() {
-        return () => h('div', { 'data-testid': 'diff-sidebar-stub' });
+      emits: ['openLineDiff', 'openCenteredDiff'],
+      setup(_, { emit }) {
+        return () => h('div', { 'data-testid': 'diff-sidebar-stub' }, [
+          h('button', {
+            'data-testid': 'diff-sidebar-open-centered',
+            onClick: () => emit('openCenteredDiff', '{"left":1}', '{"right":2}')
+          }, 'emit-open-centered')
+        ]);
       }
     })
   };
@@ -190,7 +218,7 @@ describe('JsonProcessor', () => {
     expect(window.utools.copyText).toHaveBeenCalledWith('');
   });
 
-  it('hides the diff output panel from the floating toggle and reflects its active state', async () => {
+  it('hides output sidebar from floating toggle and reflects active state for jsonpath output', async () => {
     const wrapper = mount(JsonProcessor, {
       props: {
         enterAction: {}
@@ -202,7 +230,7 @@ describe('JsonProcessor', () => {
     const hideOutputPanelSpy = vi.spyOn(store, 'hideOutputPanel');
 
     store.outputPanel.visible = true;
-    store.outputPanel.currentTab = 'diff';
+    store.outputPanel.currentTab = 'jsonpath';
     store.diffSidebar.visible = false;
     store.diffSidebar.collapsed = true;
 
@@ -240,5 +268,21 @@ describe('JsonProcessor', () => {
     expect(store.diffSidebar.visible).toBe(true);
     expect(store.diffSidebar.collapsed).toBe(false);
     expect(store.diffSidebar.mode).toBe('input');
+  });
+
+  it('opens a centered diff modal when DiffSidebar requests larger preview', async () => {
+    const wrapper = mount(JsonProcessor, {
+      props: {
+        enterAction: {}
+      },
+      global: {}
+    });
+
+    await nextTick();
+    await wrapper.get('[data-testid="diff-sidebar-open-centered"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('.centered-diff-overlay').exists()).toBe(true);
+    expect(wrapper.find('.centered-diff-close').exists()).toBe(true);
   });
 });

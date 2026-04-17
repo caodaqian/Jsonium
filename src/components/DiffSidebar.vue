@@ -1,18 +1,135 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { buildTreeDiff, stringifySortedJson } from '../services/diffEngine.js';
+import { detectAndConvert } from '../services/formatDetector.js';
+import notify from '../services/notify.js';
 import { useJsonStore } from '../store/index.js';
-  import { getStringifyIndent } from '../utils/indent.js';
+import { getStringifyIndent } from '../utils/indent.js';
 import DiffView from './DiffView.vue';
 import Editor from './Editor.vue';
-const emit = defineEmits(['openLineDiff']);
 
+const emit = defineEmits(['openLineDiff', 'openCenteredDiff']);
 const store = useJsonStore();
 
 const visible = computed(() => store.diffSidebar.visible);
 const mode = computed(() => store.diffSidebar.mode);
 const collapsed = computed(() => store.diffSidebar.collapsed);
-const headerLabel = computed(() => (mode.value === 'input' ? '输入面板' : '结果视图'));
+
+// ── 统一标签栏逻辑 ──────────────────────────────────────
+const allTabs = [
+  { id: 'diff', label: '⚖️ 对比' },
+  { id: 'jsonpath', label: '🔍 JSONPath' },
+  { id: 'jq', label: '🌀 jq' },
+];
+
+const hasOutputContent = (tab) => {
+  const entry = store.outputPanel.content[tab];
+  return entry && (entry.error !== null || entry.value !== null);
+};
+
+// 始终显示"对比"标签；有内容时才显示查询结果标签
+const visibleTabs = computed(() =>
+  allTabs.filter((t) => t.id === 'diff' || hasOutputContent(t.id))
+);
+
+// 当前活跃标签：output 模式下取 outputPanel.currentTab，否则固定为 'diff'
+const activeTabId = computed(() =>
+  mode.value === 'output' ? store.outputPanel.currentTab : 'diff'
+);
+const isDiffOutputTab = computed(() => store.outputPanel.currentTab === 'diff');
+
+function switchTab(tabId) {
+  if (tabId === 'diff') {
+    // 切到对比模式：有对比结果则显示结果，否则显示输入
+    const hasResult = store.diffSidebar.leftContent || store.diffSidebar.diffTree;
+    store.diffSidebar.mode = hasResult ? 'result' : 'input';
+    store.outputPanel.visible = false;
+  } else {
+    // 切到查询结果
+    store.diffSidebar.mode = 'output';
+    store.outputPanel.currentTab = tabId;
+    store.outputPanel.visible = true;
+  }
+}
+
+// ── Output 模式内容逻辑（原 OutputPanel 逻辑）────────────
+const currentOutputEntry = computed(() => store.outputPanel.content[store.outputPanel.currentTab]);
+
+const outputFormattedContent = computed(() => {
+  const entry = currentOutputEntry.value;
+  if (!entry) return '';
+  if (entry.error) return entry.error;
+  if (entry.value === null || entry.value === undefined) return '';
+  return typeof entry.value === 'string'
+    ? entry.value
+    : JSON.stringify(entry.value, null, getStringifyIndent());
+});
+
+const outputHasContent = computed(() => {
+  if (isDiffOutputTab.value) {
+    return !!(store.diffSidebar.leftContent || store.diffSidebar.rightContent || store.diffSidebar.diffTree);
+  }
+  const entry = currentOutputEntry.value;
+  return entry && (entry.error !== null || entry.value !== null);
+});
+
+const outputIsError = computed(() => {
+  const entry = currentOutputEntry.value;
+  return entry && entry.error !== null && entry.error !== undefined;
+});
+
+async function handleCopyOutput() {
+  if (isDiffOutputTab.value) {
+    notify.warn('对比结果请使用行级对比查看或复制主编辑区内容');
+    return;
+  }
+  if (!outputHasContent.value) return;
+  try {
+    if (globalThis.window?.utools) {
+      globalThis.window.utools.copyText(outputFormattedContent.value);
+    } else {
+      await navigator.clipboard.writeText(outputFormattedContent.value);
+    }
+    notify.success('已复制输出内容');
+  } catch (e) {
+    notify.error('复制失败: ' + e.message);
+  }
+}
+
+async function handleInsertToEditor() {
+  if (isDiffOutputTab.value) {
+    notify.warn('对比结果不支持直接替换主编辑区');
+    return;
+  }
+  if (!outputHasContent.value) return;
+  const entry = currentOutputEntry.value;
+  if (!entry) return;
+  if (entry.error) { notify.warn('无法插入：输出为错误信息'); return; }
+  try {
+    let content = '';
+    if (typeof entry.value === 'string') {
+      const detected = await detectAndConvert(entry.value);
+      content = detected.success ? detected.data : entry.value;
+    } else {
+      content = JSON.stringify(entry.value, null, getStringifyIndent());
+    }
+    const active = store.getActiveTab();
+    if (!active) { notify.warn('没有打开的主编辑标签'); return; }
+    store.updateTabContent(active.id, content);
+    notify.success('已替换主编辑区内容');
+  } catch (e) {
+    notify.error('插入失败: ' + e.message);
+  }
+}
+
+// ── 关闭按钮：统一处理所有模式 ────────────────────────────
+function closePanel() {
+  if (mode.value === 'output') {
+    store.hideOutputPanel();
+  } else {
+    closeSidebar();
+  }
+}
 
 // 左侧仅为待比对输入 A
 const leftInput = computed({
@@ -55,16 +172,26 @@ function handleFormatLeft() {
   }
 }
 
-function handleLeftPaste() {
-  setTimeout(() => {
-    try {
-      const parsed = JSON.parse(leftInput.value || '');
-      store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
-      leftError.value = '';
-    } catch (e) {
-      // ignore
+async function handleLeftPaste() {
+  try {
+    let text = '';
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      text = await navigator.clipboard.readText();
+    } else {
+      notify.warn('当前环境不支持读取剪贴板');
+      return;
     }
-  }, 0);
+    if (!text) return;
+    try {
+      const parsed = JSON.parse(text);
+      store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
+    } catch {
+      store.diffSidebar.leftInput = text;
+    }
+    leftError.value = '';
+  } catch (e) {
+    notify.error('粘贴失败: ' + e.message);
+  }
 }
 
 function handleLeftChange(content) {
@@ -108,8 +235,18 @@ async function handleCompare() {
       return;
     }
 
-    // 直接触发行级对比（不构建树形结果）
-    openLineDiff();
+    const sortedLeft = stringifySortedJson(leftInput.value);
+    const sortedRight = stringifySortedJson(rightContent.value);
+    const result = buildTreeDiff(sortedLeft, sortedRight);
+    store.showOutputPanel('diff', {
+      left: sortedLeft,
+      right: sortedRight,
+      diffPayload: {
+        diffTree: result.tree,
+        diffStats: result.stats,
+        diffLines: []
+      }
+    });
   } catch (e) {
     store.setDiffError('对比失败: ' + e.message);
   } finally {
@@ -119,8 +256,14 @@ async function handleCompare() {
 
 function openLineDiff() {
   const left = store.diffSidebar.leftContent || leftInput.value || '';
-  const right = rightContent.value || '';
+  const right = store.diffSidebar.rightContent || rightContent.value || '';
   emit('openLineDiff', left, right);
+}
+
+function openCenteredDiff() {
+  const left = store.diffSidebar.leftContent || leftInput.value || '';
+  const right = store.diffSidebar.rightContent || rightContent.value || '';
+  emit('openCenteredDiff', left, right);
 }
 
 /**
@@ -160,34 +303,20 @@ function closeSidebar() {
   globalError.value = '';
 }
 
-function embedToBottom() {
-  try {
-    const left = store.diffSidebar.leftContent || leftInput.value || '';
-    const right = store.diffSidebar.rightContent || (store.getActiveTab ? (store.getActiveTab().content || '') : '') || '';
-    store.setDiffResult(left, right, {
-      diffLines: store.diffSidebar.diffLines || [],
-      diffTree: store.diffSidebar.diffTree || null,
-      diffStats: store.diffSidebar.diffStats || {}
-    });
-    // 隐藏侧边并在底部面板展示
-    try { store.hideDiffSidebar(); } catch (e) {}
-    try { store.outputPanel.visible = true; } catch (e) {}
-    try { store.switchOutputTab('diff'); } catch (e) {}
-  } catch (e) {
-    store.setDiffError('嵌入底部失败: ' + (e && e.message ? e.message : String(e)));
-  }
-}
-
 </script>
 
 <template>
   <aside class="diff-sidebar" :class="{ active: visible, collapsed: collapsed }">
     <header class="diff-sidebar-header">
-      <div class="header-copy">
-        <h3 class="title">对比</h3>
-        <span class="header-badge">{{ headerLabel }}</span>
+      <div class="sidebar-tabs">
+        <button
+          v-for="tab in visibleTabs"
+          :key="tab.id"
+          :class="['sidebar-tab', { active: tab.id === activeTabId }]"
+          @click="switchTab(tab.id)"
+        >{{ tab.label }}</button>
       </div>
-      <button class="close-btn" @click="closeSidebar" title="关闭" aria-label="关闭对比侧栏">✕</button>
+      <button class="close-btn" @click="closePanel" title="关闭" aria-label="关闭侧栏">✕</button>
     </header>
 
     <div v-if="mode === 'input'" class="input-mode">
@@ -198,7 +327,6 @@ function embedToBottom() {
         </div>
         <div class="actions">
           <button class="diff-btn diff-btn--primary" @click="handleCompare" :disabled="isComparing">⚖️ 对比主编辑区</button>
-          <button class="diff-btn diff-btn--ghost" @click="embedToBottom">📥 在底部展示</button>
         </div>
       </div>
 
@@ -208,7 +336,7 @@ function embedToBottom() {
       <p v-if="leftError" class="error-hint">{{ leftError }}</p>
     </div>
 
-    <div v-else class="result-mode">
+    <div v-else-if="mode === 'result'" class="result-mode">
       <div class="result-toolbar">
         <div class="summary">
           <div class="stat added">新增: {{ diffStats.added }}</div>
@@ -218,7 +346,7 @@ function embedToBottom() {
         </div>
         <div class="actions">
           <button class="diff-btn diff-btn--ghost" @click="openLineDiff">行级对比</button>
-          <button class="diff-btn diff-btn--ghost" @click="embedToBottom">嵌入底部</button>
+          <button class="diff-btn diff-btn--ghost" @click="openCenteredDiff">居中查看</button>
           <button class="diff-btn diff-btn--ghost" @click="handleBackToInput">返回编辑</button>
           <button class="diff-btn diff-btn--ghost" @click="closeSidebar">关闭</button>
         </div>
@@ -229,6 +357,40 @@ function embedToBottom() {
         <div v-else class="result-inner">
           <DiffView :leftContent="store.diffSidebar.leftContent || leftInput" :rightContent="store.diffSidebar.rightContent || rightContent" />
         </div>
+      </div>
+    </div>
+
+    <!-- output 模式：jsonpath / jq 查询结果 -->
+    <div v-else-if="mode === 'output'" class="output-mode">
+      <div v-if="isDiffOutputTab" class="result-mode">
+        <div class="result-toolbar">
+          <div class="summary">
+            <div class="stat added">新增: {{ diffStats.added }}</div>
+            <div class="stat removed">删除: {{ diffStats.removed }}</div>
+            <div class="stat changed">变化: {{ diffStats.changed }}</div>
+            <div class="stat unchanged">相同: {{ diffStats.unchanged }}</div>
+          </div>
+          <div class="actions">
+            <button class="diff-btn diff-btn--ghost" @click="openLineDiff">行级对比</button>
+            <button class="diff-btn diff-btn--ghost" @click="openCenteredDiff">居中查看</button>
+          </div>
+        </div>
+        <div class="result-content">
+          <div v-if="error" class="global-error">{{ error }}</div>
+          <div v-else class="result-inner">
+            <DiffView :leftContent="store.diffSidebar.leftContent || leftInput" :rightContent="store.diffSidebar.rightContent || rightContent" />
+          </div>
+        </div>
+      </div>
+      <div class="output-content" v-else-if="outputHasContent">
+        <pre :class="['output-text', { 'is-error': outputIsError }]">{{ outputFormattedContent }}</pre>
+        <div class="output-actions">
+          <button @click="handleCopyOutput" class="diff-btn diff-btn--ghost">📋 复制</button>
+          <button @click="handleInsertToEditor" class="diff-btn diff-btn--ghost" title="替换主编辑区">🔁 替换主编辑区</button>
+        </div>
+      </div>
+      <div class="result-empty" v-else>
+        <p>暂无输出内容</p>
       </div>
     </div>
   </aside>
@@ -246,17 +408,17 @@ function embedToBottom() {
   display: none;
     position: absolute;
 
- 
+
   top: 0;
   right: 0;
     bottom: 0;
     height: auto;
 
- 
+
   flex-direction: column;
   overflow: hidden;
     box-shadow: -8px 0 32px rgba(0, 0, 0, 0.07);
- 
+
   z-index: 99999;
   transition: width 180ms ease;
 }
@@ -267,40 +429,88 @@ function embedToBottom() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px 12px;
+  gap: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-divider) 82%, transparent);
   background: color-mix(in srgb, var(--color-bg-secondary) 88%, var(--color-bg-primary));
   backdrop-filter: blur(10px);
+  flex-shrink: 0;
 }
 
-.header-copy {
+.sidebar-tabs {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
+  flex: 1;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.sidebar-tabs::-webkit-scrollbar { display: none; }
 
-.title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--color-text-primary);
-}
-
-.header-badge {
+.sidebar-tab {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 6px 14px;
   border-radius: 999px;
-  font-size: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--color-text-secondary) 78%, var(--color-text-primary));
-  background: color-mix(in srgb, var(--color-bg-primary) 80%, var(--color-bg-secondary));
-  border: 1px solid color-mix(in srgb, var(--color-divider) 72%, transparent);
   white-space: nowrap;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.sidebar-tab:hover {
+  background: color-mix(in srgb, var(--color-bg-primary) 80%, var(--color-primary) 8%);
+  color: var(--color-text-primary);
+}
+.sidebar-tab.active {
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-bg-secondary));
+  border-color: color-mix(in srgb, var(--color-primary) 38%, var(--color-divider));
+  color: color-mix(in srgb, var(--color-primary) 82%, var(--color-text-primary));
+}
+
+/* output 模式内容区 */
+.output-mode {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+.output-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  padding: var(--spacing-md);
+  gap: var(--spacing-sm);
+}
+.output-text {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 12px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-divider);
+  border-radius: 8px;
+  font-family: var(--font-mono, 'Fira Mono', monospace);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.output-text.is-error {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, var(--color-error));
+}
+.output-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .close-btn {
@@ -316,7 +526,7 @@ function embedToBottom() {
   font-size: 18px;
   color: var(--color-text-tertiary);
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 10px rgba(0, 0, 0, 0.03);
- 
+
   transition: transform 160ms ease, background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 .close-btn:hover {
@@ -325,7 +535,7 @@ function embedToBottom() {
   border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-divider));
   color: var(--color-text-primary);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
- 
+
 }
 
 .input-mode { display:flex; flex-direction:column; gap:var(--spacing-md); padding:var(--spacing-md); flex:1; overflow-y:auto; }

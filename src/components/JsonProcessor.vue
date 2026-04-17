@@ -13,7 +13,6 @@ import ControlPanel from './ControlPanel.vue';
 import DiffSidebar from './DiffSidebar.vue';
 import DiffView from './DiffView.vue';
 import Editor from './Editor.vue';
-import OutputPanel from './OutputPanel.vue';
 import StatusBar from './StatusBar.vue';
 import TabBar from './TabBar.vue';
 import TableView from './TableView.vue';
@@ -71,24 +70,37 @@ const aiRetrying = ref(false);
 const showLineDiff = ref(false);
 const lineLeft = ref('');
 const lineRight = ref('');
+const showCenteredDiff = ref(false);
+const centeredLeft = ref('');
+const centeredRight = ref('');
 
 function handleOpenLineDiff(left, right) {
   lineLeft.value = left || '';
   lineRight.value = right || '';
   showLineDiff.value = true;
 }
+function handleOpenCenteredDiff(left, right) {
+  centeredLeft.value = left || '';
+  centeredRight.value = right || '';
+  showCenteredDiff.value = true;
+}
 function closeLineDiff() {
   showLineDiff.value = false;
   lineLeft.value = '';
   lineRight.value = '';
 }
+function closeCenteredDiff() {
+  showCenteredDiff.value = false;
+  centeredLeft.value = '';
+  centeredRight.value = '';
+}
 
 function toggleFloatingSidebar() {
   try {
-    const outputDiffVisible = store.outputPanel.visible && store.outputPanel.currentTab === 'diff';
+    const outputVisible = store.outputPanel.visible;
     const sidebarVisible = store.diffSidebar.visible && !store.diffSidebar.collapsed;
 
-    if (outputDiffVisible) {
+    if (outputVisible) {
       store.hideOutputPanel();
       return;
     }
@@ -138,6 +150,29 @@ function toggleFloatingSidebar() {
   // 全局快捷键：Cmd/Ctrl+W 关闭当前标签、Cmd/Ctrl+N 新建标签
   function globalKeydown(e) {
     try {
+      if ((e.key || '') === 'Escape') {
+        if (showCenteredDiff.value) {
+          e.preventDefault();
+          closeCenteredDiff();
+          return;
+        }
+        if (store.outputPanel.visible) {
+          e.preventDefault();
+          store.hideOutputPanel();
+          return;
+        }
+        if (store.diffSidebar.visible) {
+          e.preventDefault();
+          store.hideDiffSidebar();
+          return;
+        }
+        if (store.editorSettings.controlPanelVisible) {
+          e.preventDefault();
+          store.editorSettings.controlPanelVisible = false;
+          return;
+        }
+      }
+
       const isCmd = e.metaKey || e.ctrlKey;
       if (!isCmd) return;
       const k = (e.key || '').toLowerCase();
@@ -554,15 +589,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="json-processor">
+  <div class="json-processor" :class="{ 'has-active-tab': !!activeTab }">
     <button
       class="global-sidebar-toggle"
-      :class="{ 'is-active': (store.diffSidebar.visible && !store.diffSidebar.collapsed) || (store.outputPanel.visible && store.outputPanel.currentTab === 'diff') }"
+      :class="{ 'is-active': (store.diffSidebar.visible && !store.diffSidebar.collapsed) || store.outputPanel.visible }"
       @click="toggleFloatingSidebar"
       aria-label="侧边栏切换"
-      title="切换对比侧边栏"
+      title="切换右侧栏"
     >
-      <span v-if="(store.diffSidebar.visible && !store.diffSidebar.collapsed) || (store.outputPanel.visible && store.outputPanel.currentTab === 'diff')">◀</span>
+      <span v-if="(store.diffSidebar.visible && !store.diffSidebar.collapsed) || store.outputPanel.visible">◀</span>
       <span v-else>▶</span>
     </button>
     <div class="processor-header">
@@ -587,7 +622,6 @@ onMounted(() => {
         <template v-if="isNarrow">
           <div class="drawer-overlay" @click="store.editorSettings.controlPanelVisible = false"></div>
           <div class="control-panel-drawer">
-            <button class="drawer-close" @click="store.editorSettings.controlPanelVisible = false" aria-label="关闭设置">✕</button>
             <ControlPanel
               :activePanel="activePanel"
               @panelChange="(p) => activePanel = p"
@@ -629,14 +663,28 @@ onMounted(() => {
             @change="handleEditorChange"
           />
         </div>
-        <OutputPanel />
       </div>
-      <DiffSidebar @openLineDiff="handleOpenLineDiff" />
+      <DiffSidebar @openLineDiff="handleOpenLineDiff" @openCenteredDiff="handleOpenCenteredDiff" />
     </div>
 
     <div v-if="showLineDiff" class="line-diff-overlay">
       <button class="line-diff-close" @click="closeLineDiff">关闭</button>
       <DiffView :leftContent="lineLeft" :rightContent="lineRight" />
+    </div>
+
+    <div v-if="showCenteredDiff" class="centered-diff-overlay" @click.self="closeCenteredDiff">
+      <div class="centered-diff-panel" role="dialog" aria-modal="true" aria-label="居中对比结果">
+        <div class="centered-diff-header">
+          <div class="centered-diff-copy">
+            <h3>对比结果</h3>
+            <p>大视图预览，适合查看更长的结构差异</p>
+          </div>
+          <button class="centered-diff-close" @click="closeCenteredDiff">关闭</button>
+        </div>
+        <div class="centered-diff-body">
+          <DiffView :leftContent="centeredLeft" :rightContent="centeredRight" />
+        </div>
+      </div>
     </div>
 
     <!-- AI 原始响应悬浮面板 -->
@@ -701,6 +749,14 @@ onMounted(() => {
   background: var(--color-bg-primary);
 }
 
+@media (min-width: 1400px) {
+  /* StatusBar is fixed on large screens, reserve space to avoid covering work area. */
+  .json-processor.has-active-tab {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+  }
+}
+
 .processor-header {
   display: flex;
   align-items: center;
@@ -749,9 +805,9 @@ onMounted(() => {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 360px;
-  max-width: 360px;
-  z-index: 10;
+  width: 520px;
+  max-width: min(520px, 100%);
+  z-index: 99999;
   flex-shrink: 0;
     box-shadow: -4px 0 12px rgba(0, 0, 0, 0.06);
 
@@ -801,8 +857,88 @@ onMounted(() => {
   margin-bottom: 8px;
 }
 
+.centered-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(6px);
+}
+
+.centered-diff-panel {
+  width: min(1200px, 92vw);
+  height: min(82vh, 920px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--color-divider) 76%, transparent);
+  background: var(--color-bg-primary);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.35);
+}
+
+.centered-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-divider) 78%, transparent);
+  background: color-mix(in srgb, var(--color-bg-secondary) 90%, var(--color-bg-primary));
+}
+
+.centered-diff-copy h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+}
+
+.centered-diff-copy p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.centered-diff-close {
+  border: 1px solid var(--color-divider);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: color-mix(in srgb, var(--color-bg-primary) 88%, var(--color-bg-secondary));
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.centered-diff-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  background: color-mix(in srgb, var(--color-bg-primary) 94%, transparent);
+}
+
 @media (max-width: 768px) {
   .processor-container {
+    flex-direction: column;
+  }
+
+  .centered-diff-overlay {
+    padding: 12px;
+  }
+
+  .centered-diff-panel {
+    width: 100%;
+    height: min(88vh, 100%);
+    border-radius: 16px;
+  }
+
+  .centered-diff-header {
+    align-items: flex-start;
     flex-direction: column;
   }
 }
@@ -826,14 +962,14 @@ onMounted(() => {
     min-width: 0;
   }
   .control-panel-wrapper.drawer-mode {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    top: 64px;
-    bottom: 16px;
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    bottom: 12px;
     width: auto;
     max-width: 640px;
-    z-index: 300001;
+    z-index: 100000;
       box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
 
 
@@ -843,12 +979,12 @@ onMounted(() => {
     overflow: hidden;
   }
   .drawer-overlay {
-    position: fixed;
+    position: absolute;
     inset: 0;
       background: rgba(0, 0, 0, 0.12);
 
 
-    z-index: 300000;
+    z-index: 99999;
   }
   .control-panel-drawer {
     position: relative;
@@ -857,17 +993,7 @@ onMounted(() => {
     height: 100%;
     overflow: auto;
     padding: 12px;
-    z-index: 300002;
-  }
-  .drawer-close {
-    position: absolute;
-    right: 10px;
-    top: 8px;
-    background: transparent;
-    border: none;
-    color: var(--color-text-secondary);
-    font-size: 16px;
-    cursor: pointer;
+    z-index: 100001;
   }
 }
 
@@ -939,7 +1065,7 @@ onMounted(() => {
 /* Ensure control panel (non-drawer) is above editor but below global modals */
 .control-panel-wrapper:not(.drawer-mode) {
   position: relative;
-  z-index: 300000;
+  z-index: 1;
   pointer-events: auto;
 }
 

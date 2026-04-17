@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { detectAndConvert } from '../services/formatDetector.js';
 import notify from '../services/notify.js';
 import { useJsonStore } from '../store/index.js';
-  import { getStringifyIndent } from '../utils/indent.js';
+import { getStringifyIndent } from '../utils/indent.js';
 import DiffView from './DiffView.vue';
 
 const store = useJsonStore();
@@ -110,22 +110,6 @@ const diffRight = computed(() => {
   }
 });
 
-const showInSidebar = () => {
-  try {
-    const left = diffLeft.value || '';
-    const right = diffRight.value || '';
-    store.setDiffResult(left, right, {
-      diffLines: store.diffSidebar.diffLines || [],
-      diffTree: store.diffSidebar.diffTree || null,
-      diffStats: store.diffSidebar.diffStats || {}
-    });
-    store.diffSidebar.visible = true;
-    store.diffSidebar.collapsed = false;
-    store.diffSidebar.mode = 'result';
-  } catch (e) {
-    // ignore
-  }
-};
 </script>
 
 <template>
@@ -148,9 +132,6 @@ const showInSidebar = () => {
       <div class="diff-panel-wrapper" style="display:flex;flex-direction:column;height:100%">
         <DiffView :leftContent="diffLeft" :rightContent="diffRight" />
         <div class="output-actions">
-          <button @click="showInSidebar" class="output-action-btn output-action-btn--primary">
-            📌 在侧边显示
-          </button>
           <button @click="handleCopyOutput" class="output-action-btn">
             📋 复制
           </button>
@@ -188,7 +169,7 @@ const showInSidebar = () => {
   border-left: 1px solid var(--color-divider);
   overflow: hidden;
     box-shadow: none;
- 
+
 }
 
 .output-header {
@@ -211,7 +192,7 @@ const showInSidebar = () => {
 
 .output-tab {
     padding: 6px 10px;
- 
+
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
@@ -233,7 +214,7 @@ const showInSidebar = () => {
     background: var(--color-bg-primary);
     color: var(--color-primary);
     border-color: var(--color-divider);
- 
+
 }
 
 .output-close {
@@ -264,7 +245,7 @@ const showInSidebar = () => {
   margin: 0;
   padding: var(--spacing-md);
     background: var(--color-bg-primary);
- 
+
   color: var(--color-text-primary);
   font-size: 12px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
@@ -305,7 +286,7 @@ const showInSidebar = () => {
   gap: 6px;
   padding: 7px 12px;
     border-radius: 4px;
- 
+
   border: 1px solid var(--color-divider);
   background: color-mix(in srgb, var(--color-bg-secondary) 90%, var(--color-bg-primary));
   color: var(--color-text-primary);
@@ -332,7 +313,7 @@ const showInSidebar = () => {
   border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-divider));
     background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-primary));
     color: var(--color-primary);
- 
+
 }
 
 .output-action-btn--primary:hover {

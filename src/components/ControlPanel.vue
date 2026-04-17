@@ -1,7 +1,7 @@
 <script setup>
   import { computed, ref, watch } from 'vue';
-  import notify from '../services/notify.js';
-  import { useJsonStore } from '../store/index.js';
+import notify from '../services/notify.js';
+import { useJsonStore } from '../store/index.js';
 
   const props = defineProps({
     activePanel: {
@@ -197,8 +197,8 @@
         </p>
       </div>
 
-      <button class="panel-close" type="button" @click="handleClose">
-        关闭设置
+      <button class="panel-close" type="button" @click="handleClose" aria-label="关闭设置" title="关闭设置">
+        ✕
       </button>
     </div>
 
@@ -391,13 +391,6 @@
         </div>
       </section>
 
-      <section class="settings-section settings-section--footer">
-        <div class="footer-actions">
-          <button class="panel-btn" type="button" @click="handleClose">
-            关闭设置
-          </button>
-        </div>
-      </section>
     </div>
   </div>
 </template>
@@ -466,21 +459,30 @@
 
   .panel-close {
     flex: none;
-    padding: 6px 10px;
-    border-radius: 4px;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg-primary);
-    color: var(--color-text-primary);
-    font-size: 13px;
-    font-weight: 600;
-    box-shadow: none;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-divider) 60%, transparent);
+    background: color-mix(in srgb, var(--color-bg-primary) 88%, var(--color-bg-secondary));
+    color: var(--color-text-tertiary);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 10px rgba(0, 0, 0, 0.03);
+    transition: transform 160ms ease, background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
   }
 
   .panel-close:hover,
   .panel-close:focus-visible {
-    border-color: var(--color-primary);
-    color: var(--color-primary-darker);
-    background: var(--color-hover-bg);
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-divider));
+    color: var(--color-text-primary);
+    background: color-mix(in srgb, var(--color-bg-primary) 72%, var(--color-primary) 10%);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
   }
 
   .panel-tabs {
@@ -937,12 +939,12 @@
     }
 
     .panel-header {
-      flex-direction: column;
-      align-items: stretch;
+      flex-direction: row;
+      align-items: flex-start;
     }
 
     .panel-close {
-      width: 100%;
+      margin-top: 2px;
     }
   }
 
