@@ -8,7 +8,7 @@ import { getStringifyIndent } from '../utils/indent.js';
 import DiffView from './DiffView.vue';
 import Editor from './Editor.vue';
 
-const emit = defineEmits(['openLineDiff', 'openCenteredDiff']);
+const emit = defineEmits(['openLineDiff', 'openCenteredDiff', 'aiProcess']);
 const store = useJsonStore();
 
 const visible = computed(() => store.diffSidebar.visible);
@@ -20,6 +20,7 @@ const allTabs = [
   { id: 'diff', label: '⚖️ 对比' },
   { id: 'jsonpath', label: '🔍 JSONPath' },
   { id: 'jq', label: '🌀 jq' },
+  { id: 'ai', label: '🤖 AI' },
 ];
 
 const hasOutputContent = (tab) => {
@@ -29,16 +30,22 @@ const hasOutputContent = (tab) => {
 
 // 始终显示"对比"标签；有内容时才显示查询结果标签
 const visibleTabs = computed(() =>
-  allTabs.filter((t) => t.id === 'diff' || hasOutputContent(t.id))
+  allTabs.filter((t) => t.id === 'diff' || t.id === 'ai' || hasOutputContent(t.id))
 );
 
 // 当前活跃标签：output 模式下取 outputPanel.currentTab，否则固定为 'diff'
 const activeTabId = computed(() =>
-  mode.value === 'output' ? store.outputPanel.currentTab : 'diff'
+  mode.value === 'output' ? store.outputPanel.currentTab : (mode.value === 'ai' ? 'ai' : 'diff')
 );
 const isDiffOutputTab = computed(() => store.outputPanel.currentTab === 'diff');
 
 function switchTab(tabId) {
+  if (tabId === 'ai') {
+    store.showAITab();
+    store.outputPanel.visible = false;
+    return;
+  }
+
   if (tabId === 'diff') {
     // 切到对比模式：有对比结果则显示结果，否则显示输入
     const hasResult = store.diffSidebar.leftContent || store.diffSidebar.diffTree;
@@ -49,6 +56,73 @@ function switchTab(tabId) {
     store.diffSidebar.mode = 'output';
     store.outputPanel.currentTab = tabId;
     store.outputPanel.visible = true;
+  }
+}
+
+const aiDraft = computed({
+  get: () => store.aiComposer.draft,
+  set: (v) => { store.setAIDraft(v); }
+});
+const aiMessages = computed(() => store.aiComposer.messages || []);
+const aiSending = computed(() => !!store.aiComposer.sending);
+const aiError = computed(() => store.aiComposer.error || '');
+
+function submitAiInSidebar() {
+  const text = (aiDraft.value || '').trim();
+  if (!text) {
+    notify.warn('请输入问题');
+    return;
+  }
+  const cfg = store.getAIConfig();
+  const provider = cfg.provider || 'utools';
+  const model = provider === 'utools'
+    ? (store.aiComposer.selectedModel || cfg.model || 'utools-default')
+    : (cfg.model || 'gpt-3.5-turbo');
+  emit('aiProcess', text, { provider, model });
+  store.setAIDraft('');
+}
+
+async function copyAiMessage(content) {
+  const text = typeof content === 'string' ? content : JSON.stringify(content, null, getStringifyIndent());
+  try {
+    if (globalThis.window?.utools) {
+      globalThis.window.utools.copyText(text);
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+    notify.success('已复制回复');
+  } catch (e) {
+    notify.error('复制失败: ' + (e?.message || String(e)));
+  }
+}
+
+async function applyAiMessageAsNewTab(message) {
+  const text = message?.content || '';
+  if (!text) return;
+  try {
+    let content = text;
+
+    // 优先提取 markdown fenced json，提取失败时回退到整段文本。
+    const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fencedMatch) {
+      const fencedBody = (fencedMatch[1] || '').trim();
+      const extracted = await detectAndConvert(fencedBody);
+      if (extracted.success) {
+        content = extracted.data;
+      } else {
+        content = text;
+      }
+    } else {
+      const detected = await detectAndConvert(text);
+      if (detected.success) {
+        content = detected.data;
+      }
+    }
+
+    store.addTab(content, 'AI 处理结果', 'json');
+    notify.success('已新建结果标签');
+  } catch (e) {
+    notify.error('应用失败: ' + (e?.message || String(e)));
   }
 }
 
@@ -126,6 +200,8 @@ async function handleInsertToEditor() {
 function closePanel() {
   if (mode.value === 'output') {
     store.hideOutputPanel();
+  } else if (mode.value === 'ai') {
+    store.hideAITab();
   } else {
     closeSidebar();
   }
@@ -393,6 +469,36 @@ function closeSidebar() {
         <p>暂无输出内容</p>
       </div>
     </div>
+
+    <div v-else-if="mode === 'ai'" class="ai-mode">
+      <div class="ai-messages">
+        <div v-if="!aiMessages.length" class="result-empty">
+          <p>在这里提问，AI 回复会显示在右侧对话框中。</p>
+        </div>
+        <div v-for="msg in aiMessages" :key="msg.id" class="ai-message" :class="msg.role === 'user' ? 'is-user' : 'is-assistant'">
+          <div class="ai-message-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
+          <pre class="ai-message-content">{{ msg.content }}</pre>
+          <div v-if="msg.role === 'assistant'" class="ai-message-actions">
+            <button class="diff-btn diff-btn--ghost" @click="copyAiMessage(msg.content)">📋 复制</button>
+            <button class="diff-btn diff-btn--ghost" @click="applyAiMessageAsNewTab(msg)">🆕 新建标签</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-composer">
+        <textarea
+          v-model="aiDraft"
+          class="ai-input"
+          placeholder="输入你的问题，Enter 发送，Shift+Enter 换行"
+          rows="3"
+          @keydown.enter.exact.prevent="submitAiInSidebar"
+        ></textarea>
+        <button class="diff-btn diff-btn--primary" :disabled="aiSending" @click="submitAiInSidebar">
+          {{ aiSending ? '发送中...' : '发送' }}
+        </button>
+      </div>
+      <p v-if="aiError" class="error-hint">{{ aiError }}</p>
+    </div>
   </aside>
 </template>
 
@@ -511,6 +617,73 @@ function closeSidebar() {
   gap: 8px;
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+.ai-mode {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: var(--spacing-md);
+  gap: var(--spacing-sm);
+}
+
+.ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-message {
+  border: 1px solid var(--color-divider);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--color-bg-primary);
+}
+
+.ai-message.is-user {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-divider));
+}
+
+.ai-message-role {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.ai-message-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-message-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ai-composer {
+  border-top: 1px solid var(--color-divider);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-input {
+  width: 100%;
+  border: 1px solid var(--color-divider);
+  border-radius: 8px;
+  padding: 8px;
+  resize: vertical;
+  font-size: 13px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
 }
 
 .close-btn {

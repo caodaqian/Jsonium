@@ -1,6 +1,5 @@
 <script setup>
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { fetchUtoolsModels } from '../services/aiProcessor.js';
 import { jsonToGoStruct, jsonToJavaClass, jsonToJavaScript, jsonToPython, jsonToTypeScript } from '../services/converter.js';
 import notify from '../services/notify.js';
 import { detectQueryType, queryJq, queryJsonPath, validateQuery } from '../services/queryEngine.js';
@@ -19,7 +18,6 @@ const emit = defineEmits([
   'escape',
   'unescape',
   'compare',
-  'aiProcess',
   'openTableView',
   'format'
 ]);
@@ -36,24 +34,6 @@ const copyMenuPosition = ref({ top: 0, left: 0, height: 0 });
 const typeOverride = ref(false); // 用户是否手动覆盖了类型
 let scrollRaf = null;
 
-
-const showAiPanel = computed({
-  get: () => store.aiComposer.visible,
-  set: (v) => { store.aiComposer.visible = v; }
-});
-const aiTextareaRef = ref(null);
-// expose local helpers to interact with store.aiComposer
-const aiDraft = computed({
-  get: () => store.aiComposer.draft,
-  set: (v) => { store.setAIDraft(v); }
-});
-const aiSelectedModel = computed({
-  get: () => store.aiComposer.selectedModel,
-  set: (v) => { store.setAISelectedModel(v); }
-});
-const aiModels = computed(() => store.aiComposer.models);
-const aiLoadingModels = computed(() => store.aiComposer.loadingModels);
-const aiModelLoadError = computed(() => store.aiComposer.modelLoadError);
 
 // 监听查询表达式变化，自动检测类型
 watch(queryExpression, (newExpr) => {
@@ -372,75 +352,8 @@ const handleCompareClick = () => {
   emit('compare', props.content, '');
 };
 
-async function loadModelsIfNeeded() {
-  if (aiModels.value.length > 0 || aiLoadingModels.value) return;
-  try {
-    store.setAIModelLoading(true);
-    store.setAIModelError('');
-    const res = await fetchUtoolsModels();
-    if (res.success) {
-      store.setAIModels(res.data);
-      // ensure selected model exists
-      if (!store.aiComposer.selectedModel && res.data.length > 0) {
-        store.setAISelectedModel(res.data[0].id);
-      }
-    } else {
-      store.setAIModelError(res.error || '模型加载失败');
-      // fallback to virtual default
-      store.setAIModels([{ id: 'utools-default', label: 'utools-default', description: '默认模型', icon: '', cost: 0 }]);
-      store.setAISelectedModel('utools-default');
-    }
-  } catch (e) {
-    store.setAIModelError(e.message || String(e));
-    store.setAIModels([{ id: 'utools-default', label: 'utools-default', description: '默认模型', icon: '', cost: 0 }]);
-    store.setAISelectedModel('utools-default');
-  } finally {
-    store.setAIModelLoading(false);
-  }
-}
-
-function autoResizeAiTextarea() {
-  const el = aiTextareaRef.value;
-  if (!el) return;
-  el.style.height = 'auto';
-  const max = 200;
-  el.style.height = Math.min(el.scrollHeight, max) + 'px';
-}
-
-const handleAiTextareaKeydown = (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    submitAIProcess();
-  }
-  // Shift+Enter default behavior: insert newline
-};
-
-const toggleAiPanel = async () => {
-  store.aiComposer.visible = !store.aiComposer.visible;
-  if (store.aiComposer.visible) {
-    await nextTick();
-    loadModelsIfNeeded();
-    // resize after open
-    nextTick(() => autoResizeAiTextarea());
-  }
-};
-
-const submitAIProcess = () => {
-  const draft = (aiDraft.value || '').trim();
-  if (!draft) {
-    notify.warn('请输入处理指令');
-    return;
-  }
-
-  const model = aiSelectedModel.value || store.aiConfig.model || 'utools-default';
-  emit('aiProcess', draft, {
-    provider: 'utools',
-    model
-  });
-
-  // 按实施计划：发送成功后清空草稿。这里无法同步获得成功状态，先清空并关闭面板 for UX parity.
-  store.setAIDraft('');
-  store.aiComposer.visible = false;
+const toggleAiPanel = () => {
+  store.showAITab();
 };
 
 const escapeJson = () => {
@@ -609,37 +522,6 @@ aria-label="帮助"
         <button @click="copyToClipboard('javascript')" class="menu-item">⚡ JavaScript 类</button>
       </div>
     </teleport>
-
-
-    <div v-if="showAiPanel" class="aux-panel">
-      <h4>AI 处理</h4>
-      <div class="form-row">
-        <div style="min-width:200px;">
-          <label style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;display:block;">模型</label>
-          <select v-model="store.aiComposer.selectedModel" class="form-select" :disabled="aiLoadingModels">
-            <option v-for="m in aiModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-          </select>
-          <div v-if="aiModelLoadError" class="query-error" style="margin-top:6px;">{{ aiModelLoadError }}</div>
-        </div>
-
-        <div style="flex:1;">
-          <label style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;display:block;">说明</label>
-          <textarea
-            ref="aiTextareaRef"
-            v-model="store.aiComposer.draft"
-            placeholder="例：删除所有 price 小于 10 的元素"
-            class="form-textarea"
-            rows="2"
-            @input="autoResizeAiTextarea"
-            @keydown="handleAiTextareaKeydown"
-          ></textarea>
-        </div>
-      </div>
-
-      <button @click="submitAIProcess" class="panel-btn primary">
-        🤖 发送
-      </button>
-    </div>
   </div>
 </template>
 
@@ -996,52 +878,6 @@ aria-label="帮助"
       gap: 4px;
 
   }
-}
-
-.panel-btn {
-  width: 100%;
-  padding: 6px 10px;
-  margin-top: 8px;
-  background: var(--color-primary);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: var(--font-size-xs);
-}
-
-.aux-panel {
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-select,
-.form-input,
-.form-textarea {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  font-size: var(--font-size-xs);
-  outline: none;
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-}
-
-.form-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.form-textarea {
-  font-family: 'Monaco', 'Menlo', monospace;
-  resize: vertical;
 }
 
 .menu-dropdown {

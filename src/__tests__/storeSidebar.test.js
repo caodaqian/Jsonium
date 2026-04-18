@@ -28,4 +28,14 @@ describe('store unified sidebar behavior', () => {
     expect(store.outputPanel.visible).toBe(false);
     expect(store.diffSidebar.visible).toBe(false);
   });
+
+  it('opens right sidebar in ai mode when showAITab is called', () => {
+    const store = useJsonStore();
+
+    store.showAITab();
+
+    expect(store.diffSidebar.visible).toBe(true);
+    expect(store.diffSidebar.collapsed).toBe(false);
+    expect(store.diffSidebar.mode).toBe('ai');
+  });
 });

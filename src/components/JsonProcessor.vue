@@ -426,9 +426,32 @@ const handleAIProcess = async (instruction, config) => {
   // model 兜底：优先使用传入 model -> store.aiComposer.selectedModel -> aiConfig.model -> 'utools-default'
   currentConfig.model = currentConfig.model || store.aiComposer.selectedModel || store.aiConfig.model || 'utools-default';
 
+  const userText = String(instruction || '').trim();
+  if (!userText) return;
+
+  store.showAITab();
+  store.setAIError('');
+  store.addAIMessage({
+    role: 'user',
+    content: userText,
+    meta: { provider: currentConfig.provider, model: currentConfig.model }
+  });
+  store.setAISending(true);
+
   try {
     const result = await processWithAI(activeTab.value.content, instruction, currentConfig);
     if (result.success) {
+      const assistantContent = result.rawResponse || result.data || '';
+      store.addAIMessage({
+        role: 'assistant',
+        content: assistantContent,
+        meta: {
+          provider: currentConfig.provider,
+          model: currentConfig.model,
+          originalFormat: result.originalFormat || 'text'
+        }
+      });
+
       // 如果 AI 返回可解析的 JSON（service 返回格式化 JSON 字符串），优先作为 JSON 面板新建标签
       if (result.originalFormat && result.originalFormat.toLowerCase() === 'json') {
         store.addTab(result.data, 'AI 处理结果', FORMAT_TYPES.JSON);
@@ -446,10 +469,14 @@ const handleAIProcess = async (instruction, config) => {
         }
       }
     } else {
+      store.setAIError(result.error || '处理失败');
       notify.error('处理失败: ' + result.error);
     }
   } catch (e) {
+    store.setAIError(e.message || '处理失败');
     notify.error('处理失败: ' + e.message);
+  } finally {
+    store.setAISending(false);
   }
 };
 
@@ -664,7 +691,7 @@ onMounted(() => {
           />
         </div>
       </div>
-      <DiffSidebar @openLineDiff="handleOpenLineDiff" @openCenteredDiff="handleOpenCenteredDiff" />
+      <DiffSidebar @openLineDiff="handleOpenLineDiff" @openCenteredDiff="handleOpenCenteredDiff" @aiProcess="handleAIProcess" />
     </div>
 
     <div v-if="showLineDiff" class="line-diff-overlay">
