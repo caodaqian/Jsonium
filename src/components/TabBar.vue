@@ -129,6 +129,7 @@ watch(showMenu, (v) => {
         :key="tab.id"
         :class="['tab', { active: tab.id === activeTabId }]"
         @click="emit('selectTab', tab.id)"
+        @mousedown.middle.prevent="emit('closeTab', tab.id)"
         @contextmenu.prevent="onContextmenu(tab, $event)"
       >
         <div class="tab-content">
@@ -181,11 +182,11 @@ watch(showMenu, (v) => {
 .tab-bar {
   display: flex;
     gap: 1px;
- 
+
   background: var(--color-bg-secondary);
     padding: 0 8px;
     border-bottom: 1px solid var(--color-divider);
- 
+
   align-items: center;
   overflow-x: auto;
 }
@@ -193,7 +194,7 @@ watch(showMenu, (v) => {
 .tabs-scroll {
   display: flex;
     gap: 1px;
- 
+
   flex: 1;
   overflow-x: auto;
   min-width: 0;
@@ -204,16 +205,16 @@ watch(showMenu, (v) => {
   align-items: center;
     gap: 6px;
     padding: 8px 10px 9px;
- 
+
   background: var(--color-bg-primary);
     border: 1px solid transparent;
     border-bottom: none;
     border-radius: 4px 4px 0 0;
- 
+
   cursor: pointer;
   white-space: nowrap;
     font-size: 12px;
- 
+
   transition: all 0.2s;
   flex-shrink: 0;
   color: var(--color-text-primary);
@@ -221,7 +222,7 @@ watch(showMenu, (v) => {
 
 .tab:hover {
     background: color-mix(in srgb, var(--color-bg-primary) 90%, var(--color-bg-secondary));
- 
+
 }
 
 .tab.active {
@@ -229,7 +230,7 @@ watch(showMenu, (v) => {
     border-color: var(--color-divider);
     border-bottom-color: var(--color-bg-primary);
     color: var(--color-text-primary);
- 
+
   font-weight: 500;
 }
 
@@ -253,24 +254,24 @@ watch(showMenu, (v) => {
 
 .tab-star {
     margin-right: 2px;
- 
+
   color: var(--color-primary);
     font-size: 11px;
- 
+
 }
 
 
- 
+
 .tab-context-menu {
   position: absolute;
   z-index: 99999;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
- 
+
   border-radius: 4px;
     padding: 4px 0;
- 
+
   min-width: 140px;
 }
 
@@ -298,11 +299,11 @@ watch(showMenu, (v) => {
 .tab-input {
   width: 80px;
     padding: 2px 6px;
- 
+
   border: 1px solid var(--color-primary);
     border-radius: 3px;
     font-size: 12px;
- 
+
   outline: none;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
@@ -318,10 +319,10 @@ watch(showMenu, (v) => {
   border: none;
   cursor: pointer;
     font-size: 16px;
- 
+
   color: var(--color-text-tertiary);
     padding: 0 4px;
- 
+
   line-height: 1;
   transition: color 0.2s;
 }
@@ -336,10 +337,10 @@ watch(showMenu, (v) => {
   border: none;
     border-radius: 4px;
     padding: 4px 8px;
- 
+
   cursor: pointer;
     font-size: 13px;
- 
+
   font-weight: bold;
   transition: background 0.2s;
   flex-shrink: 0;

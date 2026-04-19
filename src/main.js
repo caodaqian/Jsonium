@@ -14,6 +14,8 @@ const store = useJsonStore();
 
 // 尝试加载上次保存的 tabs 状态（异步安全）
 store.loadTabsState && store.loadTabsState();
+// 加载统一设置状态（主题/编辑器/AI）
+store.loadSettingsState && store.loadSettingsState();
 
 // 防抖保存函数
 let _saveTimer = null;
@@ -30,11 +32,13 @@ if (typeof window !== 'undefined' && window.utools) {
     if (typeof window.utools.onPluginEnter === 'function') {
       window.utools.onPluginEnter(async () => {
         try { await store.loadTabsState && store.loadTabsState(); } catch (_) {}
+        try { store.loadSettingsState && store.loadSettingsState(); } catch (_) { }
       });
     }
     if (typeof window.utools.onPluginOut === 'function') {
       window.utools.onPluginOut(() => {
         try { store.saveTabsState && store.saveTabsState(); } catch (_) {}
+        try { store.saveSettingsState && store.saveSettingsState(); } catch (_) { }
       });
     }
   } catch (_) { /* ignore */ }
@@ -51,6 +55,7 @@ watch(
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     try { store.saveTabsState && store.saveTabsState(); } catch (_) {}
+    try { store.saveSettingsState && store.saveSettingsState(); } catch (_) { }
   });
 }
 

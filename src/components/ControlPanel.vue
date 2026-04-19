@@ -78,6 +78,18 @@ import { useJsonStore } from '../store/index.js';
   const openaiModelLoading = computed(() => !!store.aiComposer.openaiModelLoading);
   const openaiModelError = computed(() => store.aiComposer.openaiModelError || '');
   const canUseOpenAIModelSelect = computed(() => openaiModels.value.length > 0 && !openaiModelInputMode.value);
+  let settingsSaveTimer = null;
+
+  function scheduleSettingsSave() {
+    if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
+    settingsSaveTimer = setTimeout(() => {
+      try {
+        if (typeof store.saveSettingsState === 'function') store.saveSettingsState();
+      } catch (error) {
+        console.warn('Failed to save settings state', error);
+      }
+    }, 300);
+  }
 
   function ensureAIDefaults() {
     if (!store.aiConfig.provider) {
@@ -156,11 +168,15 @@ import { useJsonStore } from '../store/index.js';
   watch(
     () => store.editorSettings,
     () => {
-      try {
-        if (typeof store.saveSettingsState === 'function') store.saveSettingsState();
-      } catch (error) {
-        console.warn('Failed to save editor settings state', error);
-      }
+      scheduleSettingsSave();
+    },
+    { deep: true }
+  );
+
+  watch(
+    () => store.aiConfig,
+    () => {
+      scheduleSettingsSave();
     },
     { deep: true }
   );

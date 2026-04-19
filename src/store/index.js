@@ -199,40 +199,8 @@ export const useJsonStore = defineStore('json', () => {
   // 设置主题偏好
   const setThemePreference = (theme, mode) => {
     themePreference.value = { theme, mode };
-    saveThemePreference();
+    try { saveSettingsState(); } catch (_) { /* ignore */ }
   };
-
-  // 本地存储与加载
-  const THEME_KEY = 'json_theme_pref_v1';
-  const saveThemePreference = () => {
-    try {
-      const payload = JSON.stringify(themePreference.value);
-      if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.setItem === 'function') {
-        window.utools.dbStorage.setItem(THEME_KEY, payload);
-      } else if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(THEME_KEY, payload);
-      }
-    } catch(_) {}
-  };
-  const loadThemePreference = () => {
-    try {
-      let raw = null;
-      if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.getItem === 'function') {
-        raw = window.utools.dbStorage.getItem(THEME_KEY);
-      } else if (typeof localStorage !== 'undefined') {
-        raw = localStorage.getItem(THEME_KEY);
-      }
-      if (!raw) return;
-      try {
-        const loaded = JSON.parse(raw);
-        if (loaded && typeof loaded === 'object') {
-          themePreference.value = Object.assign({}, themePreference.value, loaded);
-        }
-      } catch(_) {}
-    } catch(_) {}
-  };
-  // 启动时自动加载
-  loadThemePreference();
   // ========= 主题系统 end =========
 
   const editorSettings = reactive({
@@ -525,13 +493,19 @@ export const useJsonStore = defineStore('json', () => {
     }
   };
 
-  const SETTINGS_KEY = 'json_settings_v1';
+  const SETTINGS_KEY = 'json_settings_v2';
+  const LEGACY_SETTINGS_KEY = 'json_settings_v1';
+  const LEGACY_THEME_KEY = 'json_theme_pref_v1';
   const saveSettingsState = () => {
     try {
       const payload = JSON.stringify({
+        themePreference: { ...themePreference.value },
+        aiConfig: { ...aiConfig.value },
         editorSettings: { ...editorSettings },
         diffSidebarCollapsed: !!diffSidebar.collapsed,
-        lastWindowSize: editorSettings.lastWindowSize || null
+        lastWindowSize: editorSettings.lastWindowSize || null,
+        savedAt: new Date().toISOString(),
+        version: 2
       });
       if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.setItem === 'function') {
         window.utools.dbStorage.setItem(SETTINGS_KEY, payload);
@@ -546,14 +520,41 @@ export const useJsonStore = defineStore('json', () => {
   const loadSettingsState = () => {
     try {
       let raw = null;
+      let legacyThemeRaw = null;
       if (typeof window !== 'undefined' && window.utools && window.utools.dbStorage && typeof window.utools.dbStorage.getItem === 'function') {
         raw = window.utools.dbStorage.getItem(SETTINGS_KEY);
+        if (!raw) raw = window.utools.dbStorage.getItem(LEGACY_SETTINGS_KEY);
+        if (!raw) legacyThemeRaw = window.utools.dbStorage.getItem(LEGACY_THEME_KEY);
       } else if (typeof localStorage !== 'undefined') {
         raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) raw = localStorage.getItem(LEGACY_SETTINGS_KEY);
+        if (!raw) legacyThemeRaw = localStorage.getItem(LEGACY_THEME_KEY);
+      }
+      if (!raw && legacyThemeRaw) {
+        let legacyTheme = null;
+        try { legacyTheme = JSON.parse(legacyThemeRaw); } catch (_) { legacyTheme = null; }
+        if (legacyTheme && typeof legacyTheme === 'object') {
+          themePreference.value = {
+            theme: legacyTheme.theme ?? themePreference.value.theme,
+            mode: legacyTheme.mode ?? themePreference.value.mode
+          };
+          try { saveSettingsState(); } catch (_) { /* ignore */ }
+          return true;
+        }
       }
       if (!raw) return false;
       let parsed;
       try { parsed = JSON.parse(raw); } catch { return false; }
+      if (parsed && parsed.themePreference && typeof parsed.themePreference === 'object') {
+        const nextTheme = {
+          theme: parsed.themePreference.theme ?? themePreference.value.theme,
+          mode: parsed.themePreference.mode ?? themePreference.value.mode
+        };
+        themePreference.value = nextTheme;
+      }
+      if (parsed && parsed.aiConfig && typeof parsed.aiConfig === 'object') {
+        setAIConfig(parsed.aiConfig);
+      }
       if (parsed && parsed.editorSettings) {
         try { updateEditorSettings(parsed.editorSettings); } catch (_) { /* ignore */ }
       }
@@ -563,6 +564,8 @@ export const useJsonStore = defineStore('json', () => {
       if (parsed && parsed.lastWindowSize) {
         editorSettings.lastWindowSize = parsed.lastWindowSize;
       }
+      // 将旧版本配置升级为新键，减少后续分支处理成本
+      try { saveSettingsState(); } catch (_) { /* ignore */ }
       return true;
     } catch (e) {
       return false;
@@ -669,8 +672,6 @@ export const useJsonStore = defineStore('json', () => {
         getThemePreference,
         setThemePreference,
         getEffectiveTheme,
-        saveThemePreference,
-        loadThemePreference,
     // State
     tabs,
     activeTabId,
