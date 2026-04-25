@@ -10,6 +10,7 @@ const props = defineProps({
   left: { type: String, default: '' },
   right: { type: String, default: '' },
   language: { type: String, default: 'json' },
+  singleColumn: { type: Boolean, default: false },
   options: { type: Object, default: () => ({}) }
 });
 
@@ -381,19 +382,20 @@ function initDiffEditor() {
       return;
     }
 
+    const useSideBySide = !props.singleColumn;
     diffEditor = monaco.editor.createDiffEditor(editorContainer.value, {
       enableSplitViewResizing: true,
-      renderSideBySide: true,
-      renderSideBySideInlineBreakpoint: 0,
-      useInlineViewWhenSpaceIsLimited: false,
+      renderSideBySide: useSideBySide,
+      renderSideBySideInlineBreakpoint: useSideBySide ? 0 : Number.MAX_SAFE_INTEGER,
+      useInlineViewWhenSpaceIsLimited: !useSideBySide,
       automaticLayout: true,
       folding: true,
       foldingStrategy: 'auto',
       showFoldingControls: 'always',
       ...props.options,
-      renderSideBySide: true,
-      renderSideBySideInlineBreakpoint: 0,
-      useInlineViewWhenSpaceIsLimited: false
+      renderSideBySide: useSideBySide,
+      renderSideBySideInlineBreakpoint: useSideBySide ? 0 : Number.MAX_SAFE_INTEGER,
+      useInlineViewWhenSpaceIsLimited: !useSideBySide
     });
 
     leftModel = monaco.editor.createModel(props.left || '', props.language);

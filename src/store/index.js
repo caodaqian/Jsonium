@@ -277,10 +277,10 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.mode = 'result';
     diffSidebar.leftContent = leftContent;
     diffSidebar.rightContent = rightContent;
-    // 支持行级与树级结果兼容
+    const defaultStats = { added: 0, removed: 0, changed: 0, unchanged: 0 };
     diffSidebar.diffLines = payload.diffLines || [];
     diffSidebar.diffTree = payload.diffTree || null;
-    diffSidebar.diffStats = payload.diffStats || diffSidebar.diffStats;
+    diffSidebar.diffStats = payload.diffStats || defaultStats;
     diffSidebar.error = '';
   };
 

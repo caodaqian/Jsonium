@@ -1,5 +1,6 @@
 <script setup>
-import { computed } from 'vue';
+import * as monacoModule from 'monaco-editor';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { detectAndConvert } from '../services/formatDetector.js';
 import notify from '../services/notify.js';
 import { useJsonStore } from '../store/index.js';
@@ -17,6 +18,13 @@ const tabLabels = {
 };
 
 const currentPanel = computed(() => store.outputPanel.content[store.outputPanel.currentTab]);
+const monacoContainer = ref(null);
+const monacoLoadFailed = ref(false);
+
+let monaco = null;
+let monacoEditor = null;
+let monacoThemeMediaQuery = null;
+
 const formattedContent = computed(() => {
   const entry = currentPanel.value;
   if (!entry) return '';
@@ -24,6 +32,17 @@ const formattedContent = computed(() => {
   if (entry.value === null || entry.value === undefined) return '';
   if (typeof entry.value === 'string') {
     return entry.value;
+  }
+  return JSON.stringify(entry.value, null, getStringifyIndent());
+});
+
+const monacoContent = computed(() => {
+  const entry = currentPanel.value;
+  if (!entry || entry.error || entry.value === null || entry.value === undefined) {
+    return '';
+  }
+  if (typeof entry.value === 'string') {
+    return JSON.stringify(entry.value, null, getStringifyIndent());
   }
   return JSON.stringify(entry.value, null, getStringifyIndent());
 });
@@ -38,6 +57,129 @@ const isError = computed(() => {
   const entry = currentPanel.value;
   return entry && entry.error !== null && entry.error !== undefined;
 });
+
+const shouldUseMonaco = computed(() => {
+  return (
+    store.outputPanel.currentTab !== 'diff'
+    && hasContent.value
+    && !isError.value
+    && !monacoLoadFailed.value
+  );
+});
+
+const getPreferredMonacoTheme = () => {
+  if (typeof document !== 'undefined') {
+    const root = document.documentElement;
+    const mode = root?.dataset?.themeMode;
+    if (mode === 'dark') return 'vs-dark';
+    if (mode === 'light') return 'vs';
+  }
+
+  const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
+  if (mediaQuery?.matches) {
+    return 'vs-dark';
+  }
+
+  return 'vs';
+};
+
+const applyMonacoTheme = () => {
+  if (!monaco?.editor || typeof monaco.editor.setTheme !== 'function') {
+    return;
+  }
+  monaco.editor.setTheme(getPreferredMonacoTheme());
+};
+
+const disposeMonaco = () => {
+  if (monacoThemeMediaQuery && typeof monacoThemeMediaQuery.removeEventListener === 'function') {
+    monacoThemeMediaQuery.removeEventListener('change', applyMonacoTheme);
+  }
+  monacoThemeMediaQuery = null;
+  if (monacoEditor && typeof monacoEditor.dispose === 'function') {
+    monacoEditor.dispose();
+  }
+  monacoEditor = null;
+};
+
+const loadMonaco = async () => {
+  if (monaco?.editor) {
+    return monaco;
+  }
+
+  monaco = monacoModule?.default?.editor ? monacoModule.default : monacoModule;
+  if (!monaco?.editor) {
+    monacoLoadFailed.value = true;
+    return null;
+  }
+
+  return monaco;
+};
+
+const createMonacoViewer = (monacoInstance, value) => {
+  applyMonacoTheme();
+  monacoEditor = monacoInstance.editor.create(monacoContainer.value, {
+    value,
+    language: 'json',
+    readOnly: true,
+    domReadOnly: true,
+    automaticLayout: true,
+    minimap: { enabled: false },
+    glyphMargin: false,
+    folding: true,
+    lineNumbers: 'on',
+    scrollBeyondLastLine: false,
+    renderLineHighlight: 'none',
+    overviewRulerBorder: false,
+    wordWrap: 'on'
+  });
+
+  const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
+  if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
+    monacoThemeMediaQuery = mediaQuery;
+    monacoThemeMediaQuery.addEventListener('change', applyMonacoTheme);
+  }
+};
+
+const updateMonacoViewerValue = (value) => {
+  const model = typeof monacoEditor?.getModel === 'function' ? monacoEditor.getModel() : null;
+  if (model && typeof model.setValue === 'function') {
+    if (typeof model.getValue !== 'function' || model.getValue() !== value) {
+      model.setValue(value);
+    }
+  } else if (typeof monacoEditor?.setValue === 'function') {
+    monacoEditor.setValue(value);
+  }
+
+  if (typeof monacoEditor?.layout === 'function') {
+    monacoEditor.layout();
+  }
+};
+
+const ensureMonacoViewer = async () => {
+  if (!shouldUseMonaco.value) {
+    disposeMonaco();
+    return;
+  }
+
+  await nextTick();
+  if (!monacoContainer.value) {
+    return;
+  }
+
+  const monacoInstance = await loadMonaco();
+  if (!monacoInstance?.editor) {
+    return;
+  }
+
+  const nextValue = monacoContent.value;
+
+  if (!monacoEditor) {
+    createMonacoViewer(monacoInstance, nextValue);
+    return;
+  }
+
+  updateMonacoViewerValue(nextValue);
+};
 
 const handleCopyOutput = async () => {
   if (!hasContent.value) return;
@@ -110,6 +252,26 @@ const diffRight = computed(() => {
   }
 });
 
+watch(shouldUseMonaco, () => {
+  void ensureMonacoViewer();
+});
+
+watch(monacoContent, () => {
+  void ensureMonacoViewer();
+});
+
+watch(() => store.outputPanel.currentTab, () => {
+  void ensureMonacoViewer();
+});
+
+onMounted(() => {
+  void ensureMonacoViewer();
+});
+
+onBeforeUnmount(() => {
+  disposeMonaco();
+});
+
 </script>
 
 <template>
@@ -143,7 +305,8 @@ const diffRight = computed(() => {
     </div>
 
     <div class="output-content" v-else-if="hasContent">
-      <pre :class="['output-text', { 'is-error': isError }]">{{ formattedContent }}</pre>
+      <div v-if="shouldUseMonaco" ref="monacoContainer" class="output-monaco"></div>
+      <pre v-else :class="['output-text', { 'is-error': isError }]">{{ formattedContent }}</pre>
       <div class="output-actions">
         <button @click="handleCopyOutput" class="output-action-btn">
           📋 复制
@@ -237,6 +400,11 @@ const diffRight = computed(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.output-monaco {
+  flex: 1;
+  min-height: 0;
 }
 
 .output-text {

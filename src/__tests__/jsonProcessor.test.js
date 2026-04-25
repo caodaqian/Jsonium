@@ -285,4 +285,28 @@ describe('JsonProcessor', () => {
     expect(wrapper.find('.centered-diff-overlay').exists()).toBe(true);
     expect(wrapper.find('.centered-diff-close').exists()).toBe(true);
   });
+
+  it('resizes left control panel width by mouse drag while keeping default width initially', async () => {
+    const wrapper = mount(JsonProcessor, {
+      props: {
+        enterAction: {}
+      },
+      global: {}
+    });
+
+    const store = useJsonStore();
+    store.editorSettings.controlPanelVisible = true;
+    await nextTick();
+
+    const panel = wrapper.get('.control-panel-wrapper');
+    expect(panel.attributes('style') || '').toContain('340px');
+
+    const resizer = wrapper.get('.left-panel-resizer');
+    await resizer.trigger('mousedown', { clientX: 340, button: 0 });
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 390 }));
+    window.dispatchEvent(new MouseEvent('mouseup'));
+    await nextTick();
+
+    expect(panel.attributes('style') || '').toContain('390px');
+  });
 });

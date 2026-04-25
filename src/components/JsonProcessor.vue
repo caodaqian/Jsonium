@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { parseAIJsonWithRetry, processWithAI } from '../services/aiProcessor.js';
 import { convert } from '../services/converter.js';
-import { buildTreeDiff, stringifySortedJson } from '../services/diffEngine.js';
+import { stringifySortedJson } from '../services/diffEngine.js';
 import { detectAndConvert, FORMAT_TYPES, toFormat } from '../services/formatDetector.js';
 import notify from '../services/notify.js';
 import { queryJq, queryJsonPath } from '../services/queryEngine.js';
@@ -43,6 +43,11 @@ const props = defineProps({
 const activePanel = ref('editor'); // editor, convert, query, diff, ai
 const showLeftPanel = ref(true);
 const isNarrow = ref(false);
+const LEFT_PANEL_DEFAULT_WIDTH = 340;
+const LEFT_PANEL_MIN_WIDTH = 280;
+const LEFT_PANEL_MAX_WIDTH = 420;
+const leftPanelWidth = ref(LEFT_PANEL_DEFAULT_WIDTH);
+const isLeftResizing = ref(false);
 
 const tabs = computed(() => store.tabs);
 
@@ -201,6 +206,7 @@ function toggleFloatingSidebar() {
 });
 
 onUnmounted(() => {
+  clearLeftResizeSelection();
   // 清理 beforeunload 监听（若已注册）
   if (typeof window !== 'undefined' && window.removeEventListener) {
     try { window.removeEventListener('beforeunload', _save); } catch (e) { /* ignore */ }
@@ -385,15 +391,11 @@ const handleCompare = async (leftContent, rightContent) => {
       return;
     }
 
-    // 两个都有内容 - 使用树形 Diff 生成节点级结果并展示
+    // 两个都有内容 - 仅保留行级对比所需的标准化内容
     const sortedLeft = stringifySortedJson(leftContent);
     const sortedRight = stringifySortedJson(rightContent);
 
-    const { tree, stats } = buildTreeDiff(sortedLeft, sortedRight);
-
     store.setDiffResult(sortedLeft, sortedRight, {
-      diffTree: tree,
-      diffStats: stats,
       diffLines: []
     });
 
@@ -579,6 +581,82 @@ const handleDownload = () => {
 // 表格视图
 const tableViewVisible = computed(() => store.tableView.visible);
 
+const clampLeftPanelWidth = (width) => {
+  const numeric = Number(width);
+  if (!Number.isFinite(numeric)) return LEFT_PANEL_DEFAULT_WIDTH;
+  return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(LEFT_PANEL_MAX_WIDTH, numeric));
+};
+
+const controlPanelStyle = computed(() => {
+  if (isNarrow.value) {
+    return null;
+  }
+  const width = clampLeftPanelWidth(leftPanelWidth.value);
+  return {
+    width: `${width}px`,
+    minWidth: `${LEFT_PANEL_MIN_WIDTH}px`,
+    maxWidth: `${LEFT_PANEL_MAX_WIDTH}px`,
+    flex: `0 0 ${width}px`
+  };
+});
+
+const clearLeftResizeSelection = () => {
+  isLeftResizing.value = false;
+  try {
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
+  } catch (_) {
+    // ignore
+  }
+};
+
+const startLeftPanelResize = (event) => {
+  if (isNarrow.value || event.button !== 0) {
+    return;
+  }
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = clampLeftPanelWidth(leftPanelWidth.value);
+
+  const onMove = (moveEvent) => {
+    const next = startWidth + (moveEvent.clientX - startX);
+    leftPanelWidth.value = clampLeftPanelWidth(next);
+  };
+
+  const stop = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', stop);
+      }
+    } catch (_) {
+      // ignore
+    }
+    clearLeftResizeSelection();
+  };
+
+  isLeftResizing.value = true;
+  try {
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', stop);
+  }
+};
+
+const resetLeftPanelWidth = () => {
+  leftPanelWidth.value = LEFT_PANEL_DEFAULT_WIDTH;
+};
+
 const handleOpenTableView = () => {
   store.showTableView();
 };
@@ -645,7 +723,12 @@ onMounted(() => {
     </div>
 
     <div class="processor-container" v-if="activeTab">
-      <div class="control-panel-wrapper" :class="{ 'drawer-mode': isNarrow }" v-if="store.editorSettings.controlPanelVisible">
+      <div
+        class="control-panel-wrapper"
+        :class="{ 'drawer-mode': isNarrow }"
+        :style="controlPanelStyle"
+        v-if="store.editorSettings.controlPanelVisible"
+      >
         <template v-if="isNarrow">
           <div class="drawer-overlay" @click="store.editorSettings.controlPanelVisible = false"></div>
           <div class="control-panel-drawer">
@@ -678,6 +761,14 @@ onMounted(() => {
           />
         </template>
       </div>
+      <div
+        v-if="store.editorSettings.controlPanelVisible && !isNarrow"
+        class="left-panel-resizer"
+        :class="{ active: isLeftResizing }"
+        @mousedown="startLeftPanelResize"
+        @dblclick="resetLeftPanelWidth"
+        title="拖动调整左侧栏宽度，双击恢复默认"
+      ></div>
       <div class="workspace">
         <div class="editor-section">
           <Editor
@@ -859,10 +950,10 @@ onMounted(() => {
 
 .line-diff-overlay {
   position: fixed;
-  left: 80px;
-  right: 80px;
-  top: 60px;
-  bottom: 60px;
+  left: 40px;
+  right: 40px;
+  top: 28px;
+  bottom: 28px;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-divider);
     box-shadow: 0 18px 36px rgba(0, 0, 0, 0.16);
@@ -891,14 +982,14 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 12px;
   background: rgba(15, 23, 42, 0.68);
   backdrop-filter: blur(6px);
 }
 
 .centered-diff-panel {
-  width: min(1200px, 92vw);
-  height: min(82vh, 920px);
+  width: min(1480px, 96vw);
+  height: min(94vh, 1080px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -945,7 +1036,7 @@ onMounted(() => {
 .centered-diff-body {
   flex: 1;
   min-height: 0;
-  padding: 16px;
+  padding: 12px;
   background: color-mix(in srgb, var(--color-bg-primary) 94%, transparent);
 }
 
@@ -955,12 +1046,12 @@ onMounted(() => {
   }
 
   .centered-diff-overlay {
-    padding: 12px;
+    padding: 8px;
   }
 
   .centered-diff-panel {
     width: 100%;
-    height: min(88vh, 100%);
+    height: min(94vh, 100%);
     border-radius: 16px;
   }
 
@@ -980,6 +1071,33 @@ onMounted(() => {
   overflow: auto;
     background: var(--color-bg-secondary);
 
+}
+
+.left-panel-resizer {
+  width: 8px;
+  cursor: col-resize;
+  flex: 0 0 8px;
+  position: relative;
+  background: transparent;
+}
+
+.left-panel-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--color-divider);
+  opacity: 0.8;
+  transform: translateX(-50%);
+}
+
+.left-panel-resizer:hover::after,
+.left-panel-resizer.active::after {
+  width: 2px;
+  background: var(--color-primary);
+  opacity: 1;
 }
 
 @media (max-width: 900px) {
