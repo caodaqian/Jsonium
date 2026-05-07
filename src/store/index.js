@@ -564,6 +564,9 @@ export const useJsonStore = defineStore('json', () => {
       if (parsed && parsed.lastWindowSize) {
         editorSettings.lastWindowSize = parsed.lastWindowSize;
       }
+      // 默认隐藏控制面板和侧边栏
+      editorSettings.controlPanelVisible = false;
+      diffSidebar.visible = false;
       // 将旧版本配置升级为新键，减少后续分支处理成本
       try { saveSettingsState(); } catch (_) { /* ignore */ }
       return true;
