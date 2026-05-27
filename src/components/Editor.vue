@@ -68,21 +68,44 @@ import { useJsonStore } from '../store/index.js';
   function openMonacoFind() {
     try {
       if (!editor) return;
-      // prefer action run if available
+      // 先聚焦编辑器，确保 Monaco 能接收命令
+      try { if (typeof editor.focus === 'function') editor.focus(); } catch (_) { }
+
+      // 触发 Monaco 原生 find action
       try {
         const a = editor.getAction && editor.getAction('actions.find');
-        if (a && typeof a.run === 'function') { a.run(); return; }
+        if (a && typeof a.run === 'function') { a.run(); }
       } catch (_) { }
       try { editor.trigger('keyboard', 'actions.find', null); } catch (_) { }
 
-      // After opening find widget, compensate for any layout shift by resetting scroll position
-      setTimeout(() => {
+      // 使用重试机制确保搜索框获得焦点
+      // Monaco find widget 首次渲染时存在竞态条件：widget DOM 异步创建，input 可能未就绪
+      let retryCount = 0;
+      const maxRetries = 8;
+
+      const attemptFocus = () => {
         try {
-          if (editor && typeof editor.layout === 'function') {
-            editor.layout();
+          // Monaco find input 是 textarea（在 .monaco-inputbox 内），而非 input[type="text"]
+          const findInput = document.querySelector('.monaco-editor .find-widget .monaco-inputbox textarea')
+            || document.querySelector('.monaco-editor .find-widget textarea')
+            || document.querySelector('.monaco-editor .find-widget input[type="text"]');
+          if (findInput) {
+            findInput.focus();
+            try {
+              const len = findInput.value?.length || 0;
+              findInput.setSelectionRange(len, len);
+            } catch (_) { }
+            return; // 成功聚焦，退出重试
           }
         } catch (_) { }
-      }, 50);
+        retryCount++;
+        if (retryCount <= maxRetries) {
+          setTimeout(attemptFocus, 80);
+        }
+      };
+
+      // 延迟启动焦点重试，给 Monaco widget 异步创建留出时间
+      setTimeout(attemptFocus, 60);
     } catch (_) { }
   }
 
@@ -1146,8 +1169,12 @@ function initEditor() {
           hideEditorContextMenu();
           return;
         }
-        // For Cmd/Ctrl+F: do not intercept — allow Monaco's native keybinding to handle it
+        // For Cmd/Ctrl+F: intercept to explicitly open find and focus input
+        // Monaco's native handler may not reliably focus the input in uTools/Electron
         if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.code === 'KeyF')) {
+          e.preventDefault();
+          e.stopPropagation();
+          openMonacoFind();
           return;
         }
 
@@ -1759,7 +1786,8 @@ function initEditor() {
     getContent: () => editor?.getValue() || '',
     setContent: (content) => applyEdit(content),
     format: formatJson,
-    focus: () => { try { editor && typeof editor.focus === 'function' && editor.focus(); } catch (_) {} }
+    focus: () => { try { editor && typeof editor.focus === 'function' && editor.focus(); } catch (_) { } },
+    layout: () => { try { editor && typeof editor.layout === 'function' && editor.layout(); } catch (_) { } }
   });
 </script>
 

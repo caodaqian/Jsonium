@@ -1,5 +1,5 @@
 <script setup>
-  import { computed, ref, watch } from 'vue';
+  import { computed, onMounted, ref, watch } from 'vue';
 import { AI_PROVIDERS, fetchOpenAICompatibleModels } from '../services/aiProcessor.js';
 import notify from '../services/notify.js';
 import { useJsonStore } from '../store/index.js';
@@ -196,6 +196,10 @@ import { useJsonStore } from '../store/index.js';
   );
 
   ensureAIDefaults();
+
+  onMounted(() => {
+    console.log('[ControlPanel] Mounted, controlPanelVisible:', store.editorSettings.controlPanelVisible);
+  });
 
   function switchPanel(panel) {
     emit('panelChange', panel);

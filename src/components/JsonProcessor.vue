@@ -52,13 +52,37 @@ const isLeftResizing = ref(false);
 const tabs = computed(() => store.tabs);
 
 onMounted(() => {
+  console.log('[JsonProcessor] Mounted, controlPanelVisible:', store.editorSettings.controlPanelVisible);
   try {
     if (typeof window !== 'undefined') {
-      const update = () => { isNarrow.value = window.innerWidth <= 900; };
+      const update = () => {
+        isNarrow.value = window.innerWidth <= 900;
+        // 窗口尺寸变化时强制 Monaco 编辑器重新布局
+        nextTick(() => {
+          try {
+            if (editorRef.value && typeof editorRef.value.layout === 'function') {
+              editorRef.value.layout();
+            }
+          } catch (_) { }
+        });
+      };
       update();
       window.addEventListener('resize', update);
+      // 监听 uTools 插件进入事件，重新布局编辑器
+      const handlePluginEnterLayout = () => {
+        nextTick(() => {
+          try {
+            if (editorRef.value && typeof editorRef.value.layout === 'function') {
+              editorRef.value.layout();
+            }
+          } catch (_) { }
+          update(); // 同时更新窄屏状态
+        });
+      };
+      window.addEventListener('jsonium-plugin-enter', handlePluginEnterLayout);
       onUnmounted(() => {
         try { window.removeEventListener('resize', update); } catch (_) {}
+        try { window.removeEventListener('jsonium-plugin-enter', handlePluginEnterLayout); } catch (_) { }
       });
     }
   } catch (_) {}

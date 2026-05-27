@@ -1,9 +1,8 @@
 <script setup>
-  import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+  import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
   import Hello from './Hello/index.vue';
   import JsonProcessor from './components/JsonProcessor.vue';
   import Toast from './components/Toast.vue';
-  // import Settings from './components/Settings.vue';
   import { useJsonStore } from './store';
 
   // 新增主题资源
@@ -13,7 +12,6 @@
 
   const route = ref('process');
   const enterAction = ref({});
-  /* const settingsVisible = ref(false); // 移除右上角设置弹窗入口 */
 
   let _mq = null;
   let _themeUpdateListener = null;
@@ -124,6 +122,15 @@
           window.utools.onPluginEnter(async (action) => {
             applyTheme();
             await handlePluginEnter(action);
+            // uTools 窗口大小可能变化，触发编辑器重新布局
+            nextTick(() => {
+              try {
+                // 通过全局事件通知各组件重新布局
+                if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+                  window.dispatchEvent(new CustomEvent('jsonium-plugin-enter'));
+                }
+              } catch (_) { }
+            });
           });
         }
       }

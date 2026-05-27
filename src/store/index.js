@@ -556,7 +556,11 @@ export const useJsonStore = defineStore('json', () => {
         setAIConfig(parsed.aiConfig);
       }
       if (parsed && parsed.editorSettings) {
-        try { updateEditorSettings(parsed.editorSettings); } catch (_) { /* ignore */ }
+        try {
+          // 确保控制面板默认不显示
+          parsed.editorSettings.controlPanelVisible = false;
+          updateEditorSettings(parsed.editorSettings);
+        } catch (_) { /* ignore */ }
       }
       if (parsed && typeof parsed.diffSidebarCollapsed !== 'undefined') {
         diffSidebar.collapsed = !!parsed.diffSidebarCollapsed;
@@ -567,6 +571,7 @@ export const useJsonStore = defineStore('json', () => {
       // 默认隐藏控制面板和侧边栏
       editorSettings.controlPanelVisible = false;
       diffSidebar.visible = false;
+      console.log('[Store] loadSettingsState: Forced controlPanelVisible to false');
       // 将旧版本配置升级为新键，减少后续分支处理成本
       try { saveSettingsState(); } catch (_) { /* ignore */ }
       return true;
@@ -605,6 +610,10 @@ export const useJsonStore = defineStore('json', () => {
 
   // 编辑器设置
   const updateEditorSettings = (settings) => {
+    // 确保控制面板默认不显示，防止从存储中加载时设置为 true
+    if (settings.controlPanelVisible === undefined) {
+      settings.controlPanelVisible = false;
+    }
     Object.assign(editorSettings, settings);
   };
 

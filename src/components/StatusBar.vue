@@ -555,6 +555,10 @@ aria-label="帮助"
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
+    /* 确保内容不被截断 */
+    padding-right: 10px;
+    box-sizing: border-box;
+ 
 }
 
 /* 移除旧的 query-type-segment 样式，改用新的徽章 */
@@ -653,25 +657,23 @@ aria-label="帮助"
 }
 
   .query-input {
-
     /* give the input the remaining space while keeping the row on one line */
     flex: 1 1 0;
     min-width: 160px;
+    max-width: calc(100% - 280px);
     width: 0;
-    max-width: none;
     padding: 6px 8px;
     overflow-x: auto;
     overflow-y: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    font-family: 'Monaco', 'Menlo', monospace;
+  }
 
 
-
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-family: 'Monaco', 'Menlo', monospace;
-}
 
 .query-btn {
   padding: 6px 12px;
@@ -829,7 +831,8 @@ aria-label="帮助"
   .query-input {
     /* limit input width so actions have dedicated space on the right */
     flex: 1 1 640px;
-    max-width: calc(100% - 560px);
+      max-width: calc(100% - 400px);
+ 
     min-width: 220px;
   }
 
@@ -996,30 +999,40 @@ aria-label="帮助"
   @media (max-width: 899px) {
     .status-bar-row {
       gap: 4px;
+      padding-right: 8px;
     }
 
     .query-input {
-      flex: 1 1 auto;
-      min-width: 0;
+      flex: 1 1 0;
+      min-width: 100px;
+      max-width: calc(100% - 180px);
       width: auto;
+      font-size: 12px;
+      padding: 4px 6px;
     }
 
     .query-type-badge {
-      padding: 4px 8px;
+      padding: 4px 6px;
+      font-size: 11px;
     }
 
     .query-btn {
       padding: 4px 8px;
+      font-size: 12px;
     }
 
     .actions-inline {
-      gap: 4px;
+      gap: 2px;
       padding-right: 0;
     }
 
     .action-btn {
-      padding: 4px;
-      gap: 4px;
+      padding: 3px;
+      gap: 2px;
+    }
+
+    .help-wrapper {
+      display: none;
     }
   }
 
