@@ -4,7 +4,7 @@ import { reactive, ref } from 'vue';
 export const useJsonStore = defineStore('json', () => {
   // 状态
   const tabs = ref([{
-    id: Date.now(),
+    id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: 'Untitled',
     content: '{}',
     format: 'json',
@@ -307,7 +307,7 @@ export const useJsonStore = defineStore('json', () => {
   };
   // Tab 管理
   const addTab = (content = '', name = '', format = 'json') => {
-    const id = Date.now();
+    const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     // 如果没有指定名称，使用当前日期时间作为默认标题（YYYY-MM-DD HH:mm:ss）
     let defaultName = name;
     if (!name) {

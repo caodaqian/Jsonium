@@ -6,6 +6,9 @@
   "development": {
     "main": "http://localhost:4000/index.html"
   },
+  "pluginSetting": {
+    "single": false
+  },
   "features": [
     {
       "code": "process",

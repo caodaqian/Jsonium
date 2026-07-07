@@ -2,6 +2,7 @@ import { createPinia } from 'pinia';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
 import './main.css';
+import { startWindowSync } from './services/windowSync';
 import { useJsonStore } from './store';
 
 const app = createApp(App);
@@ -26,6 +27,21 @@ const scheduleSave = () => {
   }, 300);
 };
 
+let windowSync = null;
+let _syncTimer = null;
+const scheduleSync = () => {
+  if (!windowSync) return;
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => {
+    windowSync?.publishLocalTabs();
+  }, 700);
+};
+
+if (typeof window !== 'undefined' && window.utools && window.utools.db) {
+  windowSync = startWindowSync(store, { db: window.utools.db });
+  scheduleSync();
+}
+
 // 若运行在 uTools 环境，直接使用其事件管理确保在宿主触发时及时加载/保存
 if (typeof window !== 'undefined' && window.utools) {
   try {
@@ -33,12 +49,15 @@ if (typeof window !== 'undefined' && window.utools) {
       window.utools.onPluginEnter(async () => {
         try { await store.loadTabsState && store.loadTabsState(); } catch (_) {}
         try { store.loadSettingsState && store.loadSettingsState(); } catch (_) { }
+        windowSync?.pollOnce();
+        scheduleSync();
       });
     }
     if (typeof window.utools.onPluginOut === 'function') {
       window.utools.onPluginOut(() => {
         try { store.saveTabsState && store.saveTabsState(); } catch (_) {}
         try { store.saveSettingsState && store.saveSettingsState(); } catch (_) { }
+        windowSync?.publishLocalTabs();
       });
     }
   } catch (_) { /* ignore */ }
@@ -47,7 +66,10 @@ if (typeof window !== 'undefined' && window.utools) {
 // 监听 tab 列表与激活 tab 变化并保存（深度监听）
 watch(
   [() => store.tabs, () => store.activeTabId],
-  scheduleSave,
+  () => {
+    scheduleSave();
+    scheduleSync();
+  },
   { deep: true }
 );
 
@@ -56,6 +78,8 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     try { store.saveTabsState && store.saveTabsState(); } catch (_) {}
     try { store.saveSettingsState && store.saveSettingsState(); } catch (_) { }
+    windowSync?.publishLocalTabs();
+    windowSync?.stop();
   });
 }
 

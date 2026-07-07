@@ -1,5 +1,5 @@
 <script setup>
-import * as monacoModule from 'monaco-editor';
+import * as monacoModule from 'monaco-editor/esm/vs/editor/editor.api';
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 import { stringifySortedJson } from '../services/diffEngine.js';
 import { detectAndConvert } from '../services/formatDetector.js';
@@ -214,7 +214,7 @@ const loadOutputMonaco = async () => {
     return outputMonaco;
   }
 
-  outputMonaco = monacoModule?.default?.editor ? monacoModule.default : monacoModule;
+  outputMonaco = monacoModule;
   if (!outputMonaco?.editor) {
     outputMonacoLoadFailed.value = true;
     return null;

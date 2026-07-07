@@ -17,10 +17,10 @@ const waitForEditorSetup = async () => {
 };
 
 const waitForMonacoEditor = async () => {
-  for (let attempts = 0; attempts < 50 && !globalThis.__monacoLastEditor; attempts += 1) {
+  for (let attempts = 0; attempts < 200 && !globalThis.__monacoLastEditor; attempts += 1) {
     await flushPromises();
     await nextTick();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
 };
 
@@ -94,5 +94,29 @@ describe('editor shortcut registrations', () => {
     expect(source).toContain('::v-deep .editor-widget.find-widget:not(.visible) {');
     expect(source).not.toContain('::v-deep .editor-widget.find-widget.replaceToggled {');
     expect(source).not.toContain(':not(.visible):not(.replaceToggled)');
+  });
+
+  it('keeps Monaco find compact, themed, and scoped to the current editor', async () => {
+    const sourcePath = path.resolve(process.cwd(), 'src/components/Editor.vue');
+    const source = readFileSync(sourcePath, 'utf8');
+
+    expect(source).toContain('const findWidgetRoot = getFindWidgetRoot();');
+    expect(source).toContain('editor?.getDomNode?.()?.querySelector');
+    expect(source).toContain('--jsonium-find-button-size: 32px;');
+    expect(source).toContain('--jsonium-replace-action-width: 158px;');
+    expect(source).toContain('width: clamp(500px, 54vw, 620px) !important;');
+    expect(source).toContain('grid-template-columns: minmax(260px, 1fr) auto !important;');
+    expect(source).toContain('min-width: 260px !important;');
+    expect(source).toContain('.find-actions .codicon-find-selection[aria-disabled="true"]');
+    expect(source).toContain('::v-deep .editor-widget.find-widget.visible > .button {');
+    expect(source).toContain('position: static !important;');
+    expect(source).toContain('border-color: color-mix(in srgb, var(--color-primary) 72%, transparent) !important;');
+    expect(source).toContain('::v-deep .editor-widget.find-widget.visible .replace-part:not(:empty) {');
+    expect(source).toContain('::v-deep .editor-widget.find-widget.visible:not(.replaceToggled) .replace-part {');
+    expect(source).toContain('width: calc(100% - var(--jsonium-find-button-size) - 19px) !important;');
+    expect(source).toContain('grid-template-columns: minmax(260px, 1fr) var(--jsonium-replace-action-width) !important;');
+    expect(source).toContain('margin-left: calc(var(--jsonium-find-button-size) + 6px) !important;');
+    expect(source).toContain('::v-deep .editor-widget.find-widget.visible.replaceToggled .replace-part .monaco-findInput {');
+    expect(source).toContain('width: 100% !important;');
   });
 });

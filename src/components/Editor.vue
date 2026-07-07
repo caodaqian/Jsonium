@@ -65,6 +65,37 @@ import { useJsonStore } from '../store/index.js';
   const jsonValidationReady = ref(false);
 
   // --- 使用 Monaco 原生查找/替换 控件 ---
+  function getFindWidgetRoot() {
+    try {
+      return editor?.getDomNode?.()?.querySelector('.editor-widget.find-widget')
+        || editorContainer.value?.querySelector('.editor-widget.find-widget')
+        || document.querySelector('.monaco-editor .find-widget');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function focusMonacoFindInput() {
+    try {
+      const findWidgetRoot = getFindWidgetRoot();
+      if (!findWidgetRoot) return false;
+      const findInput = findWidgetRoot.querySelector('.find-part .monaco-findInput:not(.disabled) textarea')
+        || findWidgetRoot.querySelector('.find-part textarea')
+        || findWidgetRoot.querySelector('.find-part input[type="text"]')
+        || findWidgetRoot.querySelector('textarea')
+        || findWidgetRoot.querySelector('input[type="text"]');
+      if (!findInput) return false;
+      findInput.focus();
+      try {
+        const len = findInput.value?.length || 0;
+        findInput.setSelectionRange(len, len);
+      } catch (_) { }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function openMonacoFind() {
     try {
       if (!editor) return;
@@ -84,20 +115,7 @@ import { useJsonStore } from '../store/index.js';
       const maxRetries = 8;
 
       const attemptFocus = () => {
-        try {
-          // Monaco find input 是 textarea（在 .monaco-inputbox 内），而非 input[type="text"]
-          const findInput = document.querySelector('.monaco-editor .find-widget .monaco-inputbox textarea')
-            || document.querySelector('.monaco-editor .find-widget textarea')
-            || document.querySelector('.monaco-editor .find-widget input[type="text"]');
-          if (findInput) {
-            findInput.focus();
-            try {
-              const len = findInput.value?.length || 0;
-              findInput.setSelectionRange(len, len);
-            } catch (_) { }
-            return; // 成功聚焦，退出重试
-          }
-        } catch (_) { }
+        if (focusMonacoFindInput()) return; // 成功聚焦，退出重试
         retryCount++;
         if (retryCount <= maxRetries) {
           setTimeout(attemptFocus, 80);
@@ -109,12 +127,26 @@ import { useJsonStore } from '../store/index.js';
     } catch (_) { }
   }
 
+  function scheduleFindInputFocus() {
+    let retryCount = 0;
+    const maxRetries = 8;
+    const attemptFocus = () => {
+      if (focusMonacoFindInput()) return;
+      retryCount++;
+      if (retryCount <= maxRetries) {
+        setTimeout(attemptFocus, 80);
+      }
+    };
+    setTimeout(attemptFocus, 60);
+  }
+
   function openMonacoReplace() {
     try {
       if (!editor) return;
       // open find+replace widget
       try {
         editor.trigger('keyboard', 'editor.action.startFindReplaceAction', null);
+        scheduleFindInputFocus();
         // After opening find-replace widget, compensate for layout shift
         setTimeout(() => {
           try {
@@ -128,6 +160,7 @@ import { useJsonStore } from '../store/index.js';
       try {
         const a = editor.getAction && editor.getAction('editor.action.startFindReplaceAction');
         if (a && typeof a.run === 'function') a.run();
+        scheduleFindInputFocus();
         // After opening find-replace widget, compensate for layout shift
         setTimeout(() => {
           try {
@@ -1952,113 +1985,274 @@ function initEditor() {
   /* Ensure Monaco's find widget floats over the editor and matches theme colors */
   /* Only show while Monaco marks it visible; replaceToggled can remain set after close */
   ::v-deep .editor-widget.find-widget.visible {
+    --jsonium-find-button-size: 32px;
+    --jsonium-replace-action-width: 158px;
     position: absolute !important;
-    top: 12px !important;
-    right: 12px !important;
+    top: 10px !important;
+    right: 10px !important;
     left: auto !important;
+    width: clamp(500px, 54vw, 620px) !important;
+    min-width: 0 !important;
+    max-width: calc(100% - 20px) !important;
     height: auto !important;
-    min-height: auto !important;
-    min-width: 260px;
-    max-width: calc(100% - 40px);
-    background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent) !important;
+    min-height: 0 !important;
+    padding: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    overflow: visible !important;
     color: var(--color-text-primary) !important;
-    border-radius: 10px !important;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--color-shadow, rgba(2, 6, 23, 0.08)) 80%, transparent) !important;
+    background: color-mix(in srgb, var(--color-bg-secondary) 90%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 16px 36px color-mix(in srgb, #020617 28%, transparent) !important;
+    backdrop-filter: blur(12px) saturate(1.15) !important;
     z-index: 9999 !important;
     transform: none !important;
-    overflow: visible !important;
-    border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent) !important;
-    backdrop-filter: blur(6px) !important;
     opacity: 1 !important;
     box-sizing: border-box !important;
-    display: block !important;
     visibility: visible !important;
     pointer-events: auto !important;
+    line-height: 1 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible.replaceToggled {
+    width: clamp(540px, 58vw, 680px) !important;
+    flex-wrap: wrap !important;
   }
 
   ::v-deep .editor-widget.find-widget.visible * {
     color: var(--color-text-primary) !important;
-  }
-
-  ::v-deep .editor-widget.find-widget.visible .monaco-findInput {
-    background: color-mix(in srgb, var(--color-bg-primary) 88%, transparent) !important;
-    border-radius: 6px !important;
-    border: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent) !important;
-  }
-
-  ::v-deep .editor-widget.find-widget.visible .monaco-findWidget-actions,
-  ::v-deep .editor-widget.find-widget.visible .find-actions,
-  ::v-deep .editor-widget.find-widget.visible .replace-actions {
-    opacity: 0.95 !important;
-  }
-
-  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox .monaco-inputbox-input {
-    color: var(--color-text-primary) !important;
-  }
-
-  ::v-deep .editor-widget.find-widget.visible .button,
-  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle {
-    width: 24px !important;
-    height: 24px !important;
-    min-width: 24px !important;
-    min-height: 24px !important;
-    border-radius: 8px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    margin: 0 2px !important;
-    padding: 0 !important;
-    flex: 0 0 24px !important;
-  }
-
-  ::v-deep .editor-widget.find-widget.visible .button.toggle.left {
-    width: 32px !important;
-    min-width: 32px !important;
-    flex: 0 0 32px !important;
-    margin-right: 6px !important;
-    font-size: 18px !important;
-    line-height: 1 !important;
-    position: relative !important;
-    z-index: 2 !important;
+    box-sizing: border-box !important;
   }
 
   ::v-deep .editor-widget.find-widget.visible .find-part {
+    order: 1 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(260px, 1fr) auto !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin: 0 !important;
     position: relative !important;
     z-index: 1 !important;
   }
 
-  ::v-deep .editor-widget.find-widget.visible .button.codicon::before,
-  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle::before {
-    font-size: 14px !important;
-    line-height: 1 !important;
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput {
+    min-width: 260px !important;
+    height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    padding: 0 5px 0 10px !important;
+    background: color-mix(in srgb, var(--color-bg-primary) 88%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--color-border) 64%, transparent) !important;
+    border-radius: 10px !important;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent) !important;
   }
 
-  /* Hide find-widget when not active */
-  ::v-deep .editor-widget.find-widget:not(.visible) {
-    opacity: 0 !important;
-    pointer-events: none !important;
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput:focus-within {
+    border-color: color-mix(in srgb, var(--color-primary) 72%, transparent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 22%, transparent) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-scrollable-element,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .ibwrapper {
+    position: static !important;
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    background: transparent !important;
+    border: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-scrollable-element {
+    width: auto !important;
+    max-width: calc(100% - 104px) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox.synthetic-focus,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox.idle {
+    border-color: transparent !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .mirror,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .scrollbar,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .shadow,
+  ::v-deep .editor-widget.find-widget.visible .monaco-sash {
     display: none !important;
-    transform: translateY(-4px) scale(0.98) !important;
   }
 
-  /* Force inner Monaco find inputs to align with visible UI and remove transforms that shift click target */
   ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox .monaco-inputbox-input,
   ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox textarea,
   ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox .input {
     position: static !important;
     display: block !important;
-    width: calc(100% - 86px) !important;
-    height: 28px !important;
-    box-sizing: border-box !important;
-    transform: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 34px !important;
+    min-height: 34px !important;
     margin: 0 !important;
-    padding: 6px 8px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    outline: 0 !important;
+    resize: none !important;
+    transform: none !important;
+    color: var(--color-text-primary) !important;
+    background: transparent !important;
+    line-height: 34px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    caret-color: var(--color-primary) !important;
   }
 
-  /* ensure container uses normal flow so click area matches visual */
-  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox {
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput .controls,
+  ::v-deep .editor-widget.find-widget.visible .find-actions,
+  ::v-deep .editor-widget.find-widget.visible .replace-actions {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    flex: 0 0 auto !important;
+    opacity: 1 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .find-actions {
+    padding-left: 2px !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .find-actions .codicon-find-selection[aria-disabled="true"] {
+    display: none !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .matchesCount {
+    min-width: auto !important;
+    padding: 0 6px !important;
+    color: var(--color-text-secondary) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    line-height: var(--jsonium-find-button-size) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button,
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle {
+    width: var(--jsonium-find-button-size) !important;
+    height: var(--jsonium-find-button-size) !important;
+    min-width: var(--jsonium-find-button-size) !important;
+    min-height: var(--jsonium-find-button-size) !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    flex: 0 0 var(--jsonium-find-button-size) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 0 !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+    color: var(--color-text-secondary) !important;
+    opacity: 0.92 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible > .button {
     position: static !important;
     transform: none !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button:hover,
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle:hover {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+    color: var(--color-text-primary) !important;
+    opacity: 1 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button:focus-visible,
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-primary) 62%, transparent) !important;
+    outline-offset: 1px !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle.checked,
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle[aria-checked="true"] {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent) !important;
+    color: var(--color-primary-light) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button[aria-disabled="true"],
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle[aria-disabled="true"],
+  ::v-deep .editor-widget.find-widget.visible .button.disabled,
+  ::v-deep .editor-widget.find-widget.visible .monaco-findInput.disabled {
+    opacity: 0.38 !important;
+    pointer-events: none !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button.toggle.left {
+    order: 0 !important;
+    width: var(--jsonium-find-button-size) !important;
+    min-width: var(--jsonium-find-button-size) !important;
+    flex-basis: var(--jsonium-find-button-size) !important;
+    color: var(--color-text-secondary) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button.codicon-widget-close {
+    order: 2 !important;
+    color: var(--color-text-tertiary) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button.codicon-widget-close:hover {
+    background: color-mix(in srgb, var(--color-error) 16%, transparent) !important;
+    color: var(--color-error) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .button.codicon::before,
+  ::v-deep .editor-widget.find-widget.visible .monaco-custom-toggle::before {
+    font-size: 15px !important;
+    line-height: 1 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .replace-part {
+    order: 5 !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible .replace-part:not(:empty) {
+    width: calc(100% - var(--jsonium-find-button-size) - 19px) !important;
+    display: grid !important;
+    grid-template-columns: minmax(260px, 1fr) var(--jsonium-replace-action-width) !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin-left: calc(var(--jsonium-find-button-size) + 6px) !important;
+    padding-top: 2px !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible:not(.replaceToggled) .replace-part {
+    display: none !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible.replaceToggled .replace-part .monaco-findInput {
+    width: 100% !important;
+    height: 36px !important;
+    min-width: 260px !important;
+  }
+
+  ::v-deep .editor-widget.find-widget.visible.replaceToggled .replace-part .replace-actions {
+    justify-self: end !important;
+    width: var(--jsonium-replace-action-width) !important;
+  }
+
+  ::v-deep .editor-widget.find-widget:not(.visible) {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    display: none !important;
+    transform: translateY(-4px) scale(0.98) !important;
   }
 
   .editor-context-menu {
