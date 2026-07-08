@@ -393,9 +393,11 @@ const unescapeJson = () => {
     <div class="status-bar-row">
       <!-- 移除 query-type-segment 按钮，改用类型徽章 -->
       <input
+id="status-query-expression"
         v-model="queryExpression"
         :placeholder="queryType === 'jsonpath' ? '例: $.store.book[0].title' : '例: .store.book[].price'"
         class="query-input"
+aria-label="查询表达式"
         @keydown="handleKeyDown"
       />
 
@@ -558,6 +560,7 @@ aria-label="帮助"
     /* 确保内容不被截断 */
     padding-right: 10px;
     box-sizing: border-box;
+
  
 }
 
@@ -580,7 +583,8 @@ aria-label="帮助"
   font-size: var(--font-size-xs);
   color: var(--color-text-primary);
   cursor: pointer;
-  transition: all 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+ 
   white-space: nowrap;
   flex-shrink: 0;
   }
@@ -832,6 +836,7 @@ aria-label="帮助"
     /* limit input width so actions have dedicated space on the right */
     flex: 1 1 640px;
       max-width: calc(100% - 400px);
+
  
     min-width: 220px;
   }
@@ -907,7 +912,8 @@ aria-label="帮助"
   font-size: var(--font-size-xs);
   color: var(--color-text-primary);
   text-align: left;
-  transition: all 0.2s;
+    transition: background-color 0.2s, color 0.2s;
+ 
 }
 
 /* Help tooltip styles */

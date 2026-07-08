@@ -163,7 +163,7 @@ button {
       color 0.18s,
     box-shadow 0.16s cubic-bezier(.2,.7,.3,1.1);
   font-weight: var(--font-weight-medium);
-  outline: none;
+  outline: 2px solid transparent;
   position: relative;
   overflow: hidden;
 }
@@ -173,6 +173,10 @@ button:hover {
   border-color: var(--color-primary);
 }
 
+button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 48%, transparent);
+  outline-offset: 2px;
+}
 button:active {
   background-color: var(--color-active-bg);
   border-color: var(--color-primary-dark);
@@ -217,7 +221,7 @@ input, textarea, select {
 }
 
 input:focus, textarea:focus, select:focus {
-  outline: none;
+  outline: 2px solid transparent;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px var(--color-primary);
 }

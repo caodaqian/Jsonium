@@ -94,7 +94,16 @@ describe('JSON 查询引擎', () => {
     it('should handle invalid jq', async () => {
       const result = await queryJq(testJsonString, '.invalid.path.deep');
       expect(result.success).toBe(true);
-      // 可能返回 null 或空结果
+      expect(result.count).toBe(1);
+      expect(result.results).toEqual([null]);
+    });
+
+    it('should handle jq empty output as a successful empty result', async () => {
+      const result = await queryJq(testJsonString, 'empty');
+      expect(result.success).toBe(true);
+      expect(result.count).toBe(0);
+      expect(result.results).toEqual([]);
+      expect(result.display).toBeNull();
     });
   });
 

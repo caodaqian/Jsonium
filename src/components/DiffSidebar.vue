@@ -355,11 +355,6 @@ const rightContent = computed(() => {
   return active ? active.content : '';
 });
 
-const diffStats = computed(() => store.diffSidebar.diffStats);
-const diffFilter = computed({
-  get: () => store.diffSidebar.diffFilter,
-  set: (v) => { store.diffSidebar.diffFilter = v; }
-});
 const error = computed(() => store.diffSidebar.error);
 
 const leftError = ref('');
@@ -644,12 +639,6 @@ onBeforeUnmount(() => {
 
     <div v-else-if="mode === 'result'" class="result-mode">
       <div class="result-toolbar">
-        <div class="summary">
-          <div class="stat added">新增: {{ diffStats.added }}</div>
-          <div class="stat removed">删除: {{ diffStats.removed }}</div>
-          <div class="stat changed">变化: {{ diffStats.changed }}</div>
-          <div class="stat unchanged">相同: {{ diffStats.unchanged }}</div>
-        </div>
         <div class="actions">
           <button class="diff-btn diff-btn--ghost" @click="openLineDiff">居中查看</button>
           <button class="diff-btn diff-btn--ghost" @click="handleBackToInput">返回编辑</button>
@@ -669,12 +658,6 @@ onBeforeUnmount(() => {
     <div v-else-if="mode === 'output'" class="output-mode">
       <div v-if="isDiffOutputTab" class="result-mode">
         <div class="result-toolbar">
-          <div class="summary">
-            <div class="stat added">新增: {{ diffStats.added }}</div>
-            <div class="stat removed">删除: {{ diffStats.removed }}</div>
-            <div class="stat changed">变化: {{ diffStats.changed }}</div>
-            <div class="stat unchanged">相同: {{ diffStats.unchanged }}</div>
-          </div>
           <div class="actions">
             <button class="diff-btn diff-btn--ghost" @click="openLineDiff">居中查看</button>
           </div>
@@ -716,8 +699,10 @@ onBeforeUnmount(() => {
 
       <div class="ai-composer">
         <textarea
+id="ai-sidebar-input"
           v-model="aiDraft"
           class="ai-input"
+aria-label="AI 提问内容"
           placeholder="输入你的问题，Enter 发送，Shift+Enter 换行"
           rows="3"
           @keydown.enter.exact.prevent="submitAiInSidebar"

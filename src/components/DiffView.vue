@@ -175,7 +175,7 @@ watch(() => [props.leftContent, props.rightContent], () => {
       <div class="toolbar-actions">
         <button class="diff-btn diff-btn--ghost" @click="compareDiffs">刷新</button>
         <label class="toolbar-toggle">
-          <input type="checkbox" v-model="onlyDiffs" />
+          <input id="diff-only-diffs" type="checkbox" v-model="onlyDiffs" />
           <span>只显示差异</span>
         </label>
       </div>

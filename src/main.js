@@ -2,6 +2,7 @@ import { createPinia } from 'pinia';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
 import './main.css';
+import { applyUtoolsWindowSettings } from './services/windowSettings';
 import { startWindowSync } from './services/windowSync';
 import { useJsonStore } from './store';
 
@@ -17,6 +18,12 @@ const store = useJsonStore();
 store.loadTabsState && store.loadTabsState();
 // 加载统一设置状态（主题/编辑器/AI）
 store.loadSettingsState && store.loadSettingsState();
+
+const applySavedUtoolsWindowSettings = () => {
+  try { applyUtoolsWindowSettings(store.utoolsWindowSettings); } catch (_) { }
+};
+
+applySavedUtoolsWindowSettings();
 
 // 防抖保存函数
 let _saveTimer = null;
@@ -49,6 +56,7 @@ if (typeof window !== 'undefined' && window.utools) {
       window.utools.onPluginEnter(async () => {
         try { await store.loadTabsState && store.loadTabsState(); } catch (_) {}
         try { store.loadSettingsState && store.loadSettingsState(); } catch (_) { }
+        applySavedUtoolsWindowSettings();
         windowSync?.pollOnce();
         scheduleSync();
       });

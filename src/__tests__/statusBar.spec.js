@@ -9,9 +9,9 @@ beforeEach(() => {
 });
 
 describe('StatusBar events', () => {
-  it('does not render format button (moved to editor context menu)', async () => {
+  it('renders format button as a primary bottom-bar action', async () => {
     const wrapper = mount(StatusBar, { props: { content: '{}' } });
-    expect(wrapper.find('button[title="格式化"]').exists()).toBe(false);
+    expect(wrapper.find('button[title="格式化"]').exists()).toBe(true);
   });
 
   it('escape and unescape buttons have aria-labels and classes', async () => {

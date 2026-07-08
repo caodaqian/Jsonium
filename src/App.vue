@@ -24,20 +24,18 @@
   });
 
   function syncHtmlThemeClass(theme, mode) {
-    // theme: 'catppuccin' | 'vue'; mode: 'light'|'dark'
-    // 清理所有主题 class
-    const html = document.documentElement;
+    const html = globalThis.document?.documentElement;
+    if (!html) return;
     html.classList.remove('catppuccin', 'vue', 'light-mode', 'dark-mode');
     html.classList.add(theme, mode === 'dark' ? 'dark-mode' : 'light-mode');
   }
 
-  // 推送当前设置页需要的值
-  function getThemeBinding() {
-    const pref = store.getThemePreference();
-    return {
-      theme: pref.theme || 'catppuccin',
-      mode: pref.mode || 'auto',
-    };
+  function dispatchJsoniumEvent(name, detail) {
+    if (!globalThis.window || typeof globalThis.window.dispatchEvent !== 'function' || typeof globalThis.CustomEvent !== 'function') {
+      return;
+    }
+
+    globalThis.window.dispatchEvent(new globalThis.CustomEvent(name, { detail }));
   }
 
   // 主题变更响应
@@ -45,11 +43,7 @@
     const { theme, mode } = store.getEffectiveTheme();
     themeState.value = { theme, mode };
     syncHtmlThemeClass(theme, mode);
-    try {
-      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
-        window.dispatchEvent(new CustomEvent('jsonium-theme-applied', { detail: { theme, mode } }));
-      }
-    } catch (_) { }
+    dispatchJsoniumEvent('jsonium-theme-applied', { theme, mode });
   }
 
 
@@ -64,35 +58,62 @@
   };
 
   const shouldReadClipboard = (action) => {
-    try {
-      if ((action?.code || '') !== 'process') return false;
-      if ((action?.type || '') === 'files') return false;
-      const text = typeof action?.text === 'string' ? action.text : '';
-      if (text.trim()) return false;
-      const payload = typeof action?.payload === 'string' ? action.payload : '';
-      return !isLikelyStructuredText(payload);
-    } catch (e) {
-      return false;
-    }
+    if ((action?.code || '') !== 'process') return false;
+    if ((action?.type || '') === 'files') return false;
+    const text = typeof action?.text === 'string' ? action.text : '';
+    if (text.trim()) return false;
+    const payload = typeof action?.payload === 'string' ? action.payload : '';
+    return !isLikelyStructuredText(payload);
   };
 
   const readClipboardText = async () => {
     try {
-      if (typeof window !== 'undefined' && window.services && typeof window.services.readClipboardText === 'function') {
-        return window.services.readClipboardText() || '';
+      const services = globalThis.window?.services;
+      if (typeof services?.readClipboardText === 'function') {
+        return services.readClipboardText() || '';
       }
-      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
-        return await navigator.clipboard.readText();
+
+      const clipboard = globalThis.navigator?.clipboard;
+      if (typeof clipboard?.readText === 'function') {
+        return await clipboard.readText();
       }
-    } catch (e) {
-      // ignore
+    } catch (error) {
+      console.warn('读取剪贴板失败:', error);
     }
     return '';
   };
 
+  const getActionFilePath = (action) => {
+    const payload = action?.payload;
+    const file = Array.isArray(payload) ? payload[0] : payload;
+    if (typeof file === 'string') return file;
+    if (file && typeof file.path === 'string') return file.path;
+    return '';
+  };
+
+  const readActionFileText = async (action) => {
+    const filePath = getActionFilePath(action);
+    const readFile = globalThis.window?.services?.readFile;
+    if (!filePath || typeof readFile !== 'function') {
+      return '';
+    }
+
+    try {
+      return await readFile(filePath) || '';
+    } catch (error) {
+      console.warn('读取入口文件失败:', error);
+      return '';
+    }
+  };
+
   const handlePluginEnter = async (action = {}) => {
     const nextAction = { ...action };
-    if (shouldReadClipboard(action)) {
+    if ((action?.code || '') === 'process' && (action?.type || '') === 'files') {
+      const fileText = await readActionFileText(action);
+      if (fileText) {
+        nextAction.text = fileText;
+      }
+    } else if (shouldReadClipboard(action)) {
       const clipboardText = await readClipboardText();
       if (clipboardText) {
         nextAction.text = clipboardText;
@@ -106,35 +127,27 @@
   onMounted(() => {
     // 1. 初次同步主题
     applyTheme();
-    try {
-      if (typeof window !== 'undefined') {
-        window.applyTheme = applyTheme;
-      }
-    } catch (_) { }
+    if (globalThis.window) {
+      globalThis.window.applyTheme = applyTheme;
+    }
 
     // 2. 监听系统主题变化、uTools 主题全局变更
     _themeUpdateListener = () => { if (store.getThemePreference().mode === 'auto') applyTheme(); };
-    try {
-      if (typeof window !== 'undefined') {
-        _mq = window.matchMedia('(prefers-color-scheme: dark)');
-        try { _mq.addEventListener('change', _themeUpdateListener); } catch (e) { }
-        if (window.utools && window.utools.onPluginEnter) {
-          window.utools.onPluginEnter(async (action) => {
-            applyTheme();
-            await handlePluginEnter(action);
-            // uTools 窗口大小可能变化，触发编辑器重新布局
-            nextTick(() => {
-              try {
-                // 通过全局事件通知各组件重新布局
-                if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
-                  window.dispatchEvent(new CustomEvent('jsonium-plugin-enter'));
-                }
-              } catch (_) { }
-            });
-          });
-        }
+    const appWindow = globalThis.window;
+    if (appWindow) {
+      _mq = appWindow.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
+      if (_mq && typeof _mq.addEventListener === 'function') {
+        _mq.addEventListener('change', _themeUpdateListener);
       }
-    } catch (_) { }
+
+      if (typeof appWindow.utools?.onPluginEnter === 'function') {
+        appWindow.utools.onPluginEnter(async (action) => {
+          applyTheme();
+          await handlePluginEnter(action);
+          nextTick(() => dispatchJsoniumEvent('jsonium-plugin-enter'));
+        });
+      }
+    }
 
     // 3. 设置路由、指令等事件监听
     // ...保留原逻辑
@@ -144,43 +157,19 @@
     applyTheme();
   }, { deep: true });
 
-  const isDarkMode = ref(false); // 兼容老参数供子组件
-
   onBeforeUnmount(() => {
-    try { if (_mq && typeof _mq.removeEventListener === 'function' && _themeUpdateListener) _mq.removeEventListener('change', _themeUpdateListener); } catch (e) { }
+    if (_mq && typeof _mq.removeEventListener === 'function' && _themeUpdateListener) {
+      _mq.removeEventListener('change', _themeUpdateListener);
+    }
     _themeUpdateListener = null;
-    try {
-      if (typeof window !== 'undefined' && window.applyTheme === applyTheme) {
-        window.applyTheme = null;
-      }
-    } catch (_) { }
+    if (globalThis.window?.applyTheme === applyTheme) {
+      globalThis.window.applyTheme = null;
+    }
   });
 </script>
 
 <template>
   <div class="app-container">
-    <!-- 设置按钮，右上角圆形已移除，入口聚合到侧栏 Appearance -->
-    <!--
-    <button
-      class="settings-btn"
-      title="界面设置"
-      @click="settingsVisible = true"
-      aria-label="打开设置"
-    >
-      <svg width="21" height="21" fill="none" viewBox="0 0 21 21">
-        <circle cx="10.5" cy="10.5" r="9" stroke="var(--color-primary)" stroke-width="2"/>
-        <path stroke="var(--color-primary)" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.5 7.437v3.063l1.75 1.313"/>
-      </svg>
-    </button>
-    <Settings
-      :visible="settingsVisible"
-      :current-theme="themeState.theme"
-      :current-mode="themeState.mode"
-      @themeChange="handleThemeChange"
-      @close="handleSettingsClose"
-    />
-    -->
-
     <!-- Hello 欢迎页面（调试用） -->
     <template v-if="route === 'hello'">
       <Hello :enterAction="enterAction" :isDarkMode="themeState.mode === 'dark'" />

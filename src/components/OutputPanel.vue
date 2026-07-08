@@ -364,7 +364,8 @@ onBeforeUnmount(() => {
   font-size: var(--font-size-sm);
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+ 
 }
 
 .output-tab:hover {

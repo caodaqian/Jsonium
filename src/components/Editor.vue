@@ -4,6 +4,7 @@
   // Ensure Monaco find/replace contributions are bundled (side-effect imports)
   import 'monaco-editor/esm/vs/editor/contrib/find/browser/findController.js';
   import 'monaco-editor/esm/vs/editor/contrib/find/browser/findWidget.js';
+  import { copyText } from '../services/clipboard.js';
 import {
     cancelScheduledAutoFormat,
     computeMinimalEdits,
@@ -14,6 +15,9 @@ import {
     scheduleAutoFormat,
     WORKER_OFFLOAD_CHARS
 } from '../services/editorFormatting.js';
+  import { installMonacoEnvironment } from '../services/monacoEnvironment.js';
+  import { configureJsonDiagnostics, ensureJsonLanguage, loadMonacoEditor } from '../services/monacoLoader.js';
+  import { defineAndSetMonacoTheme, getJsoniumThemeVars, scheduleThemeRefresh } from '../services/monacoTheme.js';
 import { extractPathFromText } from '../services/pathExtraction.js';
 import { useJsonStore } from '../store/index.js';
   import { getStringifyIndent } from '../utils/indent.js';
@@ -289,206 +293,18 @@ import { useJsonStore } from '../store/index.js';
   };
 
   onMounted(async () => {
-    // 尝试使用 ESM 入口并加载样式，避免 Vite externalized 导致的 runtime 问题
-    try {
-      // 尽早注入 MonacoEnvironment.getWorker，确保 worker 创建使用 ESM worker 路径，避免 loadForeignModule / Unexpected usage
-      try {
-        if (typeof window !== 'undefined') {
-          // Inject a robust MonacoEnvironment.getWorker that prefers any helper
-          // provided by the bundler/plugin (getWorkerUrl/getWorker). If not
-          // available, attempt the following fallbacks in order:
-          // 1. ESM module worker via new Worker(new URL(..., import.meta.url), { type: 'module' })
-          // 2. Blob-based module import that imports the real worker module
-          // 3. Classic importScripts-based worker via Blob (last resort)
-          // preserve any existing helpers before overriding to avoid recursion
-          const existingEnv = window.MonacoEnvironment || {};
-          const savedGetWorker = existingEnv.getWorker;
-          const savedGetWorkerUrl = existingEnv.getWorkerUrl;
-          window.MonacoEnvironment = existingEnv;
-          window.MonacoEnvironment.getWorker = function (moduleId, label) {
-            try {
-              try { console.debug('[Editor] MonacoEnvironment.getWorker called', { moduleId, label }); } catch(_) {}
-              // prefer bundler/provided helper if it existed before we overrode it
-              if (typeof savedGetWorkerUrl === 'function') {
-                try {
-                  const url = savedGetWorkerUrl(moduleId, label);
-                  try { console.debug('[Editor] getWorker using savedGetWorkerUrl', { url, moduleId, label }); } catch(_) {}
-                  return new Worker(url);
-                } catch (e) {
-                  // fall through to other strategies
-                }
-              }
-              if (typeof savedGetWorker === 'function') {
-                try { return savedGetWorker(moduleId, label); } catch (_) { /* fallthrough */ }
-              }
-            } catch (_) {}
-
-            const makeUrl = (p) => {
-              try {
-                if (typeof location !== 'undefined' && typeof p === 'string' && p.charAt(0) === '/') return new URL(p, location.origin).toString();
-                return p;
-              } catch (_) { return p; }
-            };
-
-            // Use absolute paths to node_modules so Vite serves the worker files correctly in dev
-            const jsonPath = '/node_modules/monaco-editor/esm/vs/language/json/json.worker.js';
-            const editorPath = '/node_modules/monaco-editor/esm/vs/editor/editor.worker.js';
-
-            try {
-              if (label === 'json') {
-                try { console.debug('[Editor] creating module worker for json', { url: jsonPath }); } catch(_) {}
-                try {
-                  const w = new Worker(jsonPath, { type: 'module' });
-                  try {
-                    if (w && typeof w.addEventListener === 'function') {
-                      w.addEventListener('error', (ev) => {
-                        try {
-                          const msg = (ev && ev.message ? ev.message : '') + ' ' + (ev && ev.filename ? (ev.filename + ':' + (ev.lineno||0) + ':' + (ev.colno||0)) : '');
-                          const errMsg = (ev && ev.error && ev.error.message) ? (' error:' + ev.error.message) : '';
-                          console.error('[Editor] worker error event', msg + errMsg);
-                          try { if (typeof window !== 'undefined') { window.__jsonium_worker_errors = window.__jsonium_worker_errors || []; window.__jsonium_worker_errors.push({ ts: Date.now(), label: 'editor', detail: msg + errMsg }); } } catch(_){}
-                        } catch(_){}
-                      });
-                      w.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', String(ev)); } catch(_){} });
-                    }
-                  } catch(_){}
-                  return w;
-                } catch (e) {
-                  throw e;
-                }
-              }
-              try { console.debug('[Editor] creating module worker for editor', { url: editorPath }); } catch(_) {}
-              try {
-                const w = new Worker(editorPath, { type: 'module' });
-                try {
-                  if (w && typeof w.addEventListener === 'function') {
-                    w.addEventListener('error', (ev) => {
-                      try {
-                        const msg = (ev && ev.message ? ev.message : '') + ' ' + (ev && ev.filename ? (ev.filename + ':' + (ev.lineno||0) + ':' + (ev.colno||0)) : '');
-                        const errMsg = (ev && ev.error && ev.error.message) ? (' error:' + ev.error.message) : '';
-                        console.error('[Editor] worker error event', msg + errMsg);
-                        try { if (typeof window !== 'undefined') { window.__jsonium_worker_errors = window.__jsonium_worker_errors || []; window.__jsonium_worker_errors.push({ ts: Date.now(), label: 'editor', detail: msg + errMsg }); } } catch(_){}
-                      } catch(_){}
-                    });
-                    w.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', String(ev)); } catch(_){} });
-                  }
-                } catch(_){}
-                return w;
-              } catch (e) {
-                throw e;
-              }
-            } catch (err) {
-              // fallback: try creating a module worker from a blob that imports the real worker module
-              try { console.error('[Editor] module worker creation error', err && err.message ? err.message : err); } catch (_) {}
-              try { console.debug('[Editor] module worker creation stack', err && err.stack ? err.stack : 'no-stack'); } catch (_) {}
-              try {
-                const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
-                try { console.debug('[Editor] module worker failed, falling back to blob import', { url, label }); } catch(_) {}
-                const blob = new Blob([`import("${url}");`], { type: 'application/javascript' });
-                const blobUrl = URL.createObjectURL(blob);
-                try {
-                  try { console.debug('[Editor] creating blob module worker', { blobUrl }); } catch(_) {}
-                  const w = new Worker(blobUrl, { type: 'module' });
-                  try {
-                    if (w && typeof w.addEventListener === 'function') {
-                      w.addEventListener('error', (ev) => {
-                        try {
-                          const msg = (ev && ev.message ? ev.message : '') + ' ' + (ev && ev.filename ? (ev.filename + ':' + (ev.lineno||0) + ':' + (ev.colno||0)) : '');
-                          const errMsg = (ev && ev.error && ev.error.message) ? (' error:' + ev.error.message) : '';
-                          console.error('[Editor] worker error event', msg + errMsg);
-                          try { if (typeof window !== 'undefined') { window.__jsonium_worker_errors = window.__jsonium_worker_errors || []; window.__jsonium_worker_errors.push({ ts: Date.now(), label: 'editor', detail: msg + errMsg }); } } catch(_){}
-                        } catch(_){}
-                      });
-                      w.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', String(ev)); } catch(_){} });
-                    }
-                  } catch(_){}
-                  try { URL.revokeObjectURL(blobUrl); } catch (e) { }
-                  return w;
-                } catch (errWorker) {
-                  try { console.error('[Editor] blob module worker creation error', errWorker && errWorker.message ? errWorker.message : errWorker); } catch (_) {}
-                  try { URL.revokeObjectURL(blobUrl); } catch (e) { }
-                  throw errWorker;
-                }
-              } catch (e) {
-                // last resort: classic worker using importScripts (may or may not work depending on packaging)
-                try { console.error('[Editor] blob fallback error', e && e.message ? e.message : e); } catch (_) {}
-                try { console.debug('[Editor] blob fallback stack', e && e.stack ? e.stack : 'no-stack'); } catch (_) {}
-                try {
-                  const url = label === 'json' ? makeUrl(jsonPath) : makeUrl(editorPath);
-                  try { console.debug('[Editor] blob module failed, trying importScripts worker', { url, label }); } catch(_) {}
-                  const blob = new Blob([`self.importScripts("${url}");`], { type: 'application/javascript' });
-                  const b = URL.createObjectURL(blob);
-                  try {
-                    try { console.debug('[Editor] creating importScripts worker', { blobUrl: b }); } catch(_) {}
-                    const w2 = new Worker(b);
-                    try { if (w2 && typeof w2.addEventListener === 'function') { w2.addEventListener('error', (ev) => { try { console.error('[Editor] worker error event', ev && ev.message ? ev.message : ev); } catch(_){} }); w2.addEventListener('messageerror', (ev) => { try { console.error('[Editor] worker messageerror', ev); } catch(_){} }); } } catch(_){}
-                    try { URL.revokeObjectURL(b); } catch (e) { }
-                    return w2;
-                  } catch (errWorker2) {
-                    try { console.error('[Editor] importScripts worker creation error', errWorker2 && errWorker2.message ? errWorker2.message : errWorker2); } catch (_) {}
-                    try { URL.revokeObjectURL(b); } catch (e) { }
-                    throw errWorker2;
-                  }
-                } catch (e2) {
-                  try { console.error('[Editor] importScripts fallback error', e2 && e2.message ? e2.message : e2); } catch (_) {}
-                  try { console.debug('[Editor] importScripts fallback stack', e2 && e2.stack ? e2.stack : 'no-stack'); } catch (_) {}
-                  // rethrow original error to surface failure
-                  throw err;
-                }
-              }
-            }
-          };
-        }
-      } catch (e) { /* ignore injection failures */ }
-
-      // 加载 Monaco CSS（容错）
-      try { await import('monaco-editor/min/vs/editor/editor.main.css'); } catch (_) { /* ignore */ }
-
-      // 优先加载 ESM 编辑器 API（兼容 vite 的打包方式）
-      try {
-        const m = await import('monaco-editor/esm/vs/editor/editor.api');
-        try { await import('monaco-editor/esm/vs/editor/contrib/stickyScroll/browser/stickyScrollContribution'); } catch (_) { /* ignore */ }
-        // normalize module shape: prefer default.editor, then module.editor, then window.monaco
-        if (m && Object.keys(m).length) {
-          monaco = (m.default && m.default.editor) ? m.default : m;
-        } else {
-          monaco = (window && window.monaco) || null;
-        }
-        // ensure global reference for other parts of the app and diagnostic scripts
-        try { if (monaco && typeof window !== 'undefined' && !window.monaco) window.monaco = monaco; } catch (_) {}
-      } catch (e) {
-        // 回退到常规包（部分环境下可用）
-        try {
-          const m2 = await import('monaco-editor');
-          monaco = m2 && m2.editor ? m2 : (window && window.monaco) || null;
-          try { if (monaco && typeof window !== 'undefined' && !window.monaco) window.monaco = monaco; } catch (_) {}
-        } catch (e2) {
-          monaco = (window && window.monaco) || null;
-        }
-      }
-    } catch (_) {
-      monaco = window.monaco || null;
-    }
+    installMonacoEnvironment('Editor', 'editor');
+    monaco = await loadMonacoEditor();
 
     // Register the JSON formatting provider once (idempotent)
     try { registerJsonFormattingProvider(monaco); } catch (_) { }
 
     // 尝试加载 JSON 语言贡献并开启诊断（以启用高亮与错误提示）
     try {
-      // 动态加载 language contribution（容错）
-      try { await import('monaco-editor/esm/vs/language/json/monaco.contribution'); } catch (_) { /* ignore */ }
+      await ensureJsonLanguage(monaco);
 
       // 配置 JSON 诊断/校验选项（若可用）
-    if (monaco && monaco.languages && monaco.languages.json && monaco.languages.json.jsonDefaults) {
-      try {
-        monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-          validate: true,
-          enableSchemaRequest: false,
-          allowComments: true,
-          schemas: [] // 可在此加入 JSON Schema 强化自动补全与校验
-        });
-      } catch (_) { /* ignore */ }
-    }
+      configureJsonDiagnostics(monaco);
     } catch (_) { /* ignore */ }
 
     // Ensure find/replace contributions are loaded so commands like actions.find exist
@@ -654,56 +470,6 @@ import { useJsonStore } from '../store/index.js';
     }
   }
 
-function getJsoniumThemeVars(mode = 'light') {
-  // 获取页面根节点的 CSS 变量校准
-  const computed = typeof window !== 'undefined' ? getComputedStyle(document.documentElement) : { getPropertyValue: () => '' };
-  // fallback 颜色
-  if (mode === 'light') {
-    return {
-      bg: computed.getPropertyValue('--color-bg-primary')?.trim() || '#eff1f5',
-      fg: computed.getPropertyValue('--color-text-primary')?.trim() || '#4c4f69'
-    };
-  } else {
-    return {
-      bg: computed.getPropertyValue('--color-bg-primary')?.trim() || '#24273a',
-      fg: computed.getPropertyValue('--color-text-primary')?.trim() || '#cad3f5'
-    };
-  }
-}
-
-function defineAndSetMonacoTheme(monaco, mode) {
-  // mode: 'light' | 'dark'
-  const { bg, fg } = getJsoniumThemeVars(mode);
-  try {
-    if (mode === 'light') {
-      monaco.editor.defineTheme('jsonium-light', {
-        base: 'vs',
-        inherit: true,
-        rules: [],
-        colors: {
-          'editor.background': bg,
-          'editor.foreground': fg,
-          'editor.lineHighlightBackground': '#e3eaff', // 微弱高亮
-          'editor.selectionBackground': '#c6a0f645'    // 柔和主色 alpha
-        }
-      });
-    } else {
-      monaco.editor.defineTheme('jsonium-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [],
-        colors: {
-          'editor.background': bg,
-          'editor.foreground': fg,
-          'editor.lineHighlightBackground': '#363a4f',
-          'editor.selectionBackground': '#a6da9540'
-        }
-      });
-    }
-    monaco.editor.setTheme(mode === 'light' ? 'jsonium-light' : 'jsonium-dark');
-  } catch (e) {}
-}
-
 function getCurrentThemeMode() {
   // 返回 light/dark
   const eff = store.getEffectiveTheme();
@@ -723,7 +489,7 @@ function applyCurrentTheme() {
       editorNode.style.background = bg;
     }
   } catch (_) {}
-  defineAndSetMonacoTheme(monaco, mode);
+  defineAndSetMonacoTheme(monaco, mode, { editorHighlights: true });
   try {
     if (editor && typeof editor.layout === 'function') {
       editor.layout();
@@ -734,26 +500,10 @@ function applyCurrentTheme() {
 function installThemeRefreshListener() {
   if (themeAppliedHandler || typeof window === 'undefined') return;
   themeAppliedHandler = () => {
-    try {
-      if (themeRefreshRaf && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(themeRefreshRaf);
-      }
-    } catch (_) {}
-    try {
-      if (typeof window.requestAnimationFrame === 'function') {
-        themeRefreshRaf = window.requestAnimationFrame(() => {
-          themeRefreshRaf = null;
-          applyCurrentTheme();
-        });
-      } else {
-        themeRefreshRaf = setTimeout(() => {
-          themeRefreshRaf = null;
-          applyCurrentTheme();
-        }, 0);
-      }
-    } catch (_) {
+    themeRefreshRaf = scheduleThemeRefresh(themeRefreshRaf, () => {
+      themeRefreshRaf = null;
       applyCurrentTheme();
-    }
+    });
   };
   try {
     window.addEventListener('jsonium-theme-applied', themeAppliedHandler);
@@ -822,9 +572,6 @@ function initEditor() {
       scrollBeyondLastLine: false,
       'bracketPairColorization.enabled': true
     });
-
-  // expose editor instance for debugging (temporary)
-  try { if (typeof window !== 'undefined') window.__jsonium_editor = editor; } catch (_) { }
 
   const refreshJsonErrors = () => {
     try {
@@ -1234,8 +981,6 @@ function initEditor() {
         if (isShift && (isAlt || e.metaKey || e.ctrlKey || modifierState.alt || modifierState.meta || modifierState.ctrl)) {
           const code = e.code || '';
           const key = e.key || '';
-          // eslint-disable-next-line no-console
-          console.debug('[Editor] domKeydown', { code, key, altKey: isAlt, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, activeInEditor, modifierState });
           // allow either Alt+Shift or Cmd/Ctrl+Shift as trigger (fallback)
           if (!e.ctrlKey && !e.metaKey && !modifierState.ctrl && !modifierState.meta) {
             // Alt+Shift path
@@ -1396,93 +1141,23 @@ function initEditor() {
     async function copyToClipboard(text) {
     if (text === null || text === undefined) return false;
 
-    // respect preserveWhitespaceOnCopy setting: remove whitespace only if disabled
     const preserve = store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy;
-    const payload = preserve ? String(text) : String(text).replace(/\s+/g, '');
-
-    // Prefer uTools API when available (ensures copy works inside utools environment)
-    try {
-      if (typeof window !== 'undefined' && window.utools && typeof window.utools.copyText === 'function') {
-        try {
-          window.utools.copyText(payload);
-          // eslint-disable-next-line no-console
-          console.debug('[Editor] copyToClipboard via utools.copyText', { textSample: payload.slice(0, 200) });
-          return true;
-        } catch (e) {
-          // fall through to other methods
-          // eslint-disable-next-line no-console
-          console.warn('[Editor] utools.copyText failed, falling back', e);
-        }
-      }
-    } catch (_) { }
-
-    // Try navigator.clipboard
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(payload);
-        // eslint-disable-next-line no-console
-        console.debug('[Editor] copyToClipboard via navigator.clipboard', { textSample: String(payload).slice(0, 200) });
-        return true;
-      }
-    } catch (e) {
-      // fall through to fallback
-    }
-
-    // Fallback to execCommand approach
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = payload;
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      // eslint-disable-next-line no-console
-      console.debug('[Editor] copyToClipboard via execCommand', { textSample: String(payload).slice(0, 200) });
-      return true;
-    } catch (e) {
-      // emit error for UI feedback (both Vue emit and global window event)
-      try { emit('copy-error', { reason: e && e.message ? e.message : 'clipboard-failed' }); } catch (_) { }
-      try { window.dispatchEvent(new CustomEvent('editor-copy-error', { detail: { reason: e && e.message ? e.message : 'clipboard-failed' } })); } catch (_) { }
-      return false;
-    }
+      const ok = await copyText(text, { preserveWhitespace: !!preserve });
+      if (!ok) emitCopyError('clipboard-failed');
+      return ok;
   }
 
   async function copyRawTextToClipboard(text) {
     if (text === null || text === undefined) return false;
 
-    try {
-      if (typeof window !== 'undefined' && window.utools && typeof window.utools.copyText === 'function') {
-        window.utools.copyText(String(text));
-        return true;
-      }
-    } catch (_) { }
+    const ok = await copyText(text, { preserveWhitespace: true });
+    if (!ok) emitCopyError('clipboard-failed');
+    return ok;
+  }
 
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(String(text));
-        return true;
-      }
-    } catch (_) { }
-
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = String(text);
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      return true;
-    } catch (e) {
-      try { emit('copy-error', { reason: e && e.message ? e.message : 'clipboard-failed' }); } catch (_) { }
-      try { window.dispatchEvent(new CustomEvent('editor-copy-error', { detail: { reason: e && e.message ? e.message : 'clipboard-failed' } })); } catch (_) { }
-      return false;
-    }
+  function emitCopyError(reason) {
+    try { emit('copy-error', { reason }); } catch (_) { }
+    try { window.dispatchEvent(new CustomEvent('editor-copy-error', { detail: { reason } })); } catch (_) { }
   }
 
   function getFullEditorText() {
@@ -1646,8 +1321,6 @@ function initEditor() {
   async function copyAsSingleLine() {
     // prevent overlapping copy operations
     if (copyingLock) {
-      // eslint-disable-next-line no-console
-      console.debug('[Editor] copyAsSingleLine aborted due to copyingLock');
       return;
     }
     copyingLock = true;
@@ -1656,8 +1329,6 @@ function initEditor() {
       try {
         const now = Date.now();
         if (now - lastCopyTs < 300) {
-          // eslint-disable-next-line no-console
-          console.debug('[Editor] copyAsSingleLine skipped duplicate');
           return;
         }
         lastCopyTs = now;
@@ -1693,9 +1364,7 @@ function initEditor() {
         out = String(out).replace(/\s+/g, '');
       }
 
-      const ok = await copyToClipboard(out);
-      // eslint-disable-next-line no-console
-      console.debug('[Editor] copyAsSingleLine', { txtSample: String(txt).slice(0, 200), outSample: String(out).slice(0, 200), ok });
+      await copyToClipboard(out);
     } finally {
       copyingLock = false;
     }
@@ -1704,8 +1373,6 @@ function initEditor() {
   async function copyAsEscapedString() {
     // prevent overlapping copy operations
     if (copyingLock) {
-      // eslint-disable-next-line no-console
-      console.debug('[Editor] copyAsEscapedString aborted due to copyingLock');
       return;
     }
     copyingLock = true;
@@ -1714,8 +1381,6 @@ function initEditor() {
       try {
         const now = Date.now();
         if (now - lastCopyTs < 300) {
-          // eslint-disable-next-line no-console
-          console.debug('[Editor] copyAsEscapedString skipped duplicate');
           return;
         }
         lastCopyTs = now;
@@ -1760,9 +1425,7 @@ function initEditor() {
           .replace(/\n/g, '\\n')
           .replace(/\t/g, '\\t') + '"';
       }
-      const ok = await copyToClipboard(out);
-      // eslint-disable-next-line no-console
-      console.debug('[Editor] copyAsEscapedString', { txtSample: String(txt).slice(0, 200), outSample: String(out).slice(0, 200), ok });
+      await copyToClipboard(out);
     } finally {
       copyingLock = false;
     }
@@ -1770,8 +1433,6 @@ function initEditor() {
 
   async function unescapeSelectionOrContent() {
     if (copyingLock) {
-      // eslint-disable-next-line no-console
-      console.debug('[Editor] unescapeSelectionOrContent aborted due to copyingLock');
       return;
     }
     copyingLock = true;
@@ -1806,9 +1467,7 @@ function initEditor() {
         }
       }
 
-      const ok = await copyToClipboard(out);
-      // eslint-disable-next-line no-console
-      console.debug('[Editor] unescapeSelectionOrContent', { txtSample: String(txt).slice(0, 200), outSample: String(out).slice(0, 200), ok });
+      await copyToClipboard(out);
     } finally {
       copyingLock = false;
     }
@@ -2077,7 +1736,7 @@ function initEditor() {
   }
 
   ::v-deep .editor-widget.find-widget.visible .monaco-findInput .monaco-inputbox {
-    outline: none !important;
+    outline: 2px solid transparent !important;
     box-shadow: none !important;
   }
 
@@ -2287,7 +1946,8 @@ function initEditor() {
   .editor-context-menu__item:focus-visible {
     background: var(--color-hover-bg);
     color: var(--color-primary);
-    outline: none;
+    outline: 2px solid color-mix(in srgb, var(--color-primary) 42%, transparent);
+    outline-offset: 2px;
   }
 
   .editor-context-menu__label {

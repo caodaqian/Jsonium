@@ -7,7 +7,7 @@ const props = defineProps({
     default: () => []
   },
   activeTabId: {
-    type: Number,
+    type: [String, Number],
     default: null
   }
 });
@@ -123,19 +123,24 @@ watch(showMenu, (v) => {
 
 <template>
   <div class="tab-bar">
-    <div class="tabs-scroll">
+    <div class="tabs-scroll" role="tablist" aria-label="JSON 标签页">
       <div
         v-for="tab in tabs"
         :key="tab.id"
         :class="['tab', { active: tab.id === activeTabId }]"
+role="tab"
+        :aria-selected="tab.id === activeTabId" tabindex="0"
         @click="emit('selectTab', tab.id)"
+        @keydown.enter.prevent="emit('selectTab', tab.id)" @keydown.space.prevent="emit('selectTab', tab.id)"
         @mousedown.middle.prevent="emit('closeTab', tab.id)"
         @contextmenu.prevent="onContextmenu(tab, $event)"
       >
         <div class="tab-content">
           <span v-if="editingTabId === tab.id" class="tab-label-edit">
             <input
+:id="`tab-name-${tab.id}`"
               v-model="editingName"
+aria-label="标签页名称"
               @blur="saveEdit(tab.id)"
               @keydown="handleKeyDown($event, tab.id)"
               @click.stop
@@ -161,13 +166,15 @@ watch(showMenu, (v) => {
 
     <div v-if="showMenu" ref="menuRef" class="tab-context-menu" :style="{ left: menuX + 'px', top: menuY + 'px' }"
       @click.stop>
-      <ul class="menu-list">
-        <li @click.stop="onMenuAction('close')">关闭此标签页</li>
-        <li @click.stop="onMenuAction('closeOthers')">关闭其他标签页</li>
-        <li @click.stop="onMenuAction('closeLeft')">关闭左侧标签页</li>
-        <li @click.stop="onMenuAction('closeAll')">关闭所有标签页</li>
-        <li @click.stop="onMenuAction('toggleFav')">
-          {{ (tabs.find(t=>t.id===menuTabId) && tabs.find(t=>t.id===menuTabId).favorited) ? '取消收藏' : '收藏' }}
+      <ul class="menu-list" role="menu">
+        <li><button type="button" role="menuitem" @click.stop="onMenuAction('close')">关闭此标签页</button></li>
+        <li><button type="button" role="menuitem" @click.stop="onMenuAction('closeOthers')">关闭其他标签页</button></li>
+        <li><button type="button" role="menuitem" @click.stop="onMenuAction('closeLeft')">关闭左侧标签页</button></li>
+        <li><button type="button" role="menuitem" @click.stop="onMenuAction('closeAll')">关闭所有标签页</button></li>
+        <li>
+          <button type="button" role="menuitem" @click.stop="onMenuAction('toggleFav')">
+            {{(tabs.find(t => t.id === menuTabId) && tabs.find(t => t.id === menuTabId).favorited) ? '取消收藏' : '收藏'}}
+          </button>
         </li>
       </ul>
     </div>
@@ -215,7 +222,10 @@ watch(showMenu, (v) => {
   white-space: nowrap;
     font-size: 12px;
 
-  transition: all 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+
+
+ 
   flex-shrink: 0;
   color: var(--color-text-primary);
 }
@@ -282,13 +292,30 @@ watch(showMenu, (v) => {
 }
 
 .tab-context-menu .menu-list li {
+    padding: 0;
+  }
+
+  .tab-context-menu .menu-list button {
+    width: 100%;
+
+ 
   padding: 8px 12px;
+    border: 0;
+    background: transparent;
+
+ 
   cursor: pointer;
   color: var(--color-text-primary);
   font-size: 13px;
+    text-align: left;
+
+ 
 }
 
-.tab-context-menu .menu-list li:hover {
+  .tab-context-menu .menu-list button:hover,
+  .tab-context-menu .menu-list button:focus-visible {
+
+ 
   background: var(--color-hover-bg);
 }
 
@@ -304,11 +331,21 @@ watch(showMenu, (v) => {
     border-radius: 3px;
     font-size: 12px;
 
-  outline: none;
+    outline: 2px solid transparent;
+
+
+ 
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
 }
 
+  .tab-input:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 28%, transparent);
+  }
+
+
+
+ 
 .tab-modified {
   color: var(--color-error);
   font-size: 8px;

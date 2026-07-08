@@ -148,7 +148,7 @@ function parseJqRawResult(rawResult) {
 
   const trimmed = stdout.trim();
   if (!trimmed) {
-    return null;
+    return [];
   }
 
   const lines = trimmed.split('\n').filter(Boolean);

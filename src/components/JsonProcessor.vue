@@ -1,6 +1,10 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+  import { useEnterActionImport } from '../composables/useEnterActionImport.js';
+  import { useGlobalShortcuts } from '../composables/useGlobalShortcuts.js';
+  import { useLeftPanelResize } from '../composables/useLeftPanelResize.js';
 import { parseAIJsonWithRetry, processWithAI } from '../services/aiProcessor.js';
+  import { copyText } from '../services/clipboard.js';
 import { convert } from '../services/converter.js';
 import { stringifySortedJson } from '../services/diffEngine.js';
 import { detectAndConvert, FORMAT_TYPES, toFormat } from '../services/formatDetector.js';
@@ -40,19 +44,23 @@ const props = defineProps({
 });
 
 // UI 状态
-const activePanel = ref('editor'); // editor, convert, query, diff, ai
-const showLeftPanel = ref(true);
+  const activePanel = ref('editor'); // editor, convert, query, diff, ai
 const isNarrow = ref(false);
-const LEFT_PANEL_DEFAULT_WIDTH = 340;
-const LEFT_PANEL_MIN_WIDTH = 280;
-const LEFT_PANEL_MAX_WIDTH = 420;
-const leftPanelWidth = ref(LEFT_PANEL_DEFAULT_WIDTH);
-const isLeftResizing = ref(false);
+  const {
+    controlPanelStyle,
+    isLeftResizing,
+    startLeftPanelResize,
+    resetLeftPanelWidth,
+    clearLeftResizeSelection
+  } = useLeftPanelResize(isNarrow, {
+    defaultWidth: 340,
+    minWidth: 280,
+    maxWidth: 420
+  });
 
 const tabs = computed(() => store.tabs);
 
-onMounted(() => {
-  console.log('[JsonProcessor] Mounted, controlPanelVisible:', store.editorSettings.controlPanelVisible);
+  onMounted(() => {
   try {
     if (typeof window !== 'undefined') {
       const update = () => {
@@ -89,6 +97,10 @@ onMounted(() => {
 });
 const activeTab = computed(() => store.getActiveTab());
 const editorRef = ref(null);
+  const {
+    restoreTabsOrCreateInitial,
+    importEnterAction
+  } = useEnterActionImport(store, editorRef, activePanel);
 
 // AI 原始响应展示与重试状态
 const aiRawResponse = ref('');
@@ -124,6 +136,38 @@ function closeCenteredDiff() {
   centeredRight.value = '';
 }
 
+  useGlobalShortcuts({
+    onEscape(event) {
+      if (showCenteredDiff.value) {
+        event.preventDefault();
+        closeCenteredDiff();
+        return true;
+      }
+      if (store.outputPanel.visible) {
+        event.preventDefault();
+        store.hideOutputPanel();
+        return true;
+      }
+      if (store.diffSidebar.visible) {
+        event.preventDefault();
+        store.hideDiffSidebar();
+        return true;
+      }
+      if (store.editorSettings.controlPanelVisible) {
+        event.preventDefault();
+        store.editorSettings.controlPanelVisible = false;
+        return true;
+      }
+      return false;
+    },
+    onCloseTab() {
+      if (store.activeTabId) store.closeTab(store.activeTabId);
+    },
+    onNewTab() {
+      createNewTab('{}');
+    }
+  });
+
 function toggleFloatingSidebar() {
   try {
     const outputVisible = store.outputPanel.visible;
@@ -146,27 +190,8 @@ function toggleFloatingSidebar() {
 }
 
   onMounted(async () => {
-    // 尝试从持久化恢复 tabs；若恢复失败则创建初始 tab
     const initialEnterAction = { ...props.enterAction };
-    try {
-      if (typeof store.loadTabsState === 'function') {
-        const restored = await store.loadTabsState();
-        if (restored) {
-          // 启动时尝试清理过期标签（默认 1 天）
-          try { if (typeof store.cleanupOldTabs === 'function') store.cleanupOldTabs(1); } catch (_) {}
-          // 恢复并清理后再确保至少有一个标签（防止清理导致全空）
-          ensureInitialTab();
-        } else {
-          ensureInitialTab();
-        }
-      } else {
-        ensureInitialTab();
-      }
-    } catch (e) {
-      // ignore and fallback
-      ensureInitialTab();
-    }
-
+    await restoreTabsOrCreateInitial();
     await importEnterAction(initialEnterAction);
 
   if (typeof window !== 'undefined' && window.addEventListener) {
@@ -176,57 +201,6 @@ function toggleFloatingSidebar() {
     try { window.utools.onPluginOut(_save); } catch (e) { /* ignore */ }
   }
 
-  // 全局快捷键：Cmd/Ctrl+W 关闭当前标签、Cmd/Ctrl+N 新建标签
-  function globalKeydown(e) {
-    try {
-      if ((e.key || '') === 'Escape') {
-        if (showCenteredDiff.value) {
-          e.preventDefault();
-          closeCenteredDiff();
-          return;
-        }
-        if (store.outputPanel.visible) {
-          e.preventDefault();
-          store.hideOutputPanel();
-          return;
-        }
-        if (store.diffSidebar.visible) {
-          e.preventDefault();
-          store.hideDiffSidebar();
-          return;
-        }
-        if (store.editorSettings.controlPanelVisible) {
-          e.preventDefault();
-          store.editorSettings.controlPanelVisible = false;
-          return;
-        }
-      }
-
-      const isCmd = e.metaKey || e.ctrlKey;
-      if (!isCmd) return;
-      const k = (e.key || '').toLowerCase();
-      const active = typeof document !== 'undefined' ? document.activeElement : null;
-      const editorEl = typeof document !== 'undefined' ? document.querySelector('.editor-container') : null;
-      const tabbarEl = typeof document !== 'undefined' ? document.querySelector('.tab-bar') : null;
-      const inEditor = editorEl && active && (editorEl.contains(active) || active === editorEl);
-      const inTabbar = tabbarEl && active && (tabbarEl.contains(active) || active === tabbarEl);
-      const isTextInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
-      if (k === 'w') {
-        if (inEditor || inTabbar || !isTextInput) {
-          e.preventDefault();
-          if (store.activeTabId) store.closeTab(store.activeTabId);
-        }
-      } else if (k === 'n') {
-        e.preventDefault();
-        createNewTab('{}');
-      }
-    } catch (_) { /* ignore */ }
-  }
-
-  if (typeof window !== 'undefined' && window.addEventListener) {
-    window.addEventListener('keydown', globalKeydown);
-    try { if (typeof window !== 'undefined') window.__jsonium_globalKeydown = globalKeydown; } catch (_) {}
-  }
 });
 
 onUnmounted(() => {
@@ -234,54 +208,12 @@ onUnmounted(() => {
   // 清理 beforeunload 监听（若已注册）
   if (typeof window !== 'undefined' && window.removeEventListener) {
     try { window.removeEventListener('beforeunload', _save); } catch (e) { /* ignore */ }
-    // 清理全局快捷键监听
-    try {
-      const g = typeof window !== 'undefined' ? window.__jsonium_globalKeydown : null;
-      if (g) window.removeEventListener('keydown', g);
-      try { window.__jsonium_globalKeydown = null; } catch (_) {}
-    } catch (e) { /* ignore */ }
   }
 });
 
 watch(() => props.enterAction, async (action) => {
   await importEnterAction(action);
 }, { deep: true });
-
-function ensureInitialTab() {
-  try {
-    const currentTabs = Array.isArray(store.tabs)
-      ? store.tabs
-      : (store.tabs && Array.isArray(store.tabs.value) ? store.tabs.value : []);
-    if (!Array.isArray(currentTabs) || currentTabs.length === 0) {
-      store.addTab('{}', '', FORMAT_TYPES.JSON);
-    }
-  } catch (e) {
-    // 若发生异常，作为兜底仍尝试创建一个标签
-    try { store.addTab('{}', '', FORMAT_TYPES.JSON); } catch (_) {}
-  }
-}
-
-async function importEnterAction(action) {
-  const text = action?.text;
-  if (!text) {
-    return;
-  }
-
-  const result = await detectAndConvert(text);
-  if (!result.success) {
-    return;
-  }
-
-  store.addTab(result.data, '导入内容', result.originalFormat);
-  activePanel.value = 'editor';
-
-  await nextTick();
-  await nextTick();
-
-  if (editorRef.value && typeof editorRef.value.format === 'function') {
-    editorRef.value.format();
-  }
-}
 
 async function createNewTab(initialContent = '{}', name = '', format = FORMAT_TYPES.JSON) {
   try {
@@ -549,39 +481,11 @@ function handleAcceptRaw() {
  // 复制到剪贴板
 const copyTextToClipboard = async (text, showFeedback = false) => {
   if (text === null || text === undefined) return false;
-  // normalize: remove ALL whitespace characters before copying
-  const payload = String(text).replace(/\s+/g, '');
-
-  if (typeof window !== 'undefined' && window.utools) {
-    try {
-      window.utools.copyText(payload);
-      if (showFeedback) {
-        notify.success('已复制到剪贴板');
-      }
-      return true;
-    } catch (e) {
-      // fall through to navigator fallback
-      // eslint-disable-next-line no-console
-      console.warn('[JsonProcessor] utools.copyText failed, falling back', e);
-    }
-  }
-
-  try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-      await navigator.clipboard.writeText(payload);
-      if (showFeedback) {
-        notify.success('已复制到剪贴板');
-      }
-      return true;
-    }
-  } catch {
-    // fall through to failure
-  }
-
+  const ok = await copyText(text, { preserveWhitespace: !!store.editorSettings.preserveWhitespaceOnCopy });
   if (showFeedback) {
-    notify.error('复制失败');
+    ok ? notify.success('已复制到剪贴板') : notify.error('复制失败');
   }
-  return false;
+  return ok;
 };
 
 const handleCopyToClipboard = () => {
@@ -604,82 +508,6 @@ const handleDownload = () => {
 
 // 表格视图
 const tableViewVisible = computed(() => store.tableView.visible);
-
-const clampLeftPanelWidth = (width) => {
-  const numeric = Number(width);
-  if (!Number.isFinite(numeric)) return LEFT_PANEL_DEFAULT_WIDTH;
-  return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(LEFT_PANEL_MAX_WIDTH, numeric));
-};
-
-const controlPanelStyle = computed(() => {
-  if (isNarrow.value) {
-    return null;
-  }
-  const width = clampLeftPanelWidth(leftPanelWidth.value);
-  return {
-    width: `${width}px`,
-    minWidth: `${LEFT_PANEL_MIN_WIDTH}px`,
-    maxWidth: `${LEFT_PANEL_MAX_WIDTH}px`,
-    flex: `0 0 ${width}px`
-  };
-});
-
-const clearLeftResizeSelection = () => {
-  isLeftResizing.value = false;
-  try {
-    if (typeof document !== 'undefined' && document.body) {
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-    }
-  } catch (_) {
-    // ignore
-  }
-};
-
-const startLeftPanelResize = (event) => {
-  if (isNarrow.value || event.button !== 0) {
-    return;
-  }
-  event.preventDefault();
-  const startX = event.clientX;
-  const startWidth = clampLeftPanelWidth(leftPanelWidth.value);
-
-  const onMove = (moveEvent) => {
-    const next = startWidth + (moveEvent.clientX - startX);
-    leftPanelWidth.value = clampLeftPanelWidth(next);
-  };
-
-  const stop = () => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', stop);
-      }
-    } catch (_) {
-      // ignore
-    }
-    clearLeftResizeSelection();
-  };
-
-  isLeftResizing.value = true;
-  try {
-    if (typeof document !== 'undefined' && document.body) {
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'col-resize';
-    }
-  } catch (_) {
-    // ignore
-  }
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', stop);
-  }
-};
-
-const resetLeftPanelWidth = () => {
-  leftPanelWidth.value = LEFT_PANEL_DEFAULT_WIDTH;
-};
 
 const handleOpenTableView = () => {
   store.showTableView();

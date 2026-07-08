@@ -34,6 +34,7 @@ describe('settings persistence', () => {
 			model: 'gpt-4o-mini',
 			parseRetryMax: 2
 		});
+		store.setUtoolsWindowSettings({ sizePreset: 'extraLarge', heightPercent: 92 });
 		store.updateEditorSettings({ fontSize: 18, wordWrap: 'on' });
 		store.diffSidebar.collapsed = true;
 
@@ -48,6 +49,7 @@ describe('settings persistence', () => {
 		expect(payload.themePreference).toEqual({ theme: 'vue', mode: 'dark' });
 		expect(payload.aiConfig.provider).toBe('openai_compatible');
 		expect(payload.aiConfig.baseUrl).toBe('https://api.example.com/v1');
+		expect(payload.utoolsWindowSettings).toEqual({ sizePreset: 'extraLarge', heightPercent: 92 });
 		expect(payload.editorSettings.fontSize).toBe(18);
 		expect(payload.diffSidebarCollapsed).toBe(true);
 	});
@@ -84,6 +86,7 @@ describe('settings persistence', () => {
 					fontSize: 16,
 					wordWrap: 'on'
 				},
+				utoolsWindowSettings: { sizePreset: 'medium', heightPercent: 64 },
 				diffSidebarCollapsed: true,
 				lastWindowSize: { width: 1280, height: 860 }
 			});
@@ -99,6 +102,7 @@ describe('settings persistence', () => {
 		expect(store.aiConfig.model).toBe('gpt-4.1-mini');
 		expect(store.editorSettings.fontSize).toBe(16);
 		expect(store.editorSettings.wordWrap).toBe('on');
+		expect(store.utoolsWindowSettings).toEqual({ sizePreset: 'medium', heightPercent: 64 });
 		expect(store.diffSidebar.collapsed).toBe(true);
 		expect(store.editorSettings.lastWindowSize).toEqual({ width: 1280, height: 860 });
 	});

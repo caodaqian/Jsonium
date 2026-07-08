@@ -70,42 +70,6 @@ export function cancelScheduledAutoFormat(scheduleState) {
 }
 
 /**
- * Simplified auto-format scheduler.
- * - Single timer
- * - Sets scheduleState.pending while scheduled
- * - Safe to call repeatedly; returns timer id
- *
- * @param {Object} scheduleState - plain object holding { timer, lastReason, pending }
- * @param {'manual'|'idle'|'paste'|'external-sync'} reason
- * @param {number} delay - ms to wait before invoking callback
- * @param {(reason:string)=>void} callback
- * @returns {ReturnType<typeof setTimeout>}
- */
-export function scheduleAutoFormatSimple(scheduleState, reason, delay, callback) {
-  if (!scheduleState || typeof callback !== 'function') {
-    throw new Error('Invalid arguments to scheduleAutoFormatSimple');
-  }
-  // Cancel existing timer
-  if (scheduleState.timer) {
-    clearTimeout(scheduleState.timer);
-  }
-  scheduleState.lastReason = reason || null;
-  scheduleState.pending = true;
-  scheduleState.timer = setTimeout(() => {
-    scheduleState.timer = null;
-    scheduleState.pending = false;
-    try {
-      callback(reason);
-    } catch (e) {
-      // Swallow callback errors to avoid crashing scheduler
-      // eslint-disable-next-line no-console
-      console.error('scheduleAutoFormatSimple callback error:', e);
-    }
-  }, Number(delay) || 0);
-  return scheduleState.timer;
-}
-
-/**
  * Compute minimal text edits between oldText and newText using a line-level diff.
  *
  * Returns an array of { range, text } objects compatible with Monaco TextEdit.

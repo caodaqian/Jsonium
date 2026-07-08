@@ -1,7 +1,7 @@
 <script setup>
-  import { computed, onMounted, ref, watch } from 'vue';
+  import { computed, ref, watch } from 'vue';
 import { AI_PROVIDERS, fetchOpenAICompatibleModels } from '../services/aiProcessor.js';
-import notify from '../services/notify.js';
+  import { UTOOLS_WINDOW_SIZE_PRESETS, applyUtoolsWindowSettings } from '../services/windowSettings.js';
 import { useJsonStore } from '../store/index.js';
 
   const props = defineProps({
@@ -40,6 +40,7 @@ import { useJsonStore } from '../store/index.js';
   const modeValue = ref(store.themePreference.mode);
 
   const appearanceSettingsOpen = ref(false);
+  const windowSettingsOpen = ref(false);
   const editorSettingsOpen = ref(false);
   const aiSettingsOpen = ref(false);
 
@@ -56,6 +57,17 @@ import { useJsonStore } from '../store/index.js';
   const wrapLabel = computed(() => {
     if (!store.editorSettings.wrapEnabled) return '关闭';
     return store.editorSettings.wrapByWidth ? `按宽度 ${store.editorSettings.wrapThresholdPx}px` : `按列 ${store.editorSettings.wrapColumn}`;
+  });
+  const windowSizeOptions = [
+    { value: 'medium', label: UTOOLS_WINDOW_SIZE_PRESETS.medium.label, meta: '日常查看', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.medium.heightPercent },
+    { value: 'large', label: UTOOLS_WINDOW_SIZE_PRESETS.large.label, meta: '推荐', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.large.heightPercent },
+    { value: 'extraLarge', label: UTOOLS_WINDOW_SIZE_PRESETS.extraLarge.label, meta: '长文档', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.extraLarge.heightPercent }
+  ];
+  const windowSettingsSummary = computed(() => {
+    const settings = store.utoolsWindowSettings || {};
+    const option = windowSizeOptions.find((item) => item.value === settings.sizePreset);
+    const label = option ? option.label : '自定义';
+    return `${label} · ${settings.heightPercent || UTOOLS_WINDOW_SIZE_PRESETS.large.heightPercent}%`;
   });
   const aiRetryLabel = computed(() => (store.aiConfig.parseRetry ? `开启 · ${store.aiConfig.parseRetryMax} 次` : '关闭'));
   const aiProviderOptions = [
@@ -146,6 +158,37 @@ import { useJsonStore } from '../store/index.js';
     }
   }
 
+  function findWindowPresetByPercent(percent) {
+    return windowSizeOptions.find((item) => item.heightPercent === Number(percent))?.value || 'custom';
+  }
+
+  function applyAndSaveWindowSettings(settings) {
+    const normalized = store.setUtoolsWindowSettings(settings);
+    try {
+      store.saveSettingsState();
+      const result = applyUtoolsWindowSettings(normalized);
+      if (!result.success && result.reason !== 'utools-unavailable') {
+        console.warn('Failed to apply uTools window settings', result.reason);
+      }
+    } catch (error) {
+      console.warn('Failed to save uTools window settings', error);
+    }
+  }
+
+  function handleWindowPresetChange(preset) {
+    const option = windowSizeOptions.find((item) => item.value === preset);
+    if (!option) return;
+    applyAndSaveWindowSettings({ sizePreset: option.value, heightPercent: option.heightPercent });
+  }
+
+  function handleWindowHeightPercentChange(value) {
+    const heightPercent = Number(value);
+    applyAndSaveWindowSettings({
+      sizePreset: findWindowPresetByPercent(heightPercent),
+      heightPercent
+    });
+  }
+
   watch(
     [themeValue, modeValue],
     ([theme, mode]) => {
@@ -197,85 +240,12 @@ import { useJsonStore } from '../store/index.js';
 
   ensureAIDefaults();
 
-  onMounted(() => {
-    console.log('[ControlPanel] Mounted, controlPanelVisible:', store.editorSettings.controlPanelVisible);
-  });
-
   function switchPanel(panel) {
     emit('panelChange', panel);
   }
 
   function handleClose() {
     store.editorSettings.controlPanelVisible = false;
-  }
-
-  function handleImport() {
-    const text = prompt('请粘贴 JSON 内容:');
-    if (text) {
-      emit('import', text);
-    }
-  }
-
-  function handleReadFile() {
-    const appWindow = globalThis.window;
-    if (appWindow?.utools) {
-      try {
-        const files = appWindow.utools.showOpenDialog({
-          title: '选择文件',
-          properties: ['openFile']
-        });
-        if (files && files[0]) {
-          const content = appWindow.services.readFile(files[0]);
-          emit('import', content);
-        }
-      } catch (err) {
-        notify.error('读取文件失败: ' + err.message);
-      }
-    } else {
-      notify.warn('此功能仅在 uTools 中可用');
-    }
-  }
-
-  function handleWriteFile() {
-    const activeTab = store.getActiveTab();
-    if (!activeTab) {
-      notify.warn('请先打开一个标签页');
-      return;
-    }
-    const appWindow = globalThis.window;
-    if (appWindow?.utools) {
-      try {
-        const outputPath = appWindow.services.writeTextFile(activeTab.content);
-        if (outputPath) {
-          appWindow.utools.shellShowItemInFolder(outputPath);
-          notify.success('文件已保存到: ' + outputPath);
-        }
-      } catch (err) {
-        notify.error('保存文件失败: ' + err.message);
-      }
-    } else {
-      notify.warn('此功能仅在 uTools 中可用');
-    }
-  }
-
-  function handleConvert() {
-    emit('convert', 'json');
-  }
-
-  function handleGenerateCode() {
-    emit('generateCode', 'javascript');
-  }
-
-  function handleQuery() {
-    emit('query', '', 'jsonpath');
-  }
-
-  function handleCompare() {
-    emit('compare', '', '');
-  }
-
-  function handleAIProcess() {
-    emit('aiProcess', '');
   }
 
   function getTabLabel(tab) {
@@ -339,7 +309,8 @@ import { useJsonStore } from '../store/index.js';
               <div class="theme-grid" aria-label="主题风格">
                 <label v-for="opt in themeOptions" :key="opt.value" class="theme-option"
                   :class="{ active: themeValue === opt.value }">
-                  <input v-model="themeValue" type="radio" name="themeStyle" :value="opt.value" />
+                  <input :id="`theme-style-${opt.value}`" v-model="themeValue" type="radio" name="themeStyle"
+                    :value="opt.value" />
                   <span class="theme-option__title">{{ opt.label }}</span>
                   <span class="theme-option__meta">{{ opt.meta }}</span>
                 </label>
@@ -351,12 +322,49 @@ import { useJsonStore } from '../store/index.js';
               <div class="mode-grid">
                 <label v-for="opt in modeOptions" :key="opt.value" class="mode-option"
                   :class="{ active: modeValue === opt.value }">
-                  <input v-model="modeValue" type="radio" name="themeMode" :value="opt.value" />
+                  <input :id="`theme-mode-${opt.value}`" v-model="modeValue" type="radio" name="themeMode"
+                    :value="opt.value" />
                   <span>{{ opt.label }}</span>
                 </label>
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <button class="section-toggle" type="button" :aria-expanded="windowSettingsOpen" aria-controls="window-settings"
+          @click="windowSettingsOpen = !windowSettingsOpen">
+          <span>
+            <span class="section-toggle__title">窗口大小</span>
+            <span class="section-toggle__desc">当前 {{ windowSettingsSummary }}</span>
+          </span>
+          <span class="section-toggle__state">{{ getDisclosureLabel(windowSettingsOpen) }}</span>
+        </button>
+
+        <div id="window-settings" class="section-body" :class="{ 'is-collapsed': !windowSettingsOpen }">
+          <div class="window-size-options" role="radiogroup" aria-label="uTools 窗口大小预设">
+            <button v-for="option in windowSizeOptions" :key="option.value" type="button" class="window-size-option"
+              :class="{ active: store.utoolsWindowSettings.sizePreset === option.value }"
+              :aria-pressed="store.utoolsWindowSettings.sizePreset === option.value"
+              @click="handleWindowPresetChange(option.value)">
+              <span class="window-size-option__label">{{ option.label }}</span>
+              <span class="window-size-option__meta">{{ option.meta }} · {{ option.heightPercent }}%</span>
+            </button>
+          </div>
+
+          <label class="setting-field">
+            <span class="setting-field__label">高度微调</span>
+            <span class="setting-field__help">按当前屏幕可用高度的百分比调整，在 uTools 中立即生效；浏览器预览只会保存设置。</span>
+            <span class="window-height-control">
+              <input id="utools-window-height-percent" type="range" min="50" max="95" step="1"
+                :value="store.utoolsWindowSettings.heightPercent" aria-label="uTools 窗口高度百分比"
+                @input="handleWindowHeightPercentChange($event.target.value)" />
+              <output class="window-height-value" for="utools-window-height-percent">
+                {{ store.utoolsWindowSettings.heightPercent }}%
+              </output>
+            </span>
+          </label>
         </div>
       </section>
 
@@ -374,7 +382,8 @@ import { useJsonStore } from '../store/index.js';
           <div class="setting-stack">
             <label class="setting-row setting-row--toggle">
               <span class="input-toggle">
-                <input v-model="store.editorSettings.stickyEnabled" type="checkbox" aria-label="启用粘性节点" />
+                <input id="editor-sticky-enabled" v-model="store.editorSettings.stickyEnabled" type="checkbox"
+                  aria-label="启用粘性节点" />
                 <span class="slider" aria-hidden="true"></span>
               </span>
               <span class="setting-copy">
@@ -384,7 +393,8 @@ import { useJsonStore } from '../store/index.js';
             </label>
             <label class="setting-row setting-row--toggle">
               <span class="input-toggle">
-                <input v-model="store.editorSettings.wrapEnabled" type="checkbox" aria-label="默认按编辑器宽度自动换行" />
+                <input id="editor-wrap-enabled" v-model="store.editorSettings.wrapEnabled" type="checkbox"
+                  aria-label="默认按编辑器宽度自动换行" />
                 <span class="slider" aria-hidden="true"></span>
               </span>
               <span class="setting-copy">
@@ -395,7 +405,7 @@ import { useJsonStore } from '../store/index.js';
 
             <label class="setting-row setting-row--toggle">
               <span class="input-toggle">
-                <input v-model="store.editorSettings.wrapByWidth" type="checkbox"
+                <input id="editor-wrap-by-width" v-model="store.editorSettings.wrapByWidth" type="checkbox"
                   aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）" />
                 <span class="slider" aria-hidden="true"></span>
               </span>
@@ -410,14 +420,16 @@ import { useJsonStore } from '../store/index.js';
             <label class="setting-field">
               <span class="setting-field__label">换行阈值（px）</span>
               <span class="setting-field__help">视口小于该值时按宽度换行。</span>
-              <input v-model.number="store.editorSettings.wrapThresholdPx" type="number" min="200" step="50"
+              <input id="editor-wrap-threshold" v-model.number="store.editorSettings.wrapThresholdPx" type="number"
+                min="200" step="50"
                 class="form-input setting-field__control" />
             </label>
 
             <label class="setting-field">
               <span class="setting-field__label">固定换行列数</span>
               <span class="setting-field__help">按列数换行时使用的最大列宽。</span>
-              <input v-model.number="store.editorSettings.wrapColumn" type="number" min="40" step="1"
+              <input id="editor-wrap-column" v-model.number="store.editorSettings.wrapColumn" type="number" min="40"
+                step="1"
                 class="form-input setting-field__control" />
             </label>
           </div>
@@ -426,7 +438,8 @@ import { useJsonStore } from '../store/index.js';
             <label class="setting-field">
               <span class="setting-field__label">字体</span>
               <span class="setting-field__help">默认使用系统字体，必要时可手动指定等宽字体。</span>
-              <select v-model="store.editorSettings.fontFamily" class="form-select setting-field__control">
+              <select id="editor-font-family" v-model="store.editorSettings.fontFamily"
+                class="form-select setting-field__control">
                 <option value="">系统默认</option>
                 <option value="'Cascadia Code NF'">Cascadia Code NF</option>
                 <option value="'JetBrains Mono'">JetBrains Mono</option>
@@ -444,14 +457,15 @@ import { useJsonStore } from '../store/index.js';
             <label class="setting-field">
               <span class="setting-field__label">字号 (px)</span>
               <span class="setting-field__help">调整编辑器字体大小</span>
-              <input v-model.number="store.editorSettings.fontSize" type="number" min="8"
+              <input id="editor-font-size" v-model.number="store.editorSettings.fontSize" type="number" min="8"
                 class="form-input setting-field__control setting-field__control--narrow" />
             </label>
           </div>
 
           <label class="setting-row setting-row--toggle">
             <span class="input-toggle">
-              <input v-model="store.editorSettings.preserveWhitespaceOnCopy" type="checkbox"
+              <input id="editor-preserve-whitespace-on-copy" v-model="store.editorSettings.preserveWhitespaceOnCopy"
+                type="checkbox"
                 aria-label="保留复制内容中的原始空白（空格/换行）" />
               <span class="slider" aria-hidden="true"></span>
             </span>
@@ -464,7 +478,8 @@ import { useJsonStore } from '../store/index.js';
           <div class="setting-field setting-field--inline">
             <span class="setting-field__label">格式检测模式</span>
             <span class="setting-field__help">严格模式更保守，宽松模式更适合混合文本。</span>
-            <select v-model="store.editorSettings.formatDetectorMode" class="form-select setting-field__control">
+            <select id="editor-format-detector-mode" v-model="store.editorSettings.formatDetectorMode"
+              class="form-select setting-field__control">
               <option value="lenient">宽松 (lenient)</option>
               <option value="strict">严格 (strict)</option>
             </select>
@@ -486,7 +501,8 @@ import { useJsonStore } from '../store/index.js';
           <label class="setting-field setting-field--inline">
             <span class="setting-field__label">Provider</span>
             <span class="setting-field__help">选择模型提供商。</span>
-            <select v-model="store.aiConfig.provider" class="form-select setting-field__control" @change="handleProviderChange">
+            <select id="ai-provider" v-model="store.aiConfig.provider" class="form-select setting-field__control"
+              @change="handleProviderChange">
               <option v-for="item in aiProviderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
           </label>
@@ -495,26 +511,29 @@ import { useJsonStore } from '../store/index.js';
             <label class="setting-field setting-field--inline">
               <span class="setting-field__label">Base URL</span>
               <span class="setting-field__help">例如 https://api.openai.com/v1。</span>
-              <input v-model="store.aiConfig.baseUrl" type="text" class="form-input setting-field__control" placeholder="https://your-compatible-endpoint/v1" />
+              <input id="ai-base-url" v-model="store.aiConfig.baseUrl" type="text"
+                class="form-input setting-field__control" placeholder="https://your-compatible-endpoint/v1" />
             </label>
 
             <label class="setting-field setting-field--inline">
               <span class="setting-field__label">API Key</span>
               <span class="setting-field__help">仅保存在本地，用于请求鉴权。</span>
-              <input v-model="store.aiConfig.apiKey" type="password" class="form-input setting-field__control" placeholder="sk-..." />
+              <input id="ai-api-key" v-model="store.aiConfig.apiKey" type="password"
+                class="form-input setting-field__control" placeholder="sk-..." />
             </label>
 
             <div class="setting-field setting-field--inline">
-              <span class="setting-field__label">Model</span>
+              <label class="setting-field__label" for="ai-model">Model</label>
               <span class="setting-field__help">默认尝试拉取 models 列表，失败时可手动输入。</span>
               <div style="display:flex;gap:8px;align-items:center;">
                 <template v-if="canUseOpenAIModelSelect">
-                  <select v-model="store.aiConfig.model" class="form-select setting-field__control">
+                  <select id="ai-model" v-model="store.aiConfig.model" class="form-select setting-field__control">
                     <option v-for="m in openaiModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
                   </select>
                 </template>
                 <template v-else>
-                  <input v-model="store.aiConfig.model" type="text" class="form-input setting-field__control" placeholder="例如 gpt-4o-mini" />
+                  <input id="ai-model" v-model="store.aiConfig.model" type="text"
+                    class="form-input setting-field__control" placeholder="例如 gpt-4o-mini" />
                 </template>
                 <button type="button" class="panel-tab" @click="toggleOpenAIModelInput">
                   {{ canUseOpenAIModelSelect ? '手动输入' : '使用下拉' }}
@@ -529,25 +548,29 @@ import { useJsonStore } from '../store/index.js';
             <label class="setting-field setting-field--inline">
               <span class="setting-field__label">System Prompt</span>
               <span class="setting-field__help">默认会注入 Jsoniun 的 JSON 助手角色提示。</span>
-              <textarea v-model="store.aiConfig.systemPrompt" rows="3" class="form-input setting-field__control" />
+              <textarea id="ai-system-prompt" v-model="store.aiConfig.systemPrompt" rows="3"
+                class="form-input setting-field__control" />
             </label>
 
             <label class="setting-field setting-field--inline">
               <span class="setting-field__label">Temperature</span>
               <span class="setting-field__help">留空则请求中不传。</span>
-              <input v-model="store.aiConfig.temperature" type="text" class="form-input setting-field__control setting-field__control--narrow" placeholder="例如 0.2" />
+              <input id="ai-temperature" v-model="store.aiConfig.temperature" type="text"
+                class="form-input setting-field__control setting-field__control--narrow" placeholder="例如 0.2" />
             </label>
 
             <label class="setting-field setting-field--inline">
               <span class="setting-field__label">Headers JSON</span>
               <span class="setting-field__help">留空则仅发送默认请求头。</span>
-              <textarea v-model="store.aiConfig.headersJson" rows="2" class="form-input setting-field__control" placeholder='例如 {"x-foo":"bar"}' />
+              <textarea id="ai-headers-json" v-model="store.aiConfig.headersJson" rows="2"
+                class="form-input setting-field__control" placeholder='例如 {"x-foo":"bar"}' />
             </label>
           </template>
 
           <label class="setting-row setting-row--toggle">
             <span class="input-toggle">
-              <input v-model="store.aiConfig.parseRetry" type="checkbox" aria-label="自动在失败时重试仅返回 JSON（parseRetry）" />
+              <input id="ai-parse-retry" v-model="store.aiConfig.parseRetry" type="checkbox"
+                aria-label="自动在失败时重试仅返回 JSON（parseRetry）" />
               <span class="slider" aria-hidden="true"></span>
             </span>
             <span class="setting-copy">
@@ -559,7 +582,7 @@ import { useJsonStore } from '../store/index.js';
           <label class="setting-field setting-field--inline">
             <span class="setting-field__label">最大重试次数</span>
             <span class="setting-field__help">建议保持较小数值，避免重复请求。</span>
-            <input v-model.number="store.aiConfig.parseRetryMax" type="number" min="0" step="1"
+            <input id="ai-parse-retry-max" v-model.number="store.aiConfig.parseRetryMax" type="number" min="0" step="1"
               class="form-input setting-field__control setting-field__control--narrow" />
           </label>
         </div>
@@ -968,6 +991,75 @@ import { useJsonStore } from '../store/index.js';
     display: flex;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .window-size-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .window-size-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+  }
+
+  .window-size-option:hover,
+  .window-size-option:focus-visible {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-bg-primary) 86%, var(--color-primary) 8%);
+  }
+
+  .window-size-option.active {
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-bg-primary) 80%, var(--color-primary) 12%);
+  }
+
+  .window-size-option__label {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .window-size-option__meta {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+
+  .window-height-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 56px;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .window-height-control input[type="range"] {
+    width: 100%;
+    accent-color: var(--color-primary);
+  }
+
+  .window-height-value {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-size: 13px;
+    font-weight: 700;
   }
 
   .setting-field {

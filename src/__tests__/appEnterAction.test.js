@@ -64,7 +64,8 @@ describe('App plugin enter integration', () => {
 			removeEventListener: vi.fn()
 		}));
 		window.services = {
-			readClipboardText: vi.fn().mockReturnValue('{"fromClipboard":true}')
+			readClipboardText: vi.fn().mockReturnValue('{"fromClipboard":true}'),
+			readFile: vi.fn().mockReturnValue('{"fromFile":true}')
 		};
 		window.utools = {
 			onPluginEnter: vi.fn((callback) => {
@@ -121,5 +122,27 @@ describe('App plugin enter integration', () => {
 		expect(capturedJsonProcessorProps.enterAction.text).toBe('{"fromClipboard":true}');
 		expect(capturedJsonProcessorProps.enterAction.code).toBe('process');
 		expect(capturedJsonProcessorProps.enterAction.type).toBe('cmd');
+	});
+
+	it('reads file content on file entry and forwards it to JsonProcessor', async () => {
+		mount(App, {
+			global: {
+				stubs: {
+					Hello: true,
+					Toast: true
+				}
+			}
+		});
+
+		expect(typeof pluginEnterCallback).toBe('function');
+
+		await pluginEnterCallback({ code: 'process', type: 'files', payload: [{ path: '/tmp/input.json' }] });
+		await flushPromises();
+		await nextTick();
+
+		expect(window.services.readClipboardText).not.toHaveBeenCalled();
+		expect(window.services.readFile).toHaveBeenCalledWith('/tmp/input.json');
+		expect(capturedJsonProcessorProps.enterAction.text).toBe('{"fromFile":true}');
+		expect(capturedJsonProcessorProps.enterAction.type).toBe('files');
 	});
 });

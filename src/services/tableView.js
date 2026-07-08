@@ -270,6 +270,28 @@ export function detectColumnTypes(rows, paths) {
   });
 }
 
+export function suggestArrayPaths(data, { limit = 8, maxDepth = 5 } = {}) {
+  const paths = [];
+
+  function visit(value, prefix, depth) {
+    if (paths.length >= limit || depth > maxDepth || value == null || typeof value !== 'object') return;
+
+    if (Array.isArray(value)) {
+      if (prefix) paths.push(prefix);
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (paths.length >= limit) return;
+      const childPath = prefix ? `${prefix}.${key}` : key;
+      visit(child, childPath, depth + 1);
+    }
+  }
+
+  visit(data, '', 0);
+  return paths;
+}
+
 // =============================================
 // 3. 核心：JSON → 表格数据提取
 // =============================================
@@ -306,11 +328,13 @@ export function extractTableFromJson(jsonString, { arrayPath = null, sampleLimit
     }
 
     if (!Array.isArray(targetArray)) {
+      const suggestions = suggestArrayPaths(parsed);
       return {
         success: false,
         rows: [],
         columns: [],
         totalRows: 0,
+        suggestions,
         error: arrayPath
           ? `路径 "${arrayPath}" 对应的值不是数组`
           : 'JSON 根节点不是数组，请指定目标数组路径'

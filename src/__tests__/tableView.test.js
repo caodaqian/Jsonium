@@ -1,15 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  getByDotPath,
-  setByDotPath,
+  applyEditsToJson,
+  buildCsvString,
   collectAllPaths,
   detectColumnTypes,
-  extractTableFromJson,
-  applyEditsToJson,
-  filterAndSortRows,
-  buildCsvString,
   detectPathType,
+  extractTableFromJson,
+  filterAndSortRows,
+  getByDotPath,
   resolveArrayPath,
+  setByDotPath,
+  suggestArrayPaths,
 } from '../services/tableView.js';
 
 // ─── getByDotPath ────────────────────────────────────────────────────────────
@@ -153,9 +154,10 @@ describe('extractTableFromJson', () => {
   });
 
   it('returns error for non-array JSON (no arrayPath)', () => {
-    const result = extractTableFromJson(JSON.stringify({ a: 1 }));
+    const result = extractTableFromJson(JSON.stringify({ a: 1, users: [{ id: 1 }] }));
     expect(result.success).toBe(false);
     expect(result.error).toBeTruthy();
+    expect(result.suggestions).toContain('users');
   });
 
   it('accepts nested arrayPath via options object', () => {
@@ -174,6 +176,18 @@ describe('extractTableFromJson', () => {
   it('returns error for invalid JSON string', () => {
     const result = extractTableFromJson('not json');
     expect(result.success).toBe(false);
+  });
+});
+
+describe('suggestArrayPaths', () => {
+  it('finds nested array paths for table view guidance', () => {
+    const result = suggestArrayPaths({ data: { users: [{ id: 1 }], logs: [] }, meta: { total: 1 } });
+    expect(result).toEqual(['data.users', 'data.logs']);
+  });
+
+  it('limits suggestions to avoid noisy table guidance', () => {
+    const result = suggestArrayPaths({ a: [], b: [], c: [] }, { limit: 2 });
+    expect(result).toEqual(['a', 'b']);
   });
 });
 

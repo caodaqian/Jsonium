@@ -189,7 +189,7 @@ describe('JsonProcessor', () => {
     expect(window.utools.copyText).toHaveBeenCalledWith(escaped);
   });
 
-  it('copies empty and whitespace active tab content to clipboard', async () => {
+  it('preserves active tab whitespace when copy setting is enabled', async () => {
     window.utools = {
       copyText: vi.fn()
     };
@@ -203,19 +203,40 @@ describe('JsonProcessor', () => {
 
     const store = useJsonStore();
 
-    // copy empty string
     store.updateTabContent(store.getActiveTab().id, '');
     await nextTick();
     await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
     await nextTick();
     expect(window.utools.copyText).toHaveBeenCalledWith('');
 
-    // copy whitespace-only string (whitespace is stripped before copying)
     store.updateTabContent(store.getActiveTab().id, '   ');
     await nextTick();
     await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
     await nextTick();
-    expect(window.utools.copyText).toHaveBeenCalledWith('');
+    expect(window.utools.copyText).toHaveBeenCalledWith('   ');
+  });
+
+  it('strips active tab whitespace when copy setting is disabled', async () => {
+    window.utools = {
+      copyText: vi.fn()
+    };
+
+    const wrapper = mount(JsonProcessor, {
+      props: {
+        enterAction: {}
+      },
+      global: {}
+    });
+
+    const store = useJsonStore();
+    store.editorSettings.preserveWhitespaceOnCopy = false;
+    store.updateTabContent(store.getActiveTab().id, ' { "a" : 1 } ');
+
+    await nextTick();
+    await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
+    await nextTick();
+
+    expect(window.utools.copyText).toHaveBeenCalledWith('{"a":1}');
   });
 
   it('hides output sidebar from floating toggle and reflects active state for jsonpath output', async () => {

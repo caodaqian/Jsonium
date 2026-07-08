@@ -9,8 +9,10 @@ window.services = {
     return fs.readFileSync(file, { encoding: 'utf-8' })
   },
   // 文本写入到下载目录
-  writeTextFile (text) {
-    const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.txt')
+  writeTextFile(text, options = {}) {
+    const requestedExtension = typeof options.extension === 'string' ? options.extension : 'json'
+    const extension = requestedExtension.replace(/^\./, '').replace(/[^a-z0-9_-]/gi, '') || 'json'
+    const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.' + extension)
     fs.writeFileSync(filePath, text, { encoding: 'utf-8' })
     return filePath
   },

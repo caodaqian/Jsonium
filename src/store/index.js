@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { reactive, ref } from 'vue';
+import { DEFAULT_UTOOLS_WINDOW_SETTINGS, normalizeUtoolsWindowSettings } from '../services/windowSettings.js';
 
 export const useJsonStore = defineStore('json', () => {
   // 状态
@@ -154,10 +155,6 @@ export const useJsonStore = defineStore('json', () => {
     leftContent: '',
     rightContent: '',
     diffLines: [],
-    // 新增树形结果与统计、筛选
-    diffTree: null,
-    diffStats: { added: 0, removed: 0, changed: 0, unchanged: 0 },
-    diffFilter: 'all', // all | changed | added | removed | modified
     error: ''
   });
 
@@ -249,6 +246,8 @@ export const useJsonStore = defineStore('json', () => {
     tabSize: 4
   });
 
+  const utoolsWindowSettings = reactive({ ...DEFAULT_UTOOLS_WINDOW_SETTINGS });
+
   const showDiffSidebar = (leftContent = '') => {
     diffSidebar.visible = true;
     diffSidebar.collapsed = false;
@@ -257,9 +256,6 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.leftContent = '';
     diffSidebar.rightContent = '';
     diffSidebar.diffLines = [];
-    diffSidebar.diffTree = null;
-    diffSidebar.diffStats = { added: 0, removed: 0, changed: 0, unchanged: 0 };
-    diffSidebar.diffFilter = 'all';
     diffSidebar.error = '';
   };
 
@@ -277,10 +273,7 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.mode = 'result';
     diffSidebar.leftContent = leftContent;
     diffSidebar.rightContent = rightContent;
-    const defaultStats = { added: 0, removed: 0, changed: 0, unchanged: 0 };
     diffSidebar.diffLines = payload.diffLines || [];
-    diffSidebar.diffTree = payload.diffTree || null;
-    diffSidebar.diffStats = payload.diffStats || defaultStats;
     diffSidebar.error = '';
   };
 
@@ -294,7 +287,6 @@ export const useJsonStore = defineStore('json', () => {
     diffSidebar.leftContent = '';
     diffSidebar.rightContent = '';
     diffSidebar.diffLines = [];
-    diffSidebar.diffTree = null;
     diffSidebar.error = '';
   };
 
@@ -501,6 +493,7 @@ export const useJsonStore = defineStore('json', () => {
       const payload = JSON.stringify({
         themePreference: { ...themePreference.value },
         aiConfig: { ...aiConfig.value },
+        utoolsWindowSettings: { ...utoolsWindowSettings },
         editorSettings: { ...editorSettings },
         diffSidebarCollapsed: !!diffSidebar.collapsed,
         lastWindowSize: editorSettings.lastWindowSize || null,
@@ -555,6 +548,9 @@ export const useJsonStore = defineStore('json', () => {
       if (parsed && parsed.aiConfig && typeof parsed.aiConfig === 'object') {
         setAIConfig(parsed.aiConfig);
       }
+      if (parsed && parsed.utoolsWindowSettings && typeof parsed.utoolsWindowSettings === 'object') {
+        setUtoolsWindowSettings(parsed.utoolsWindowSettings);
+      }
       if (parsed && parsed.editorSettings) {
         try {
           // 确保控制面板默认不显示
@@ -571,7 +567,6 @@ export const useJsonStore = defineStore('json', () => {
       // 默认隐藏控制面板和侧边栏
       editorSettings.controlPanelVisible = false;
       diffSidebar.visible = false;
-      console.log('[Store] loadSettingsState: Forced controlPanelVisible to false');
       // 将旧版本配置升级为新键，减少后续分支处理成本
       try { saveSettingsState(); } catch (_) { /* ignore */ }
       return true;
@@ -619,6 +614,12 @@ export const useJsonStore = defineStore('json', () => {
 
   const getEditorSettings = () => {
     return { ...editorSettings };
+  };
+
+  const setUtoolsWindowSettings = (settings = {}) => {
+    const normalized = normalizeUtoolsWindowSettings(settings);
+    Object.assign(utoolsWindowSettings, normalized);
+    return normalized;
   };
 
   // OutputPanel 操作
@@ -691,6 +692,7 @@ export const useJsonStore = defineStore('json', () => {
     aiConfig,
     aiComposer,
     editorSettings,
+        utoolsWindowSettings,
     outputPanel,
     diffSidebar,
     tableView,
@@ -733,6 +735,7 @@ export const useJsonStore = defineStore('json', () => {
     // 编辑器设置
     updateEditorSettings,
     getEditorSettings,
+        setUtoolsWindowSettings,
 
     // OutputPanel 操作
     showOutputPanel,

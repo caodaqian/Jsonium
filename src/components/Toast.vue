@@ -10,9 +10,10 @@ function remove(id) {
 
 <template>
   <div class="toast-container" aria-live="polite" aria-atomic="true">
-    <div v-for="t in toasts" :key="t.id" :class="['toast', 'toast-' + t.type]" @click="remove(t.id)">
+    <button v-for="t in toasts" :key="t.id" type="button" :class="['toast', 'toast-' + t.type]"
+      :aria-label="`关闭通知：${t.message}`" @click="remove(t.id)">
       <div class="toast-message">{{ t.message }}</div>
-    </div>
+    </button>
   </div>
 </template>
 
@@ -30,15 +31,21 @@ function remove(id) {
   min-width: 200px;
   max-width: 420px;
   padding: 10px 14px;
+    border: 0;
+ 
   border-radius: 8px;
   color: var(--color-text-primary);
     background: rgba(0, 0, 0, 0.45);
+
  
   backdrop-filter: blur(6px);
   cursor: pointer;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
+
  
   transition: transform 0.12s ease, opacity 0.12s ease;
+    text-align: left;
+ 
 }
 .toast-message {
   font-size: 13px;

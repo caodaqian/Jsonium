@@ -270,34 +270,6 @@ export function extractOnlyDifferences(json1, json2, options = {}) {
 }
 
 /**
- * 设置嵌套值 (使用 pathUtils)
- */
-function setNestedValue(obj, path, value) {
-  if (!path || path === '/' || path === '$') {
-    return false;
-  }
-  const jsonPath = toJsonPath(path);
-  try {
-    return setValueAtJsonPath(obj, jsonPath, value);
-  } catch (e) {
-    return false;
-  }
-}
-
-/**
- * 获取嵌套值 (使用 pathUtils)
- */
-function getValueByPath(obj, path) {
-  if (!path || path === '/' || path === '$') return obj;
-  const jsonPath = toJsonPath(path);
-  try {
-    return getValueAtJsonPath(obj, jsonPath);
-  } catch (e) {
-    return undefined;
-  }
-}
-
-/**
  * 构建行级 Diff（LCS 算法）
  */
 export function buildLineDiffs(leftLines, rightLines) {

@@ -1,13 +1,13 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
-import {
-  extractTableFromJson,
-  applyEditsToJson,
-  filterAndSortRows,
-  exportTableToCsv,
-  exportTableToXlsx
-} from '../services/tableView.js';
-import notify from '../services/notify.js';
+  import { computed, ref } from 'vue';
+  import notify from '../services/notify.js';
+  import {
+    applyEditsToJson,
+    exportTableToCsv,
+    exportTableToXlsx,
+    extractTableFromJson,
+    filterAndSortRows
+  } from '../services/tableView.js';
 
 // =============================================
 // Props & Emits
@@ -24,6 +24,7 @@ const emit = defineEmits(['apply', 'close']);
 // =============================================
 const loading = ref(false);
 const error = ref('');
+  const pathSuggestions = ref([]);
 
 // 原始数据
 const allRows = ref([]);
@@ -55,6 +56,7 @@ const arrayPathInput = ref(props.arrayPath || '');
 function loadTable() {
   loading.value = true;
   error.value = '';
+  pathSuggestions.value = [];
   edits.value = {};
   globalSearch.value = '';
   columnFilters.value = {};
@@ -68,6 +70,7 @@ function loadTable() {
     });
     if (!result.success) {
       error.value = result.error || '解析失败';
+      pathSuggestions.value = Array.isArray(result.suggestions) ? result.suggestions : [];
       allRows.value = [];
       columns.value = [];
       totalRows.value = 0;
@@ -82,6 +85,11 @@ function loadTable() {
     loading.value = false;
   }
 }
+
+  function loadSuggestedPath(path) {
+    arrayPathInput.value = path;
+    loadTable();
+  }
 
 // 初始加载
 loadTable();
@@ -343,8 +351,9 @@ function handleKeydown(e) {
 
         <!-- 路径输入 -->
         <div class="tv-path-row">
-          <label class="tv-path-label">数组路径</label>
+          <label class="tv-path-label" for="table-array-path">数组路径</label>
           <input
+id="table-array-path"
             v-model="arrayPathInput"
             class="tv-path-input"
             placeholder="留空=根数组，支持: items / $.store.books / .items"
@@ -356,8 +365,10 @@ function handleKeydown(e) {
         <div class="tv-toolbar-right">
           <!-- 全局搜索 -->
           <input
+id="table-global-search"
             v-model="globalSearch"
             class="tv-search"
+aria-label="表格全局搜索"
             placeholder="🔍 全局搜索..."
             @input="currentPage = 1"
           />
@@ -401,13 +412,17 @@ function handleKeydown(e) {
           >
             <span class="tv-col-drag-handle" title="拖动调整顺序">⠿</span>
             <input
+:id="`table-column-visible-${col.id}`"
               type="checkbox"
               :checked="col.visible"
+              :aria-label="`显示列 ${col.label}`"
               @change="toggleColumnVisible(col)"
             />
             <input
+:id="`table-column-label-${col.id}`"
               class="tv-col-label-input"
               :value="col.label"
+              :aria-label="`列 ${col.label} 显示名称`"
               @input="handleLabelInput(col, $event)"
               :title="`路径: ${col.path} | 类型: ${col.type}`"
             />
@@ -421,6 +436,13 @@ function handleKeydown(e) {
         <span>⚠️ {{ error }}</span>
         <div class="tv-error-hint">
           若 JSON 根节点不是数组，请在上方输入目标数组的点路径后点击"加载"。
+        </div>
+        <div v-if="pathSuggestions.length" class="tv-path-suggestions" aria-label="可用数组路径建议">
+          <span class="tv-path-suggestions__label">可用数组路径：</span>
+          <button v-for="path in pathSuggestions" :key="path" type="button" class="tv-path-chip"
+            @click="loadSuggestedPath(path)">
+            {{ path }}
+          </button>
         </div>
       </div>
 
@@ -453,8 +475,10 @@ function handleKeydown(e) {
               <th class="tv-th tv-th-seq"></th>
               <th v-for="col in visibleColumns" :key="'f' + col.id" class="tv-th tv-th-filter">
                 <input
+:id="`table-filter-${col.id}`"
                   class="tv-filter-input"
                   :value="columnFilters[col.path] || ''"
+                  :aria-label="`过滤 ${col.label}`"
                   :placeholder="'过滤 ' + col.label"
                   @input="updateColumnFilter(col.path, $event.target.value)"
                 />
@@ -487,8 +511,10 @@ function handleKeydown(e) {
                 <template v-if="editingCell?.rowIndex === row._rowIndex && editingCell?.columnPath === col.path">
                   <input
                     v-if="col.type === 'boolean'"
+:id="`table-cell-${row._rowIndex}-${col.id}`"
                     class="tv-cell-input"
                     :value="editingValue"
+:aria-label="`编辑 ${col.label}`"
                     @input="editingValue = $event.target.value"
                     @keydown="handleCellKeydown"
                     @blur="commitEdit"
@@ -497,8 +523,10 @@ function handleKeydown(e) {
                   />
                   <input
                     v-else
+:id="`table-cell-${row._rowIndex}-${col.id}`"
                     class="tv-cell-input"
                     v-model="editingValue"
+:aria-label="`编辑 ${col.label}`"
                     @keydown="handleCellKeydown"
                     @blur="commitEdit"
                     autofocus
@@ -526,7 +554,8 @@ function handleKeydown(e) {
       <div class="tv-pagination" v-if="!error && !loading && allRows.length > 0">
         <div class="tv-page-info">
           第 {{ currentPage }} / {{ totalPages }} 页，每页
-          <select v-model.number="pageSize" class="tv-page-size-sel" @change="currentPage = 1">
+          <select id="table-page-size" v-model.number="pageSize" class="tv-page-size-sel" aria-label="每页条数"
+            @change="currentPage = 1">
             <option :value="20">20</option>
             <option :value="50">50</option>
             <option :value="100">100</option>
@@ -557,7 +586,9 @@ function handleKeydown(e) {
   justify-content: center;
   z-index: 400000;
   padding: 16px;
-  outline: none;
+    outline: 2px solid transparent;
+
+ 
 }
 
 /* ---- 面板 ---- */
@@ -663,7 +694,9 @@ function handleKeydown(e) {
   color: var(--color-text-primary);
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+
+ 
 }
 .tv-btn:hover { background: var(--color-bg-secondary); }
 .tv-btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -729,9 +762,18 @@ function handleKeydown(e) {
   background: transparent;
   font-size: 12px;
   color: var(--color-text-primary);
-  outline: none;
+    outline: 2px solid transparent;
+
+ 
   width: 100px;
 }
+
+  .tv-col-label-input:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 28%, transparent);
+  }
+
+
+ 
 .tv-col-type {
   font-size: 10px;
   color: var(--color-text-secondary);
@@ -753,6 +795,30 @@ function handleKeydown(e) {
   font-size: 12px;
   color: var(--color-text-secondary);
 }
+
+  .tv-path-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tv-path-suggestions__label {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  .tv-path-chip {
+    padding: 3px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg-primary);
+    color: var(--color-primary);
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 11px;
+  }
+
+ 
 .tv-loading, .tv-empty {
   padding: 40px;
   text-align: center;
@@ -811,7 +877,14 @@ function handleKeydown(e) {
   border-radius: 3px;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  outline: none;
+    outline: 2px solid transparent;
+  }
+
+  .tv-filter-input:focus-visible {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 22%, transparent);
+
+ 
 }
 
 .tv-row { transition: background 0.1s; }
@@ -848,7 +921,13 @@ function handleKeydown(e) {
   border-radius: 3px;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  outline: none;
+    outline: 2px solid transparent;
+  }
+
+  .tv-cell-input:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 28%, transparent);
+
+ 
 }
 
 /* ---- 单元格文本样式 ---- */

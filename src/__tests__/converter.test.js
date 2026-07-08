@@ -1,13 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   convert,
+  jsonToCpp,
   jsonToGoStruct,
   jsonToJavaClass,
-  jsonToPython,
-  jsonToTypeScript,
   jsonToJavaScript,
+  jsonToPython,
   jsonToRust,
-  jsonToCpp
+  jsonToTypeScript
 } from '../services/converter.js';
 
 describe('JSON 转换引擎', () => {
@@ -51,6 +51,94 @@ describe('JSON 转换引擎', () => {
       expect(result.data).toContain('interface IUser');
       expect(result.data).toContain('name: string');
       expect(result.data).toContain('age: number');
+    });
+
+    it('should generate nested interfaces and safe property names', () => {
+      const json = JSON.stringify({
+        id: 1,
+        profile: { display_name: 'Alice', 'bad-key': true },
+        tags: ['a', 2, null],
+        items: [{ sku: 'A', qty: 1 }, { sku: 'B', qty: null }]
+      });
+      const result = jsonToTypeScript(json, 'IUser');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('interface IUserProfile');
+      expect(result.data).toContain('profile: IUserProfile;');
+      expect(result.data).toContain("'bad-key': boolean;");
+      expect(result.data).toContain('tags: (string | number | null)[];');
+      expect(result.data).toContain('items: IUserItem[];');
+      expect(result.data).toContain('qty: number | null;');
+    });
+  });
+
+  describe('Go struct 生成增强', () => {
+    it('should generate nested structs and preserve json tags', () => {
+      const json = JSON.stringify({
+        user_id: 1,
+        profile: { display_name: 'Alice' },
+        items: [{ sku: 'A', qty: 1 }]
+      });
+      const result = jsonToGoStruct(json, 'User');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('type User struct');
+      expect(result.data).toContain('UserId int64 `json:"user_id"`');
+      expect(result.data).toContain('Profile UserProfile `json:"profile"`');
+      expect(result.data).toContain('type UserProfile struct');
+      expect(result.data).toContain('Items []UserItem `json:"items"`');
+      expect(result.data).toContain('type UserItem struct');
+    });
+    it('generates nested Java classes for nested objects and arrays', () => {
+      const json = JSON.stringify({ profile: { name: 'Ada' }, items: [{ sku: 'A1' }] });
+
+      const result = convert(json, 'java', { className: 'User' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('public class User');
+      expect(result.data).toContain('private UserProfile profile;');
+      expect(result.data).toContain('private List<UserItem> items;');
+      expect(result.data).toContain('class UserProfile');
+      expect(result.data).toContain('class UserItem');
+    });
+
+    it('generates nested Python dataclasses for nested objects and arrays', () => {
+      const json = JSON.stringify({ profile: { name: 'Ada' }, items: [{ sku: 'A1' }] });
+
+      const result = convert(json, 'python', { className: 'User' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('class User:');
+      expect(result.data).toContain('profile: UserProfile');
+      expect(result.data).toContain('items: List[UserItem]');
+      expect(result.data).toContain('class UserProfile:');
+      expect(result.data).toContain('class UserItem:');
+    });
+
+    it('generates nested Rust structs for nested objects and arrays', () => {
+      const json = JSON.stringify({ profile: { name: 'Ada' }, items: [{ sku: 'A1' }] });
+
+      const result = convert(json, 'rust', { className: 'User' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('pub struct User');
+      expect(result.data).toContain('pub profile: UserProfile,');
+      expect(result.data).toContain('pub items: Vec<UserItem>,');
+      expect(result.data).toContain('pub struct UserProfile');
+      expect(result.data).toContain('pub struct UserItem');
+    });
+
+    it('generates nested C++ structs for nested objects and arrays', () => {
+      const json = JSON.stringify({ profile: { name: 'Ada' }, items: [{ sku: 'A1' }] });
+
+      const result = convert(json, 'cpp', { className: 'User' });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('struct User');
+      expect(result.data).toContain('UserProfile profile;');
+      expect(result.data).toContain('std::vector<UserItem> items;');
+      expect(result.data).toContain('struct UserProfile');
+      expect(result.data).toContain('struct UserItem');
     });
   });
 

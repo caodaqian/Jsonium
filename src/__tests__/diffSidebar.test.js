@@ -100,6 +100,21 @@ describe('DiffSidebar compare behavior', () => {
 		expect(wrapper.text()).toContain('🤖 AI');
 	});
 
+	it('renders line diff result without legacy tree diff stats', async () => {
+		const store = useJsonStore();
+		store.diffSidebar.visible = true;
+		store.diffSidebar.mode = 'result';
+		store.diffSidebar.leftContent = '{"a":1}';
+		store.diffSidebar.rightContent = '{"a":2}';
+
+		const wrapper = mount(DiffSidebar);
+		await nextTick();
+
+		expect(wrapper.find('[data-testid="diff-view-stub"]').exists()).toBe(true);
+		expect(wrapper.text()).not.toContain('新增:');
+		expect(wrapper.text()).not.toContain('变化:');
+	});
+
 	it('extracts fenced json before creating new tab', async () => {
 		const store = useJsonStore();
 		store.diffSidebar.visible = true;
