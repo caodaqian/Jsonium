@@ -1,7 +1,7 @@
-import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick, defineComponent, h } from 'vue';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { defineComponent, h, nextTick } from 'vue';
 import JsonProcessor from '../components/JsonProcessor.vue';
 import { useJsonStore } from '../store/index.js';
 
@@ -27,7 +27,7 @@ const EditorStub = defineComponent({
 
 const StatusBarStub = defineComponent({
   name: 'StatusBarStub',
-  emits: ['copy', 'format', 'escape', 'unescape', 'compare', 'aiProcess'],
+  emits: ['copy', 'format', 'escape', 'unescape', 'compare'],
   setup() {
     return () => h('div', { 'data-testid': 'status-bar-stub' });
   }

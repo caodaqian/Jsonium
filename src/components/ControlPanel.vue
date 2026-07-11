@@ -1,6 +1,5 @@
 <script setup>
   import { computed, ref, watch } from 'vue';
-import { AI_PROVIDERS, fetchOpenAICompatibleModels } from '../services/aiProcessor.js';
   import { UTOOLS_WINDOW_SIZE_PRESETS, applyUtoolsWindowSettings } from '../services/windowSettings.js';
 import { useJsonStore } from '../store/index.js';
 
@@ -18,7 +17,6 @@ import { useJsonStore } from '../store/index.js';
     'generateCode',
     'query',
     'compare',
-    'aiProcess',
     'copyToClipboard',
     'download'
   ]);
@@ -42,7 +40,6 @@ import { useJsonStore } from '../store/index.js';
   const appearanceSettingsOpen = ref(false);
   const windowSettingsOpen = ref(false);
   const editorSettingsOpen = ref(false);
-  const aiSettingsOpen = ref(false);
 
   const themeLabelByValue = computed(() => themeOptions.find((option) => option.value === themeValue.value)?.label || '未选择');
   const modeLabelByValue = computed(() => modeOptions.find((option) => option.value === modeValue.value)?.label || '未选择');
@@ -69,27 +66,6 @@ import { useJsonStore } from '../store/index.js';
     const label = option ? option.label : '自定义';
     return `${label} · ${settings.heightPercent || UTOOLS_WINDOW_SIZE_PRESETS.large.heightPercent}%`;
   });
-  const aiRetryLabel = computed(() => (store.aiConfig.parseRetry ? `开启 · ${store.aiConfig.parseRetryMax} 次` : '关闭'));
-  const aiProviderOptions = [
-    { value: AI_PROVIDERS.UTOOLS, label: 'uTools 内置 AI' },
-    { value: AI_PROVIDERS.OPENAI_COMPATIBLE, label: 'OpenAI Compatible' }
-  ];
-  const openaiModelInputMode = ref(false);
-  const defaultSystemPrompt = '你是名为 Jsoniun 的 JSON 助手，负责处理用户对于 json 数据的处理、比对、分析等任务。包括 jq/jsonpath 做相关的数据提取、转换，同时也需要在用户分析数据异动时，提供数据的差异分析、重点数据描述、以及对应的数据洞察';
-
-  const aiProviderLabel = computed(() => {
-    return aiProviderOptions.find((item) => item.value === store.aiConfig.provider)?.label || '未选择';
-  });
-  const aiConfigSummary = computed(() => {
-    if (store.aiConfig.provider === AI_PROVIDERS.OPENAI_COMPATIBLE) {
-      return `Provider ${aiProviderLabel.value} · 模型 ${store.aiConfig.model || '未设置'}`;
-    }
-    return `Provider ${aiProviderLabel.value} · 失败重试 ${aiRetryLabel.value}`;
-  });
-  const openaiModels = computed(() => store.aiComposer.openaiModels || []);
-  const openaiModelLoading = computed(() => !!store.aiComposer.openaiModelLoading);
-  const openaiModelError = computed(() => store.aiComposer.openaiModelError || '');
-  const canUseOpenAIModelSelect = computed(() => openaiModels.value.length > 0 && !openaiModelInputMode.value);
   let settingsSaveTimer = null;
 
   function scheduleSettingsSave() {
@@ -101,61 +77,6 @@ import { useJsonStore } from '../store/index.js';
         console.warn('Failed to save settings state', error);
       }
     }, 300);
-  }
-
-  function ensureAIDefaults() {
-    if (!store.aiConfig.provider) {
-      store.setAIConfig({ provider: AI_PROVIDERS.UTOOLS });
-    }
-    if (store.aiConfig.systemPrompt === undefined || store.aiConfig.systemPrompt === null || store.aiConfig.systemPrompt === '') {
-      store.setAIConfig({ systemPrompt: defaultSystemPrompt });
-    }
-    if (store.aiConfig.temperature === undefined || store.aiConfig.temperature === null) {
-      store.setAIConfig({ temperature: '' });
-    }
-    if (store.aiConfig.headersJson === undefined || store.aiConfig.headersJson === null) {
-      store.setAIConfig({ headersJson: '' });
-    }
-  }
-
-  async function loadOpenAIModels() {
-    if (store.aiConfig.provider !== AI_PROVIDERS.OPENAI_COMPATIBLE) return;
-    store.setOpenAIModelLoading(true);
-    store.setOpenAIModelError('');
-    try {
-      const res = await fetchOpenAICompatibleModels({
-        baseUrl: store.aiConfig.baseUrl,
-        apiKey: store.aiConfig.apiKey,
-        headersJson: store.aiConfig.headersJson
-      });
-      if (res.success) {
-        store.setOpenAIModels(res.data);
-        if (!store.aiConfig.model) {
-          store.setAIConfig({ model: res.data[0]?.id || '' });
-        }
-        openaiModelInputMode.value = false;
-      } else {
-        store.setOpenAIModels([]);
-        store.setOpenAIModelError(res.error || '模型加载失败');
-        openaiModelInputMode.value = true;
-      }
-    } catch (e) {
-      store.setOpenAIModels([]);
-      store.setOpenAIModelError(e.message || String(e));
-      openaiModelInputMode.value = true;
-    } finally {
-      store.setOpenAIModelLoading(false);
-    }
-  }
-
-  function toggleOpenAIModelInput() {
-    openaiModelInputMode.value = !openaiModelInputMode.value;
-  }
-
-  function handleProviderChange() {
-    if (store.aiConfig.provider === AI_PROVIDERS.OPENAI_COMPATIBLE) {
-      loadOpenAIModels();
-    }
   }
 
   function findWindowPresetByPercent(percent) {
@@ -216,30 +137,6 @@ import { useJsonStore } from '../store/index.js';
     { deep: true }
   );
 
-  watch(
-    () => store.aiConfig,
-    () => {
-      scheduleSettingsSave();
-    },
-    { deep: true }
-  );
-
-  watch(
-    () => [store.aiConfig.provider, store.aiConfig.baseUrl, store.aiConfig.apiKey, store.aiConfig.headersJson],
-    ([provider, baseUrl]) => {
-      if (provider !== AI_PROVIDERS.OPENAI_COMPATIBLE) return;
-      if (!baseUrl || !String(baseUrl).trim()) {
-        store.setOpenAIModels([]);
-        store.setOpenAIModelError('请先填写 Base URL');
-        openaiModelInputMode.value = true;
-        return;
-      }
-      loadOpenAIModels();
-    }
-  );
-
-  ensureAIDefaults();
-
   function switchPanel(panel) {
     emit('panelChange', panel);
   }
@@ -253,8 +150,7 @@ import { useJsonStore } from '../store/index.js';
       editor: '编辑器',
       convert: '转换',
       query: '查询',
-      diff: '对比',
-      ai: 'AI'
+      diff: '对比'
     };
     return labels[tab] || tab;
   }
@@ -484,107 +380,6 @@ import { useJsonStore } from '../store/index.js';
               <option value="strict">严格 (strict)</option>
             </select>
           </div>
-        </div>
-      </section>
-
-      <section class="settings-section">
-        <button class="section-toggle" type="button" :aria-expanded="aiSettingsOpen" aria-controls="ai-settings"
-          @click="aiSettingsOpen = !aiSettingsOpen">
-          <span>
-            <span class="section-toggle__title">AI 解析设置</span>
-            <span class="section-toggle__desc">{{ aiConfigSummary }}</span>
-          </span>
-          <span class="section-toggle__state">{{ getDisclosureLabel(aiSettingsOpen) }}</span>
-        </button>
-
-        <div id="ai-settings" class="section-body" :class="{ 'is-collapsed': !aiSettingsOpen }">
-          <label class="setting-field setting-field--inline">
-            <span class="setting-field__label">Provider</span>
-            <span class="setting-field__help">选择模型提供商。</span>
-            <select id="ai-provider" v-model="store.aiConfig.provider" class="form-select setting-field__control"
-              @change="handleProviderChange">
-              <option v-for="item in aiProviderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-            </select>
-          </label>
-
-          <template v-if="store.aiConfig.provider === AI_PROVIDERS.OPENAI_COMPATIBLE">
-            <label class="setting-field setting-field--inline">
-              <span class="setting-field__label">Base URL</span>
-              <span class="setting-field__help">例如 https://api.openai.com/v1。</span>
-              <input id="ai-base-url" v-model="store.aiConfig.baseUrl" type="text"
-                class="form-input setting-field__control" placeholder="https://your-compatible-endpoint/v1" />
-            </label>
-
-            <label class="setting-field setting-field--inline">
-              <span class="setting-field__label">API Key</span>
-              <span class="setting-field__help">仅保存在本地，用于请求鉴权。</span>
-              <input id="ai-api-key" v-model="store.aiConfig.apiKey" type="password"
-                class="form-input setting-field__control" placeholder="sk-..." />
-            </label>
-
-            <div class="setting-field setting-field--inline">
-              <label class="setting-field__label" for="ai-model">Model</label>
-              <span class="setting-field__help">默认尝试拉取 models 列表，失败时可手动输入。</span>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <template v-if="canUseOpenAIModelSelect">
-                  <select id="ai-model" v-model="store.aiConfig.model" class="form-select setting-field__control">
-                    <option v-for="m in openaiModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-                  </select>
-                </template>
-                <template v-else>
-                  <input id="ai-model" v-model="store.aiConfig.model" type="text"
-                    class="form-input setting-field__control" placeholder="例如 gpt-4o-mini" />
-                </template>
-                <button type="button" class="panel-tab" @click="toggleOpenAIModelInput">
-                  {{ canUseOpenAIModelSelect ? '手动输入' : '使用下拉' }}
-                </button>
-                <button type="button" class="panel-tab" :disabled="openaiModelLoading" @click="loadOpenAIModels">
-                  {{ openaiModelLoading ? '拉取中...' : '刷新模型' }}
-                </button>
-              </div>
-              <div v-if="openaiModelError" class="setting-field__help" style="color: var(--color-danger, #c53a3a);">{{ openaiModelError }}</div>
-            </div>
-
-            <label class="setting-field setting-field--inline">
-              <span class="setting-field__label">System Prompt</span>
-              <span class="setting-field__help">默认会注入 Jsoniun 的 JSON 助手角色提示。</span>
-              <textarea id="ai-system-prompt" v-model="store.aiConfig.systemPrompt" rows="3"
-                class="form-input setting-field__control" />
-            </label>
-
-            <label class="setting-field setting-field--inline">
-              <span class="setting-field__label">Temperature</span>
-              <span class="setting-field__help">留空则请求中不传。</span>
-              <input id="ai-temperature" v-model="store.aiConfig.temperature" type="text"
-                class="form-input setting-field__control setting-field__control--narrow" placeholder="例如 0.2" />
-            </label>
-
-            <label class="setting-field setting-field--inline">
-              <span class="setting-field__label">Headers JSON</span>
-              <span class="setting-field__help">留空则仅发送默认请求头。</span>
-              <textarea id="ai-headers-json" v-model="store.aiConfig.headersJson" rows="2"
-                class="form-input setting-field__control" placeholder='例如 {"x-foo":"bar"}' />
-            </label>
-          </template>
-
-          <label class="setting-row setting-row--toggle">
-            <span class="input-toggle">
-              <input id="ai-parse-retry" v-model="store.aiConfig.parseRetry" type="checkbox"
-                aria-label="自动在失败时重试仅返回 JSON（parseRetry）" />
-              <span class="slider" aria-hidden="true"></span>
-            </span>
-            <span class="setting-copy">
-              <span class="setting-name">失败时自动重试纯 JSON</span>
-              <span class="setting-help">解析失败后，会自动要求模型只返回 JSON。</span>
-            </span>
-          </label>
-
-          <label class="setting-field setting-field--inline">
-            <span class="setting-field__label">最大重试次数</span>
-            <span class="setting-field__help">建议保持较小数值，避免重复请求。</span>
-            <input id="ai-parse-retry-max" v-model.number="store.aiConfig.parseRetryMax" type="number" min="0" step="1"
-              class="form-input setting-field__control setting-field__control--narrow" />
-          </label>
         </div>
       </section>
 

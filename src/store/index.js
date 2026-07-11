@@ -16,91 +16,6 @@ export const useJsonStore = defineStore('json', () => {
   }]);
   const activeTabId = ref(tabs.value[0].id);
   const queryHistory = ref([]);
-  const aiConfig = ref({
-    provider: 'utools',
-    apiKey: '',
-    model: 'gpt-3.5-turbo',
-    endpoint: '',
-    baseUrl: '',
-    systemPrompt: '你是名为 Jsoniun 的 JSON 助手，负责处理用户对于 json 数据的处理、比对、分析等任务。包括 jq/jsonpath 做相关的数据提取、转换，同时也需要在用户分析数据异动时，提供数据的差异分析、重点数据描述、以及对应的数据洞察',
-    temperature: '',
-    headersJson: '',
-    // 自动解析重试：默认开启一次重试
-    parseRetry: true,
-    parseRetryMax: 1
-  });
-
-  // AI composer UI 状态（草稿、模型列表、选中模型、加载态、错误）
-  const aiComposer = reactive({
-    visible: false,
-    draft: '',
-    messages: [],
-    sending: false,
-    error: '',
-    selectedModel: '',
-    models: [],
-    loadingModels: false,
-    modelLoadError: '',
-    openaiModels: [],
-    openaiModelLoading: false,
-    openaiModelError: ''
-  });
-
-  const setAIDraft = (draft) => { aiComposer.draft = draft; };
-  const addAIMessage = (message) => {
-    if (!message || typeof message !== 'object') return;
-    aiComposer.messages.push({
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      role: message.role || 'assistant',
-      content: message.content || '',
-      meta: message.meta || null,
-      createdAt: message.createdAt || new Date().toISOString()
-    });
-  };
-  const clearAIMessages = () => { aiComposer.messages = []; };
-  const setAISending = (sending) => { aiComposer.sending = !!sending; };
-  const setAIError = (error) => { aiComposer.error = error || ''; };
-  const setAISelectedModel = (modelId) => { aiComposer.selectedModel = modelId; };
-  const setAIModels = (models) => {
-    aiComposer.models = Array.isArray(models) ? models : [];
-    if (!aiComposer.selectedModel && aiComposer.models.length > 0) {
-      aiComposer.selectedModel = aiComposer.models[0].id;
-    }
-  };
-  const setAIModelLoading = (loading) => { aiComposer.loadingModels = !!loading; };
-  const setAIModelError = (error) => { aiComposer.modelLoadError = error || ''; };
-  const setOpenAIModels = (models) => {
-    aiComposer.openaiModels = Array.isArray(models) ? models : [];
-  };
-  const setOpenAIModelLoading = (loading) => { aiComposer.openaiModelLoading = !!loading; };
-  const setOpenAIModelError = (error) => { aiComposer.openaiModelError = error || ''; };
-  const resetAIComposer = (keepDraft = true) => {
-    aiComposer.visible = false;
-    if (!keepDraft) aiComposer.draft = '';
-    aiComposer.sending = false;
-    aiComposer.error = '';
-    aiComposer.selectedModel = aiComposer.models[0]?.id || '';
-    aiComposer.loadingModels = false;
-    aiComposer.modelLoadError = '';
-    aiComposer.openaiModelLoading = false;
-    aiComposer.openaiModelError = '';
-  };
-
-  const showAITab = () => {
-    diffSidebar.visible = true;
-    diffSidebar.collapsed = false;
-    diffSidebar.mode = 'ai';
-    aiComposer.visible = true;
-  };
-
-  const hideAITab = () => {
-    if (diffSidebar.mode === 'ai') {
-      diffSidebar.visible = false;
-      diffSidebar.collapsed = false;
-      diffSidebar.mode = 'input';
-    }
-    aiComposer.visible = false;
-  };
 
   // OutputPanel 状态
   const outputTabs = ['jsonpath', 'jq', 'diff'];
@@ -148,7 +63,7 @@ export const useJsonStore = defineStore('json', () => {
   const diffSidebar = reactive({
     visible: false,
     collapsed: false,
-    mode: 'input', // 'input' | 'result' | 'output' | 'ai'
+    mode: 'input', // 'input' | 'result' | 'output'
     // 停靠偏好：'auto' | 'panel' | 'sidebar'
     dockMode: 'auto',
     leftInput: '',
@@ -492,7 +407,6 @@ export const useJsonStore = defineStore('json', () => {
     try {
       const payload = JSON.stringify({
         themePreference: { ...themePreference.value },
-        aiConfig: { ...aiConfig.value },
         utoolsWindowSettings: { ...utoolsWindowSettings },
         editorSettings: { ...editorSettings },
         diffSidebarCollapsed: !!diffSidebar.collapsed,
@@ -545,9 +459,6 @@ export const useJsonStore = defineStore('json', () => {
         };
         themePreference.value = nextTheme;
       }
-      if (parsed && parsed.aiConfig && typeof parsed.aiConfig === 'object') {
-        setAIConfig(parsed.aiConfig);
-      }
       if (parsed && parsed.utoolsWindowSettings && typeof parsed.utoolsWindowSettings === 'object') {
         setUtoolsWindowSettings(parsed.utoolsWindowSettings);
       }
@@ -592,15 +503,6 @@ export const useJsonStore = defineStore('json', () => {
 
   const clearQueryHistory = () => {
     queryHistory.value = [];
-  };
-
-  // AI 配置
-  const setAIConfig = (config) => {
-    Object.assign(aiConfig.value, config);
-  };
-
-  const getAIConfig = () => {
-    return { ...aiConfig.value };
   };
 
   // 编辑器设置
@@ -689,8 +591,6 @@ export const useJsonStore = defineStore('json', () => {
     tabs,
     activeTabId,
     queryHistory,
-    aiConfig,
-    aiComposer,
     editorSettings,
         utoolsWindowSettings,
     outputPanel,
@@ -710,27 +610,6 @@ export const useJsonStore = defineStore('json', () => {
     // 查询历史
     addQueryHistory,
     clearQueryHistory,
-
-    // AI 配置
-    setAIConfig,
-    getAIConfig,
-
-    // AI Composer
-    setAIDraft,
-        addAIMessage,
-        clearAIMessages,
-        setAISending,
-        setAIError,
-    setAISelectedModel,
-    setAIModels,
-    setAIModelLoading,
-    setAIModelError,
-        setOpenAIModels,
-        setOpenAIModelLoading,
-        setOpenAIModelError,
-    resetAIComposer,
-        showAITab,
-        hideAITab,
 
     // 编辑器设置
     updateEditorSettings,

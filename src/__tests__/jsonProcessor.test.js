@@ -42,7 +42,7 @@ vi.mock('../components/StatusBar.vue', async () => {
           default: ''
         }
       },
-      emits: ['copy', 'format', 'escape', 'unescape', 'compare', 'aiProcess'],
+      emits: ['copy', 'format', 'escape', 'unescape', 'compare'],
       setup(props, { emit }) {
         return () => h('div', [
           h('button', {

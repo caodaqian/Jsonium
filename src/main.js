@@ -2,6 +2,7 @@ import { createPinia } from 'pinia';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
 import './main.css';
+import { registerJsoniumTools } from './services/mcpTools.js';
 import { applyUtoolsWindowSettings } from './services/windowSettings';
 import { startWindowSync } from './services/windowSync';
 import { useJsonStore } from './store';
@@ -11,12 +12,14 @@ const pinia = createPinia();
 
 app.use(pinia);
 
+registerJsoniumTools();
+
 // 初始化 store 并恢复/持久化 tabs 状态
 const store = useJsonStore();
 
 // 尝试加载上次保存的 tabs 状态（异步安全）
 store.loadTabsState && store.loadTabsState();
-// 加载统一设置状态（主题/编辑器/AI）
+// 加载统一设置状态（主题/编辑器）
 store.loadSettingsState && store.loadSettingsState();
 
 const applySavedUtoolsWindowSettings = () => {

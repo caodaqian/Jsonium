@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
   import { useEnterActionImport } from '../composables/useEnterActionImport.js';
   import { useGlobalShortcuts } from '../composables/useGlobalShortcuts.js';
   import { useLeftPanelResize } from '../composables/useLeftPanelResize.js';
-import { parseAIJsonWithRetry, processWithAI } from '../services/aiProcessor.js';
   import { copyText } from '../services/clipboard.js';
 import { convert } from '../services/converter.js';
 import { stringifySortedJson } from '../services/diffEngine.js';
@@ -44,7 +43,7 @@ const props = defineProps({
 });
 
 // UI 状态
-  const activePanel = ref('editor'); // editor, convert, query, diff, ai
+  const activePanel = ref('editor');
 const isNarrow = ref(false);
   const {
     controlPanelStyle,
@@ -101,11 +100,6 @@ const editorRef = ref(null);
     restoreTabsOrCreateInitial,
     importEnterAction
   } = useEnterActionImport(store, editorRef, activePanel);
-
-// AI 原始响应展示与重试状态
-const aiRawResponse = ref('');
-const aiRawVisible = ref(false);
-const aiRetrying = ref(false);
 
 // line diff overlay
 const showLineDiff = ref(false);
@@ -367,117 +361,6 @@ const handleCompare = async (leftContent, rightContent) => {
   }
 };
 
- // AI 处理 JSON
-const handleAIProcess = async (instruction, config) => {
-  if (!activeTab.value) return;
-
-  // 合并传入配置并写回 store（保持兼容老契约）
-  let currentConfig = store.getAIConfig();
-  if (config && typeof config === 'object') {
-    currentConfig = { ...currentConfig, ...config };
-    store.setAIConfig(currentConfig);
-  }
-
-  // provider 默认为 utools（本次范围固定）
-  if (!currentConfig.provider) currentConfig.provider = 'utools';
-
-  // model 兜底：优先使用传入 model -> store.aiComposer.selectedModel -> aiConfig.model -> 'utools-default'
-  currentConfig.model = currentConfig.model || store.aiComposer.selectedModel || store.aiConfig.model || 'utools-default';
-
-  const userText = String(instruction || '').trim();
-  if (!userText) return;
-
-  store.showAITab();
-  store.setAIError('');
-  store.addAIMessage({
-    role: 'user',
-    content: userText,
-    meta: { provider: currentConfig.provider, model: currentConfig.model }
-  });
-  store.setAISending(true);
-
-  try {
-    const result = await processWithAI(activeTab.value.content, instruction, currentConfig);
-    if (result.success) {
-      const assistantContent = result.rawResponse || result.data || '';
-      store.addAIMessage({
-        role: 'assistant',
-        content: assistantContent,
-        meta: {
-          provider: currentConfig.provider,
-          model: currentConfig.model,
-          originalFormat: result.originalFormat || 'text'
-        }
-      });
-
-      // 如果 AI 返回可解析的 JSON（service 返回格式化 JSON 字符串），优先作为 JSON 面板新建标签
-      if (result.originalFormat && result.originalFormat.toLowerCase() === 'json') {
-        store.addTab(result.data, 'AI 处理结果', FORMAT_TYPES.JSON);
-      } else {
-        // 当返回为文本但包含 rawResponse（或返回的 data 与 rawResponse 不同）时，
-        // 展示原始响应并提供“仅返回 JSON”重试入口（调用 parseAIJsonWithRetry）
-        const raw = result.rawResponse || result.data || '';
-        const normalizedData = result.data || '';
-        if (raw && raw !== normalizedData) {
-          aiRawResponse.value = raw;
-          aiRawVisible.value = true;
-        } else {
-          // 没有可用的 rawResponse，仍将返回值作为新标签展示（文本回退）
-          store.addTab(result.data, 'AI 处理结果', FORMAT_TYPES.JSON);
-        }
-      }
-    } else {
-      store.setAIError(result.error || '处理失败');
-      notify.error('处理失败: ' + result.error);
-    }
-  } catch (e) {
-    store.setAIError(e.message || '处理失败');
-    notify.error('处理失败: ' + e.message);
-  } finally {
-    store.setAISending(false);
-  }
-};
-
-async function handleRetryParseAI() {
-  if (!aiRawResponse.value) return;
-  if (!store.aiConfig) return;
-
-  aiRetrying.value = true;
-  try {
-    const cfg = store.getAIConfig();
-    const max = typeof cfg.parseRetryMax === 'number' ? cfg.parseRetryMax : 1;
-    const res = await parseAIJsonWithRetry(aiRawResponse.value, {
-      provider: cfg.provider,
-      aiConfig: cfg,
-      maxRetries: max
-    });
-    if (res && res.parsed) {
-      const formatted = JSON.stringify(res.parsed, null, getStringifyIndent());
-      store.addTab(formatted, 'AI 重试结果（JSON）', FORMAT_TYPES.JSON);
-      aiRawVisible.value = false;
-      aiRawResponse.value = '';
-    } else {
-      notify.warn('重试未能解析出有效 JSON');
-    }
-  } catch (e) {
-    notify.error('重试失败: ' + (e && e.message ? e.message : String(e)));
-  } finally {
-    aiRetrying.value = false;
-  }
-}
-
-function handleAcceptRaw() {
-  if (!aiRawResponse.value) return;
-  try {
-    // 将原始响应作为新标签加入（以文本展示）
-    store.addTab(aiRawResponse.value, 'AI 原始响应', FORMAT_TYPES.JSON);
-    aiRawVisible.value = false;
-    aiRawResponse.value = '';
-  } catch (e) {
-    notify.error('接受原始响应失败: ' + (e && e.message ? e.message : String(e)));
-  }
-}
-
  // 复制到剪贴板
 const copyTextToClipboard = async (text, showFeedback = false) => {
   if (text === null || text === undefined) return false;
@@ -592,7 +475,6 @@ onMounted(() => {
               @generateCode="handleGenerateCode"
               @query="handleQuery"
               @compare="handleCompare"
-              @aiProcess="handleAIProcess"
               @copyToClipboard="handleCopyToClipboard"
               @download="handleDownload"
             />
@@ -607,7 +489,6 @@ onMounted(() => {
             @generateCode="handleGenerateCode"
             @query="handleQuery"
             @compare="handleCompare"
-            @aiProcess="handleAIProcess"
             @copyToClipboard="handleCopyToClipboard"
             @download="handleDownload"
           />
@@ -634,7 +515,7 @@ onMounted(() => {
           />
         </div>
       </div>
-      <DiffSidebar @openLineDiff="handleOpenLineDiff" @openCenteredDiff="handleOpenCenteredDiff" @aiProcess="handleAIProcess" />
+      <DiffSidebar @openLineDiff="handleOpenLineDiff" @openCenteredDiff="handleOpenCenteredDiff" />
     </div>
 
     <div v-if="showLineDiff" class="line-diff-overlay">
@@ -657,29 +538,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- AI 原始响应悬浮面板 -->
-    <teleport to="body">
-      <div v-if="aiRawVisible" class="ai-raw-overlay" role="dialog" aria-modal="true">
-        <div class="ai-raw-panel">
-          <div class="ai-raw-header">
-            <div>AI 原始响应</div>
-            <div class="ai-raw-actions">
-              <button class="btn" @click="aiRawVisible = false">关闭</button>
-            </div>
-          </div>
-          <div class="ai-raw-body">
-            <pre class="ai-raw-pre">{{ aiRawResponse }}</pre>
-          </div>
-          <div class="ai-raw-footer">
-            <button class="panel-btn" @click="handleAcceptRaw()">接受原始响应</button>
-            <button class="panel-btn primary" :disabled="aiRetrying" @click="handleRetryParseAI()">
-              {{ aiRetrying ? '正在重试...' : '重试仅返回 JSON' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </teleport>
-
     <!-- 表格视图悬浮面板 -->
     <teleport to="body">
       <TableView
@@ -700,7 +558,6 @@ onMounted(() => {
         @escape="handleBottomEscape"
         @unescape="handleBottomUnescape"
         @compare="handleCompare"
-        @aiProcess="handleAIProcess"
         @openTableView="handleOpenTableView"
       />
 
@@ -992,71 +849,6 @@ onMounted(() => {
     padding: 12px;
     z-index: 100001;
   }
-}
-
-/* AI 原始响应面板样式 */
-.ai-raw-overlay {
-  position: fixed;
-  inset: 0;
-    background: rgba(0, 0, 0, 0.12);
-
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 300000;
-  padding: 20px;
-}
-.ai-raw-panel {
-  width: min(1000px, 90%);
-  max-height: 80vh;
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-    border-radius: 4px;
-
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
-
-
-}
-.ai-raw-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-divider);
-  font-size: 13px;
-  color: var(--color-text-primary);
-  background: var(--color-bg-secondary);
-}
-.ai-raw-body {
-  padding: 12px;
-  overflow: auto;
-  background: var(--color-bg-primary);
-  flex: 1;
-}
-.ai-raw-pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-.ai-raw-footer {
-  display: flex;
-  gap: 8px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--color-divider);
-  background: var(--color-bg-secondary);
-}
-.ai-raw-actions .btn {
-  background: transparent;
-  border: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: 13px;
 }
 
 /* Ensure control panel (non-drawer) is above editor but below global modals */

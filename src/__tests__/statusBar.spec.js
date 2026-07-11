@@ -2,7 +2,6 @@ import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it } from 'vitest';
 import StatusBar from '../components/StatusBar.vue';
-import { useJsonStore } from '../store/index.js';
 
 beforeEach(() => {
   setActivePinia(createPinia());
@@ -32,16 +31,5 @@ describe('StatusBar events', () => {
     const calls = wrapper.emitted('compare');
     expect(calls).toBeTruthy();
     expect(calls[0]).toEqual([content, '']);
-  });
-
-  it('opens AI sidebar mode when AI button clicked', async () => {
-    const store = useJsonStore();
-    const wrapper = mount(StatusBar, { props: { content: '{}' } });
-    const btn = wrapper.get('button[title="AI"]');
-
-    await btn.trigger('click');
-
-    expect(store.diffSidebar.visible).toBe(true);
-    expect(store.diffSidebar.mode).toBe('ai');
   });
 });

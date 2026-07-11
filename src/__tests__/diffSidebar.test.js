@@ -89,17 +89,6 @@ describe('DiffSidebar compare behavior', () => {
 		expect(wrapper.text()).not.toContain('在结果标签查看');
 	});
 
-	it('always shows AI tab in sidebar tabs', async () => {
-		const store = useJsonStore();
-		store.diffSidebar.visible = true;
-		store.diffSidebar.mode = 'input';
-
-		const wrapper = mount(DiffSidebar);
-		await nextTick();
-
-		expect(wrapper.text()).toContain('🤖 AI');
-	});
-
 	it('renders line diff result without legacy tree diff stats', async () => {
 		const store = useJsonStore();
 		store.diffSidebar.visible = true;
@@ -113,29 +102,6 @@ describe('DiffSidebar compare behavior', () => {
 		expect(wrapper.find('[data-testid="diff-view-stub"]').exists()).toBe(true);
 		expect(wrapper.text()).not.toContain('新增:');
 		expect(wrapper.text()).not.toContain('变化:');
-	});
-
-	it('extracts fenced json before creating new tab', async () => {
-		const store = useJsonStore();
-		store.diffSidebar.visible = true;
-		store.diffSidebar.mode = 'ai';
-		store.aiComposer.messages = [
-			{ id: 'a1', role: 'assistant', content: '结果如下:\n```json\n{"x":1,"y":2}\n```' }
-		];
-
-		const addTabSpy = vi.spyOn(store, 'addTab');
-		const wrapper = mount(DiffSidebar);
-		await nextTick();
-
-		const createBtn = wrapper.findAll('button').find((btn) => btn.text().includes('新建标签'));
-		expect(createBtn).toBeTruthy();
-		await createBtn.trigger('click');
-		await flushPromises();
-
-		expect(addTabSpy).toHaveBeenCalled();
-		const firstArg = addTabSpy.mock.calls[0][0];
-		expect(() => JSON.parse(firstArg)).not.toThrow();
-		expect(JSON.parse(firstArg)).toEqual({ x: 1, y: 2 });
 	});
 
 	it('supports mouse drag to resize right sidebar width', async () => {

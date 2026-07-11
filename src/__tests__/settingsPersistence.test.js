@@ -24,16 +24,9 @@ describe('settings persistence', () => {
 		};
 	});
 
-	it('saves unified settings payload (including theme and aiConfig) to utools dbStorage', () => {
+	it('saves unified settings payload to utools dbStorage', () => {
 		const store = useJsonStore();
 		store.setThemePreference('vue', 'dark');
-		store.setAIConfig({
-			provider: 'openai_compatible',
-			baseUrl: 'https://api.example.com/v1',
-			apiKey: 'test-key',
-			model: 'gpt-4o-mini',
-			parseRetryMax: 2
-		});
 		store.setUtoolsWindowSettings({ sizePreset: 'extraLarge', heightPercent: 92 });
 		store.updateEditorSettings({ fontSize: 18, wordWrap: 'on' });
 		store.diffSidebar.collapsed = true;
@@ -47,8 +40,7 @@ describe('settings persistence', () => {
 		expect(write).toBeTruthy();
 		const payload = JSON.parse(write[1]);
 		expect(payload.themePreference).toEqual({ theme: 'vue', mode: 'dark' });
-		expect(payload.aiConfig.provider).toBe('openai_compatible');
-		expect(payload.aiConfig.baseUrl).toBe('https://api.example.com/v1');
+		expect(payload).not.toHaveProperty('aiConfig');
 		expect(payload.utoolsWindowSettings).toEqual({ sizePreset: 'extraLarge', heightPercent: 92 });
 		expect(payload.editorSettings.fontSize).toBe(18);
 		expect(payload.diffSidebarCollapsed).toBe(true);
@@ -72,15 +64,6 @@ describe('settings persistence', () => {
 			if (key !== 'json_settings_v2') return null;
 			return JSON.stringify({
 				themePreference: { theme: 'vue', mode: 'light' },
-				aiConfig: {
-					provider: 'openai_compatible',
-					model: 'gpt-4.1-mini',
-					baseUrl: 'https://compat.example/v1',
-					apiKey: 'k',
-					headersJson: '{"X-Test":"1"}',
-					parseRetry: false,
-					parseRetryMax: 3
-				},
 				editorSettings: {
 					autoFormat: false,
 					fontSize: 16,
@@ -98,8 +81,6 @@ describe('settings persistence', () => {
 		expect(loaded).toBe(true);
 		expect(store.themePreference.theme).toBe('vue');
 		expect(store.themePreference.mode).toBe('light');
-		expect(store.aiConfig.provider).toBe('openai_compatible');
-		expect(store.aiConfig.model).toBe('gpt-4.1-mini');
 		expect(store.editorSettings.fontSize).toBe(16);
 		expect(store.editorSettings.wordWrap).toBe('on');
 		expect(store.utoolsWindowSettings).toEqual({ sizePreset: 'medium', heightPercent: 64 });
@@ -113,7 +94,6 @@ describe('settings persistence', () => {
 			if (key !== 'json_settings_v1') return null;
 			return JSON.stringify({
 				editorSettings: { fontSize: 15 },
-				aiConfig: { provider: 'openai_compatible' },
 				themePreference: { theme: 'vue', mode: 'dark' },
 				diffSidebarCollapsed: false
 			});
@@ -124,7 +104,6 @@ describe('settings persistence', () => {
 
 		expect(loaded).toBe(true);
 		expect(store.editorSettings.fontSize).toBe(15);
-		expect(store.aiConfig.provider).toBe('openai_compatible');
 		expect(store.themePreference.theme).toBe('vue');
 		expect(store.themePreference.mode).toBe('dark');
 	});
@@ -133,8 +112,6 @@ describe('settings persistence', () => {
 		delete window.utools;
 
 		const store = useJsonStore();
-		store.setAIConfig({ provider: 'openai_compatible', model: 'gpt-4o' });
-
 		store.saveSettingsState();
 
 		expect(localStorage.setItem).toHaveBeenCalled();
@@ -150,7 +127,7 @@ describe('settings persistence', () => {
 		const restored = useJsonStore();
 		const loaded = restored.loadSettingsState();
 		expect(loaded).toBe(true);
-		expect(restored.aiConfig.model).toBe('gpt-4o');
+		expect(restored.themePreference).toEqual({ theme: 'catppuccin', mode: 'auto' });
 	});
 
 	it('migrates legacy json_theme_pref_v1 into unified json_settings_v2', () => {

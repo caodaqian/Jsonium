@@ -175,7 +175,6 @@ const humanizeActionId = (id) => {
   const map = {
     copy: '复制',
     compare: '对比',
-    ai: 'AI',
     table: '表格',
     escape: '转义',
     unescape: '反转义',
@@ -190,7 +189,6 @@ const handleMoreAction = (id) => {
   switch (id) {
     case 'copy': toggleCopyMenu({ currentTarget: copyMenuButtonRef.value, stopPropagation: () => {} }); break;
     case 'compare': handleCompareClick(); break;
-    case 'ai': toggleAiPanel(); break;
     case 'table': emit('openTableView'); break;
     case 'escape': escapeJson(); break;
     case 'unescape': unescapeJson(); break;
@@ -352,10 +350,6 @@ const handleCompareClick = () => {
   emit('compare', props.content, '');
 };
 
-const toggleAiPanel = () => {
-  store.showAITab();
-};
-
 const escapeJson = () => {
   try {
     const data = queryResult.value || JSON.parse(props.content);
@@ -444,11 +438,6 @@ aria-label="查询表达式"
         <button data-action-id="compare" @click="handleCompareClick" class="action-btn action-btn--icon action-btn--compare" title="对比" aria-label="对比 (compare)">
           <span class="action-btn__icon emoji-badge emoji-badge--compare" aria-hidden="true">⚖️</span>
           <span class="action-btn__text">对比</span>
-        </button>
-
-        <button data-action-id="ai" @click="toggleAiPanel" class="action-btn action-btn--icon action-btn--ai" title="AI" aria-label="AI">
-          <span class="action-btn__icon emoji-badge emoji-badge--ai" aria-hidden="true">🤖</span>
-          <span class="action-btn__text">AI</span>
         </button>
 
         <button data-action-id="escape" @click="escapeJson" class="action-btn action-btn--icon action-btn--escape" title="转义" aria-label="转义 (escape)">
@@ -561,6 +550,7 @@ aria-label="帮助"
     padding-right: 10px;
     box-sizing: border-box;
 
+
  
 }
 
@@ -584,6 +574,7 @@ aria-label="帮助"
   color: var(--color-text-primary);
   cursor: pointer;
     transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+
  
   white-space: nowrap;
   flex-shrink: 0;
@@ -837,6 +828,7 @@ aria-label="帮助"
     flex: 1 1 640px;
       max-width: calc(100% - 400px);
 
+
  
     min-width: 220px;
   }
@@ -913,6 +905,7 @@ aria-label="帮助"
   color: var(--color-text-primary);
   text-align: left;
     transition: background-color 0.2s, color 0.2s;
+
  
 }
 
@@ -1067,7 +1060,6 @@ aria-label="帮助"
 .emoji-badge--format { }
 .emoji-badge--copy { }
 .emoji-badge--compare { }
-.emoji-badge--ai { }
 .emoji-badge--table { }
 .emoji-badge--settings { }
 

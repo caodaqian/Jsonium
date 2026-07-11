@@ -9,6 +9,123 @@
   "pluginSetting": {
     "single": false
   },
+  "tools": {
+    "json_convert_format": {
+      "description": "将 JSON、YAML、XML、JSON5、Base64 或转义 JSON 转换为目标格式。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "待转换的原始内容。"
+          },
+          "targetFormat": {
+            "type": "string",
+            "description": "目标格式，默认 json。",
+            "enum": ["json", "yaml", "xml", "json5", "base64", "escaped"]
+          }
+        },
+        "required": ["input"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": ["json", "yaml", "xml", "json5", "base64", "escaped"]
+          },
+          "data": {
+            "type": "string",
+            "description": "转换后的结果文本。"
+          }
+        },
+        "required": ["format", "data"]
+      }
+    },
+    "json_query": {
+      "description": "对 JSON 数据执行 JSONPath 或 jq 查询并返回匹配结果。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "json": {
+            "type": "string",
+            "description": "待查询的 JSON 字符串。"
+          },
+          "expression": {
+            "type": "string",
+            "description": "JSONPath 或 jq 查询表达式。"
+          },
+          "queryType": {
+            "type": "string",
+            "description": "查询类型，默认 auto 自动识别。",
+            "enum": ["auto", "jsonpath", "jq"]
+          }
+        },
+        "required": ["json", "expression"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "queryType": {
+            "type": "string",
+            "enum": ["jsonpath", "jq"]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "description": "查询命中的结果列表。",
+            "items": {}
+          }
+        },
+        "required": ["queryType", "count", "results"]
+      }
+    },
+    "json_to_code": {
+      "description": "将 JSON 样例转换为多语言类型定义或示例代码。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "json": {
+            "type": "string",
+            "description": "用于推断结构的 JSON 字符串。"
+          },
+          "language": {
+            "type": "string",
+            "description": "目标代码语言。",
+            "enum": ["typescript", "go", "java", "python", "rust", "cpp", "javascript"]
+          },
+          "typeName": {
+            "type": "string",
+            "description": "生成的类型或类名称。"
+          }
+        },
+        "required": ["json", "language"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "language": {
+            "type": "string",
+            "enum": ["typescript", "go", "java", "python", "rust", "cpp", "javascript"]
+          },
+          "code": {
+            "type": "string",
+            "description": "生成的代码文本。"
+          }
+        },
+        "required": ["language", "code"]
+      }
+    }
+  },
   "features": [
     {
       "code": "process",
