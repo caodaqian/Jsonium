@@ -1,131 +1,155 @@
 <script setup>
-  import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-  import { useJsonStore } from '../store/index.js';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useJsonStore } from '../store/index.js';
 
 const emit = defineEmits(['themeChange', 'close']);
 const props = defineProps({
-  visible: { type: Boolean, default: false }, // 父组件控制显示
-  currentTheme: { type: String, default: 'catppuccin' }, // 'catppuccin' | 'vue'
-  currentMode: { type: String, default: 'auto' }, // 'auto' | 'light' | 'dark'
+	visible: { type: Boolean, default: false }, // 父组件控制显示
+	currentTheme: { type: String, default: 'catppuccin' }, // 'catppuccin' | 'vue'
+	currentMode: { type: String, default: 'auto' }, // 'auto' | 'light' | 'dark'
 });
 
 // 支持的风格主题和模式
 const themes = [
-  { value: 'catppuccin', label: 'Catppuccin（卡布奇诺）' },
-  { value: 'vue', label: 'Vue 官方风格' }
+	{ value: 'catppuccin', label: 'Catppuccin（卡布奇诺）' },
+	{ value: 'vue', label: 'Vue 官方风格' }
 ];
 const modes = [
-  { value: 'auto', label: '跟随系统' },
-  { value: 'light', label: '亮色 Light' },
-  { value: 'dark', label: '暗色 Dark' }
+	{ value: 'auto', label: '跟随系统' },
+	{ value: 'light', label: '亮色 Light' },
+	{ value: 'dark', label: '暗色 Dark' }
 ];
 
 // 当前选择
 const themeValue = ref(props.currentTheme);
 const modeValue = ref(props.currentMode);
 
-  const store = useJsonStore();
-  const stickyEnabled = computed({
-    get: () => !!(store.editorSettings && store.editorSettings.stickyEnabled),
-    set: (v) => {
-      try {
-        store.updateEditorSettings({ stickyEnabled: !!v });
-        store.saveSettingsState();
-      } catch (e) { }
-    }
-  });
+const store = useJsonStore();
+const stickyEnabled = computed({
+	get: () => !!(store.editorSettings && store.editorSettings.stickyEnabled),
+	set: (v) => {
+		try {
+			store.updateEditorSettings({ stickyEnabled: !!v });
+			store.saveSettingsState();
+		} catch (e) { }
+	}
+});
 
-  const useTab = computed({
-    get: () => !!(store.editorSettings && store.editorSettings.useTab),
-    set: (v) => {
-      try {
-        store.updateEditorSettings({ useTab: !!v });
-        store.saveSettingsState();
-      } catch (e) { }
-    }
-  });
+const useTab = computed({
+	get: () => !!(store.editorSettings && store.editorSettings.useTab),
+	set: (v) => {
+		try {
+			store.updateEditorSettings({ useTab: !!v });
+			store.saveSettingsState();
+		} catch (e) { }
+	}
+});
 
-  const tabSize = computed({
-    get: () => (store.editorSettings && typeof store.editorSettings.tabSize === 'number') ? store.editorSettings.tabSize : 2,
-    set: (v) => {
-      try {
-        const n = Number(v) || 2;
-        store.updateEditorSettings({ tabSize: n });
-        store.saveSettingsState();
-      } catch (e) { }
-    }
-  });
+const tabSize = computed({
+	get: () => (store.editorSettings && typeof store.editorSettings.tabSize === 'number') ? store.editorSettings.tabSize : 2,
+	set: (v) => {
+		try {
+			const n = Number(v) || 2;
+			store.updateEditorSettings({ tabSize: n });
+			store.saveSettingsState();
+		} catch (e) { }
+	}
+});
 
 watch(themeValue, (val) => {
-  emit('themeChange', { theme: val, mode: modeValue.value });
+	emit('themeChange', { theme: val, mode: modeValue.value });
 });
 watch(modeValue, (val) => {
-  emit('themeChange', { theme: themeValue.value, mode: val });
+	emit('themeChange', { theme: themeValue.value, mode: val });
 });
 
 // 支持 ESC 快捷关闭
 const handleClose = () => emit('close');
 const onKeydown = (e) => {
-  if (e.key === 'Escape') handleClose();
+	if (e.key === 'Escape') handleClose();
 };
 onMounted(() => {
-  window.addEventListener('keydown', onKeydown);
+	window.addEventListener('keydown', onKeydown);
 });
 
 onBeforeUnmount(() => {
-  try { window.removeEventListener('keydown', onKeydown); } catch (e) { }
+	try { window.removeEventListener('keydown', onKeydown); } catch (e) { }
 });
 </script>
 
 <template>
-  <div class="settings-overlay" v-if="visible">
-    <div class="settings-panel" role="dialog" aria-modal="true">
-      <div class="settings-header">
-        <span>设置</span>
-        <button class="close-btn" @click="handleClose" title="关闭">×</button>
-      </div>
-      <div class="settings-body">
-        <div class="section">
-          <div class="section-title">主题风格</div>
-          <div class="radio-group">
-            <label v-for="opt in themes" :key="opt.value" class="radio-label">
-              <input :id="`settings-theme-${opt.value}`" type="radio" name="themeStyle" :value="opt.value"
-                v-model="themeValue" />
-              <span>{{ opt.label }}</span>
-            </label>
-          </div>
-        </div>
-        <div class="section">
-          <div class="section-title">配色模式</div>
-          <div class="radio-group">
-            <label v-for="opt in modes" :key="opt.value" class="radio-label">
-              <input :id="`settings-mode-${opt.value}`" type="radio" name="themeMode" :value="opt.value"
-                v-model="modeValue" />
-              <span>{{ opt.label }}</span>
-            </label>
-          </div>
-        </div>
-        <div class="section">
-          <div class="section-title">编辑器</div>
-          <label class="checkbox-label">
-            <input id="settings-sticky-enabled" type="checkbox" v-model="stickyEnabled" />
-            <span>启用粘性节点（Sticky）</span>
-          </label>
-          <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
-            <label class="checkbox-label">
-              <input id="settings-use-tab" type="checkbox" v-model="useTab" />
-              <span>使用 Tab 缩进（启用后编辑器使用实际 Tab，格式化使用软 Tab 显示）</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;">
-              <span>缩进宽度：</span>
-              <input id="settings-tab-size" type="number" min="1" style="width:80px" v-model.number="tabSize" />
-              <span class="info-icon" title="当使用空格缩进时，这个值表示每级缩进的空格数；当使用 tab 时，这个值表示 softtab 的可视宽度">i</span>
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+	<div v-if="visible" class="settings-overlay">
+		<div class="settings-panel" role="dialog" aria-modal="true">
+			<div class="settings-header">
+				<span>设置</span>
+				<button class="close-btn" title="关闭" @click="handleClose">
+					×
+				</button>
+			</div>
+			<div class="settings-body">
+				<div class="section">
+					<div class="section-title">
+						主题风格
+					</div>
+					<div class="radio-group">
+						<label v-for="opt in themes" :key="opt.value" class="radio-label">
+							<input
+								:id="`settings-theme-${opt.value}`"
+								v-model="themeValue"
+								type="radio"
+								name="themeStyle"
+								:value="opt.value"
+							>
+							<span>{{ opt.label }}</span>
+						</label>
+					</div>
+				</div>
+				<div class="section">
+					<div class="section-title">
+						配色模式
+					</div>
+					<div class="radio-group">
+						<label v-for="opt in modes" :key="opt.value" class="radio-label">
+							<input
+								:id="`settings-mode-${opt.value}`"
+								v-model="modeValue"
+								type="radio"
+								name="themeMode"
+								:value="opt.value"
+							>
+							<span>{{ opt.label }}</span>
+						</label>
+					</div>
+				</div>
+				<div class="section">
+					<div class="section-title">
+						编辑器
+					</div>
+					<label class="checkbox-label">
+						<input id="settings-sticky-enabled" v-model="stickyEnabled" type="checkbox">
+						<span>启用粘性节点（Sticky）</span>
+					</label>
+					<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+						<label class="checkbox-label">
+							<input id="settings-use-tab" v-model="useTab" type="checkbox">
+							<span>使用 Tab 缩进（启用后编辑器使用实际 Tab，格式化使用软 Tab 显示）</span>
+						</label>
+						<label style="display:flex;align-items:center;gap:8px;">
+							<span>缩进宽度：</span>
+							<input
+								id="settings-tab-size"
+								v-model.number="tabSize"
+								type="number"
+								min="1"
+								style="width:80px"
+							>
+							<span class="info-icon" title="当使用空格缩进时，这个值表示每级缩进的空格数；当使用 tab 时，这个值表示 softtab 的可视宽度">i</span>
+						</label>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
 </template>
 
 <style scoped>

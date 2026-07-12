@@ -4,17 +4,25 @@ import notify from '../services/notify.js';
 
 const toasts = computed(() => notify.toasts);
 function remove(id) {
-  notify.remove(id);
+	notify.remove(id);
 }
 </script>
 
 <template>
-  <div class="toast-container" aria-live="polite" aria-atomic="true">
-    <button v-for="t in toasts" :key="t.id" type="button" :class="['toast', 'toast-' + t.type]"
-      :aria-label="`关闭通知：${t.message}`" @click="remove(t.id)">
-      <div class="toast-message">{{ t.message }}</div>
-    </button>
-  </div>
+	<div class="toast-container" aria-live="polite" aria-atomic="true">
+		<button
+			v-for="t in toasts"
+			:key="t.id"
+			type="button"
+			:class="['toast', 'toast-' + t.type]"
+			:aria-label="`关闭通知：${t.message}`"
+			@click="remove(t.id)"
+		>
+			<div class="toast-message">
+				{{ t.message }}
+			</div>
+		</button>
+	</div>
 </template>
 
 <style scoped>

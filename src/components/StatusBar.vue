@@ -1,5 +1,5 @@
 <script setup>
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { jsonToGoStruct, jsonToJavaClass, jsonToJavaScript, jsonToPython, jsonToTypeScript } from '../services/converter.js';
 import notify from '../services/notify.js';
 import { detectQueryType, queryJq, queryJsonPath, validateQuery } from '../services/queryEngine.js';
@@ -8,18 +8,18 @@ import { getStringifyIndent } from '../utils/indent.js';
 
 const store = useJsonStore();
 const props = defineProps({
-  content: {
-    type: String,
-    default: '{}'
-  }
+	content: {
+		type: String,
+		default: '{}'
+	}
 });
 
 const emit = defineEmits([
-  'escape',
-  'unescape',
-  'compare',
-  'openTableView',
-  'format'
+	'escape',
+	'unescape',
+	'compare',
+	'openTableView',
+	'format'
 ]);
 
 const queryExpression = ref('');
@@ -37,15 +37,15 @@ let scrollRaf = null;
 
 // 监听查询表达式变化，自动检测类型
 watch(queryExpression, (newExpr) => {
-  // 当表达式为空时，重置override标记以允许自动检测
-  if (!newExpr || newExpr.trim() === '') {
-    typeOverride.value = false;
-  }
+	// 当表达式为空时，重置override标记以允许自动检测
+	if (!newExpr || newExpr.trim() === '') {
+		typeOverride.value = false;
+	}
 
-  if (!typeOverride.value) {
-    detectedQueryType.value = detectQueryType(newExpr);
-    queryType.value = detectedQueryType.value;
-  }
+	if (!typeOverride.value) {
+		detectedQueryType.value = detectQueryType(newExpr);
+		queryType.value = detectedQueryType.value;
+	}
 }, { immediate: true });
 
 // UI: help tooltip & copy error feedback
@@ -55,322 +55,322 @@ const copyErrorMessage = ref('');
 let copyErrorTimer = null;
 
 function handleEditorCopyError(e) {
-  try {
-    copyErrorMessage.value = (e && e.detail && e.detail.reason) ? e.detail.reason : '复制失败';
-    if (copyErrorTimer) clearTimeout(copyErrorTimer);
-    copyErrorTimer = setTimeout(() => { copyErrorMessage.value = ''; copyErrorTimer = null; }, 3000);
-  } catch (err) {
-    // ignore
-  }
+	try {
+		copyErrorMessage.value = (e && e.detail && e.detail.reason) ? e.detail.reason : '复制失败';
+		if (copyErrorTimer) clearTimeout(copyErrorTimer);
+		copyErrorTimer = setTimeout(() => { copyErrorMessage.value = ''; copyErrorTimer = null; }, 3000);
+	} catch (err) {
+		// ignore
+	}
 }
 
 const copyMenuStyles = computed(() => {
-  const margin = 8;
-  const top = copyMenuPosition.value.adjustedTop !== undefined && copyMenuPosition.value.adjustedTop !== null
-    ? copyMenuPosition.value.adjustedTop
-    : (copyMenuPosition.value.top + copyMenuPosition.value.height + margin);
-  const left = copyMenuPosition.value.adjustedLeft !== undefined && copyMenuPosition.value.adjustedLeft !== null
-    ? copyMenuPosition.value.adjustedLeft
-    : copyMenuPosition.value.left;
-  return {
-    top: `${top}px`,
-    left: `${left}px`
-  };
+	const margin = 8;
+	const top = copyMenuPosition.value.adjustedTop !== undefined && copyMenuPosition.value.adjustedTop !== null
+		? copyMenuPosition.value.adjustedTop
+		: (copyMenuPosition.value.top + copyMenuPosition.value.height + margin);
+	const left = copyMenuPosition.value.adjustedLeft !== undefined && copyMenuPosition.value.adjustedLeft !== null
+		? copyMenuPosition.value.adjustedLeft
+		: copyMenuPosition.value.left;
+	return {
+		top: `${top}px`,
+		left: `${left}px`
+	};
 });
 
 const positionCopyMenu = () => {
-  const menuEl = copyMenuRef.value;
-  const btnRect = copyMenuPosition.value && {
-    top: copyMenuPosition.value.top,
-    left: copyMenuPosition.value.left,
-    height: copyMenuPosition.value.height
-  };
-  if (!menuEl || !btnRect) return;
-  const margin = 8;
-  const menuW = menuEl.offsetWidth;
-  const menuH = menuEl.offsetHeight;
-  let left = btnRect.left;
-  let top = btnRect.top + btnRect.height + window.scrollY;
+	const menuEl = copyMenuRef.value;
+	const btnRect = copyMenuPosition.value && {
+		top: copyMenuPosition.value.top,
+		left: copyMenuPosition.value.left,
+		height: copyMenuPosition.value.height
+	};
+	if (!menuEl || !btnRect) return;
+	const margin = 8;
+	const menuW = menuEl.offsetWidth;
+	const menuH = menuEl.offsetHeight;
+	let left = btnRect.left;
+	let top = btnRect.top + btnRect.height + window.scrollY;
 
-  if (left + menuW > window.innerWidth - margin) {
-    left = Math.max(margin, window.innerWidth - menuW - margin);
-  }
-  if (top + menuH > window.innerHeight - margin + window.scrollY) {
-    top = btnRect.top + window.scrollY - menuH - margin;
-  }
+	if (left + menuW > window.innerWidth - margin) {
+		left = Math.max(margin, window.innerWidth - menuW - margin);
+	}
+	if (top + menuH > window.innerHeight - margin + window.scrollY) {
+		top = btnRect.top + window.scrollY - menuH - margin;
+	}
 
-  left = Math.max(margin, left);
-  top = Math.max(margin, top);
+	left = Math.max(margin, left);
+	top = Math.max(margin, top);
 
-  copyMenuPosition.value.adjustedLeft = left;
-  copyMenuPosition.value.adjustedTop = top;
+	copyMenuPosition.value.adjustedLeft = left;
+	copyMenuPosition.value.adjustedTop = top;
 };
 
 const handleWindowResize = () => {
-  if (showCopyMenu.value) positionCopyMenu();
+	if (showCopyMenu.value) positionCopyMenu();
 };
 const handleWindowScroll = () => {
-  if (!showCopyMenu.value) return;
-  if (scrollRaf) return;
-  scrollRaf = requestAnimationFrame(() => {
-    try {
-      if (showCopyMenu.value) positionCopyMenu();
-    } catch (_) {}
-    scrollRaf = null;
-  });
+	if (!showCopyMenu.value) return;
+	if (scrollRaf) return;
+	scrollRaf = requestAnimationFrame(() => {
+		try {
+			if (showCopyMenu.value) positionCopyMenu();
+		} catch (_) {}
+		scrollRaf = null;
+	});
 };
 const handleWindowKeyDown = (e) => {
-  if (e.key === 'Escape' && showCopyMenu.value) {
-    showCopyMenu.value = false;
-  }
+	if (e.key === 'Escape' && showCopyMenu.value) {
+		showCopyMenu.value = false;
+	}
 };
 
 const toggleCopyMenu = (event) => {
-  event.stopPropagation();
-  const rect = event.currentTarget.getBoundingClientRect();
-  copyMenuPosition.value = {
-    top: rect.top + window.scrollY,
-    left: rect.left + window.scrollX,
-    height: rect.height,
-    adjustedTop: undefined,
-    adjustedLeft: undefined
-  };
-  showCopyMenu.value = !showCopyMenu.value;
-  if (showCopyMenu.value) {
-    nextTick(() => {
-      positionCopyMenu();
-    });
-  }
+	event.stopPropagation();
+	const rect = event.currentTarget.getBoundingClientRect();
+	copyMenuPosition.value = {
+		top: rect.top + window.scrollY,
+		left: rect.left + window.scrollX,
+		height: rect.height,
+		adjustedTop: undefined,
+		adjustedLeft: undefined
+	};
+	showCopyMenu.value = !showCopyMenu.value;
+	if (showCopyMenu.value) {
+		nextTick(() => {
+			positionCopyMenu();
+		});
+	}
 };
 
 const handleDocumentClick = (event) => {
-  if (!showCopyMenu.value) return;
-  const target = event.target;
-  if (copyMenuRef.value?.contains(target) || copyMenuButtonRef.value?.contains(target)) {
-    return;
-  }
-  showCopyMenu.value = false;
+	if (!showCopyMenu.value) return;
+	const target = event.target;
+	if (copyMenuRef.value?.contains(target) || copyMenuButtonRef.value?.contains(target)) {
+		return;
+	}
+	showCopyMenu.value = false;
 };
 
 // 切换查询类型（用户手动切换）
 const toggleQueryType = () => {
-  typeOverride.value = true;
-  queryType.value = queryType.value === 'jsonpath' ? 'jq' : 'jsonpath';
+	typeOverride.value = true;
+	queryType.value = queryType.value === 'jsonpath' ? 'jq' : 'jsonpath';
 };
 
 onMounted(() => {
-  document.addEventListener('click', handleDocumentClick);
-  window.addEventListener('resize', handleWindowResize);
-  // use capture to catch scrolls on any scrollable ancestor; passive to avoid blocking scroll
-  window.addEventListener('scroll', handleWindowScroll, { capture: true, passive: true });
-  window.addEventListener('keydown', handleWindowKeyDown);
-  // listen for copy errors from Editor
-  try { window.addEventListener('editor-copy-error', handleEditorCopyError); } catch (e) {}
+	document.addEventListener('click', handleDocumentClick);
+	window.addEventListener('resize', handleWindowResize);
+	// use capture to catch scrolls on any scrollable ancestor; passive to avoid blocking scroll
+	window.addEventListener('scroll', handleWindowScroll, { capture: true, passive: true });
+	window.addEventListener('keydown', handleWindowKeyDown);
+	// listen for copy errors from Editor
+	try { window.addEventListener('editor-copy-error', handleEditorCopyError); } catch (e) {}
 });
 
 // no automatic collapse: prefer single-line horizontal scrolling so labels remain visible
 
 // helper for More menu: convert id to readable text
 const humanizeActionId = (id) => {
-  const map = {
-    copy: '复制',
-    compare: '对比',
-    table: '表格',
-    escape: '转义',
-    unescape: '反转义',
-    settings: '设置'
-  };
-  return map[id] || id;
+	const map = {
+		copy: '复制',
+		compare: '对比',
+		table: '表格',
+		escape: '转义',
+		unescape: '反转义',
+		settings: '设置'
+	};
+	return map[id] || id;
 };
 
 // handle clicks coming from the More menu
 const handleMoreAction = (id) => {
-  showMoreMenu.value = false;
-  switch (id) {
-    case 'copy': toggleCopyMenu({ currentTarget: copyMenuButtonRef.value, stopPropagation: () => {} }); break;
-    case 'compare': handleCompareClick(); break;
-    case 'table': emit('openTableView'); break;
-    case 'escape': escapeJson(); break;
-    case 'unescape': unescapeJson(); break;
-    case 'settings': store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible; break;
-    default: break;
-  }
+	showMoreMenu.value = false;
+	switch (id) {
+		case 'copy': toggleCopyMenu({ currentTarget: copyMenuButtonRef.value, stopPropagation: () => {} }); break;
+		case 'compare': handleCompareClick(); break;
+		case 'table': emit('openTableView'); break;
+		case 'escape': escapeJson(); break;
+		case 'unescape': unescapeJson(); break;
+		case 'settings': store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible; break;
+		default: break;
+	}
 };
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleDocumentClick);
-  window.removeEventListener('resize', handleWindowResize);
-  try { window.removeEventListener('scroll', handleWindowScroll, { capture: true, passive: true }); } catch (e) { window.removeEventListener('scroll', handleWindowScroll, true); }
-  window.removeEventListener('keydown', handleWindowKeyDown);
-  try { if (typeof scrollRaf === 'number' && scrollRaf) { cancelAnimationFrame(scrollRaf); } } catch (e) {}
-  try { window.removeEventListener('editor-copy-error', handleEditorCopyError); } catch (e) {}
-  if (copyErrorTimer) {
-    try { clearTimeout(copyErrorTimer); } catch (e) {}
-    copyErrorTimer = null;
-  }
+	document.removeEventListener('click', handleDocumentClick);
+	window.removeEventListener('resize', handleWindowResize);
+	try { window.removeEventListener('scroll', handleWindowScroll, { capture: true, passive: true }); } catch (e) { window.removeEventListener('scroll', handleWindowScroll, true); }
+	window.removeEventListener('keydown', handleWindowKeyDown);
+	try { if (typeof scrollRaf === 'number' && scrollRaf) { cancelAnimationFrame(scrollRaf); } } catch (e) {}
+	try { window.removeEventListener('editor-copy-error', handleEditorCopyError); } catch (e) {}
+	if (copyErrorTimer) {
+		try { clearTimeout(copyErrorTimer); } catch (e) {}
+		copyErrorTimer = null;
+	}
 });
 
 const executeQuery = async () => {
-  try {
-    queryError.value = '';
-    queryResult.value = null;
+	try {
+		queryError.value = '';
+		queryResult.value = null;
 
-    if (!queryExpression.value.trim()) {
-      queryError.value = '请输入查询表达式';
-      return;
-    }
+		if (!queryExpression.value.trim()) {
+			queryError.value = '请输入查询表达式';
+			return;
+		}
 
-    // Pre-validate expression syntax
-    const validation = validateQuery(queryExpression.value, queryType.value);
-    if (!validation.valid) {
-      queryError.value = validation.message;
-      const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
-      store.showOutputPanel(tabKey, { value: null, error: queryError.value });
-      return;
-    }
+		// Pre-validate expression syntax
+		const validation = validateQuery(queryExpression.value, queryType.value);
+		if (!validation.valid) {
+			queryError.value = validation.message;
+			const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
+			store.showOutputPanel(tabKey, { value: null, error: queryError.value });
+			return;
+		}
 
-    let result;
-    if (queryType.value === 'jsonpath') {
-      result = queryJsonPath(props.content, queryExpression.value);
-    } else {
-      result = await queryJq(props.content, queryExpression.value);
-    }
+		let result;
+		if (queryType.value === 'jsonpath') {
+			result = queryJsonPath(props.content, queryExpression.value);
+		} else {
+			result = await queryJq(props.content, queryExpression.value);
+		}
 
-    const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
-    const display = result.display !== undefined ? result.display : result.results;
+		const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
+		const display = result.display !== undefined ? result.display : result.results;
 
-    if (result.success) {
-      queryResult.value = display;
-      // Show "empty result" indication when query succeeds but returns 0 matches
-      if (result.count === 0) {
-        queryError.value = '查询结果为空（0 条匹配）';
-        store.showOutputPanel(tabKey, { value: null, error: queryError.value });
-      } else {
-        store.addQueryHistory(queryExpression.value, queryType.value);
-        store.showOutputPanel(tabKey, { value: display, error: null });
-      }
-    } else {
-      queryResult.value = null;
-      queryError.value = result.error || '查询失败';
-      store.showOutputPanel(tabKey, { value: null, error: queryError.value });
-    }
-  } catch (e) {
-    queryError.value = e.message;
-    const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
-    store.showOutputPanel(tabKey, { value: null, error: e.message });
-  }
+		if (result.success) {
+			queryResult.value = display;
+			// Show "empty result" indication when query succeeds but returns 0 matches
+			if (result.count === 0) {
+				queryError.value = '查询结果为空（0 条匹配）';
+				store.showOutputPanel(tabKey, { value: null, error: queryError.value });
+			} else {
+				store.addQueryHistory(queryExpression.value, queryType.value);
+				store.showOutputPanel(tabKey, { value: display, error: null });
+			}
+		} else {
+			queryResult.value = null;
+			queryError.value = result.error || '查询失败';
+			store.showOutputPanel(tabKey, { value: null, error: queryError.value });
+		}
+	} catch (e) {
+		queryError.value = e.message;
+		const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
+		store.showOutputPanel(tabKey, { value: null, error: e.message });
+	}
 };
 
 const handleKeyDown = (e) => {
-  // 扩展：支持直接按 Enter 执行查询（保留原有 Ctrl/Cmd+Enter 兼容）
-  if (e.key === 'Enter') {
-    try { e.preventDefault(); } catch (_) {}
-    executeQuery();
-  }
+	// 扩展：支持直接按 Enter 执行查询（保留原有 Ctrl/Cmd+Enter 兼容）
+	if (e.key === 'Enter') {
+		try { e.preventDefault(); } catch (_) {}
+		executeQuery();
+	}
 };
 
-  const clearQuery = () => {
-    queryExpression.value = '';
-    queryError.value = '';
-    queryResult.value = null;
-  };
+const clearQuery = () => {
+	queryExpression.value = '';
+	queryError.value = '';
+	queryResult.value = null;
+};
 
 const copyToClipboard = async (format) => {
-  // if no query result and content is empty-ish, do nothing
-  if (!queryResult.value && (props.content === undefined || props.content === null || String(props.content).trim() === '')) return;
+	// if no query result and content is empty-ish, do nothing
+	if (!queryResult.value && (props.content === undefined || props.content === null || String(props.content).trim() === '')) return;
 
-  let textToCopy = '';
-  let data;
-  // try parse JSON, but fall back to raw text on failure
-  try {
-    data = queryResult.value !== null && queryResult.value !== undefined ? queryResult.value : JSON.parse(props.content);
-  } catch (e) {
-    // not valid JSON — treat as plain text
-    data = queryResult.value !== null && queryResult.value !== undefined ? queryResult.value : props.content;
-  }
+	let textToCopy = '';
+	let data;
+	// try parse JSON, but fall back to raw text on failure
+	try {
+		data = queryResult.value !== null && queryResult.value !== undefined ? queryResult.value : JSON.parse(props.content);
+	} catch (e) {
+		// not valid JSON — treat as plain text
+		data = queryResult.value !== null && queryResult.value !== undefined ? queryResult.value : props.content;
+	}
 
-  try {
-    switch (format) {
-      case 'singleline':
-        try {
-          textToCopy = (typeof data === 'string') ? data : JSON.stringify(data);
-        } catch (e) {
-          textToCopy = String(data);
-        }
-        break;
-      case 'go': {
-        const r = jsonToGoStruct(typeof data === 'string' ? data : JSON.stringify(data));
-        textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
-        break;
-      }
-      case 'java': {
-        const r = jsonToJavaClass(typeof data === 'string' ? data : JSON.stringify(data));
-        textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
-        break;
-      }
-      case 'python': {
-        const r = jsonToPython(typeof data === 'string' ? data : JSON.stringify(data));
-        textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
-        break;
-      }
-      case 'typescript': {
-        const r = jsonToTypeScript(typeof data === 'string' ? data : JSON.stringify(data));
-        textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
-        break;
-      }
-      case 'javascript': {
-        const r = jsonToJavaScript(typeof data === 'string' ? data : JSON.stringify(data));
-        textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
-        break;
-      }
-      default:
-        try {
-          textToCopy = (typeof data === 'string') ? data : JSON.stringify(data, null, getStringifyIndent());
-        } catch (e) {
-          textToCopy = String(data);
-        }
-    }
+	try {
+		switch (format) {
+			case 'singleline':
+				try {
+					textToCopy = (typeof data === 'string') ? data : JSON.stringify(data);
+				} catch (e) {
+					textToCopy = String(data);
+				}
+				break;
+			case 'go': {
+				const r = jsonToGoStruct(typeof data === 'string' ? data : JSON.stringify(data));
+				textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
+				break;
+			}
+			case 'java': {
+				const r = jsonToJavaClass(typeof data === 'string' ? data : JSON.stringify(data));
+				textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
+				break;
+			}
+			case 'python': {
+				const r = jsonToPython(typeof data === 'string' ? data : JSON.stringify(data));
+				textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
+				break;
+			}
+			case 'typescript': {
+				const r = jsonToTypeScript(typeof data === 'string' ? data : JSON.stringify(data));
+				textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
+				break;
+			}
+			case 'javascript': {
+				const r = jsonToJavaScript(typeof data === 'string' ? data : JSON.stringify(data));
+				textToCopy = r.success ? r.data : (typeof data === 'string' ? data : JSON.stringify(data));
+				break;
+			}
+			default:
+				try {
+					textToCopy = (typeof data === 'string') ? data : JSON.stringify(data, null, getStringifyIndent());
+				} catch (e) {
+					textToCopy = String(data);
+				}
+		}
 
-    if (window.utools) {
-      window.utools.copyText(textToCopy);
-    } else {
-      await navigator.clipboard.writeText(textToCopy);
-    }
-    showCopyMenu.value = false;
-    notify.success('已复制到剪贴板');
-  } catch (e) {
-    // surface a clearer message
-    notify.error('复制失败: ' + (e && e.message ? e.message : String(e)));
-  }
+		if (window.utools) {
+			window.utools.copyText(textToCopy);
+		} else {
+			await navigator.clipboard.writeText(textToCopy);
+		}
+		showCopyMenu.value = false;
+		notify.success('已复制到剪贴板');
+	} catch (e) {
+		// surface a clearer message
+		notify.error('复制失败: ' + (e && e.message ? e.message : String(e)));
+	}
 };
 
 
 const handleCompareClick = () => {
-  // 打开对比侧边栏，预填当前编辑器内容到左侧
-  emit('compare', props.content, '');
+	// 打开对比侧边栏，预填当前编辑器内容到左侧
+	emit('compare', props.content, '');
 };
 
 const escapeJson = () => {
-  try {
-    const data = queryResult.value || JSON.parse(props.content);
-    const escaped = JSON.stringify(JSON.stringify(data));
-    emit('escape', escaped);
-    showCopyMenu.value = false;
-  } catch (e) {
-    notify.error('转义失败: ' + e.message);
-  }
+	try {
+		const data = queryResult.value || JSON.parse(props.content);
+		const escaped = JSON.stringify(JSON.stringify(data));
+		emit('escape', escaped);
+		showCopyMenu.value = false;
+	} catch (e) {
+		notify.error('转义失败: ' + e.message);
+	}
 };
 
 const unescapeJson = () => {
-  try {
-    const data = queryResult.value || JSON.parse(props.content);
-    const str = typeof data === 'string' ? data : JSON.stringify(data);
-    const unescaped = JSON.parse(str);
-    emit('unescape', JSON.stringify(unescaped, null, getStringifyIndent()));
-    showCopyMenu.value = false;
-  } catch (e) {
-    notify.error('反转义失败: ' + e.message);
-  }
+	try {
+		const data = queryResult.value || JSON.parse(props.content);
+		const str = typeof data === 'string' ? data : JSON.stringify(data);
+		const unescaped = JSON.parse(str);
+		emit('unescape', JSON.stringify(unescaped, null, getStringifyIndent()));
+		showCopyMenu.value = false;
+	} catch (e) {
+		notify.error('反转义失败: ' + e.message);
+	}
 };
 
 // format button moved to editor context menu; keep help tooltip but remove bottom-bar emit
@@ -383,137 +383,221 @@ const unescapeJson = () => {
 </script>
 
 <template>
-  <div class="status-bar">
-    <div class="status-bar-row">
-      <!-- 移除 query-type-segment 按钮，改用类型徽章 -->
-      <input
-id="status-query-expression"
-        v-model="queryExpression"
-        :placeholder="queryType === 'jsonpath' ? '例: $.store.book[0].title' : '例: .store.book[].price'"
-        class="query-input"
-aria-label="查询表达式"
-        @keydown="handleKeyDown"
-      />
+	<div class="status-bar">
+		<div class="status-bar-row">
+			<!-- 移除 query-type-segment 按钮，改用类型徽章 -->
+			<input
+				id="status-query-expression"
+				v-model="queryExpression"
+				:placeholder="queryType === 'jsonpath' ? '例: $.store.book[0].title' : '例: .store.book[].price'"
+				class="query-input"
+				aria-label="查询表达式"
+				@keydown="handleKeyDown"
+			>
 
-      <!-- 类型徽章：显示检测到的类型，可点击切换 -->
-      <button
-        class="query-type-badge"
-        :class="{ override: typeOverride }"
-        @click="toggleQueryType"
-        :title="`当前: ${queryType.toUpperCase()}${typeOverride ? ' (已手动切换)' : ' (自动识别)'}`"
-      >
-        <span class="badge-text">{{ queryType.toUpperCase() }}</span>
-        <span class="badge-hint" v-if="!typeOverride">🤖</span>
-      </button>
+			<!-- 类型徽章：显示检测到的类型，可点击切换 -->
+			<button
+				class="query-type-badge"
+				:class="{ override: typeOverride }"
+				:title="`当前: ${queryType.toUpperCase()}${typeOverride ? ' (已手动切换)' : ' (自动识别)'}`"
+				@click="toggleQueryType"
+			>
+				<span class="badge-text">{{ queryType.toUpperCase() }}</span>
+				<span v-if="!typeOverride" class="badge-hint">🤖</span>
+			</button>
 
-      <button class="query-btn primary" @click="executeQuery">⚙️</button>
+			<button class="query-btn primary" @click="executeQuery">
+				⚙️
+			</button>
 
-      <button class="query-close-btn" @click="clearQuery" title="清除查询" aria-label="清除查询">
-        ✕
-      </button>
+			<button
+				class="query-close-btn"
+				title="清除查询"
+				aria-label="清除查询"
+				@click="clearQuery"
+			>
+				✕
+			</button>
 
-      <div class="actions-inline" ref="actionsInlineRef">
-        <!-- Format button removed: use editor context menu / Shift+Alt+F -->
+			<div ref="actionsInlineRef" class="actions-inline">
+				<!-- Format button removed: use editor context menu / Shift+Alt+F -->
 
-        <div class="action-menu">
-          <button
-            ref="copyMenuButtonRef"
-            data-action-id="copy"
-            @click="toggleCopyMenu"
-            class="action-btn action-btn--icon action-btn--copy"
-            title="复制选项"
-            aria-label="复制 (copy)"
-          >
-            <span class="action-btn__icon emoji-badge emoji-badge--copy" aria-hidden="true">📋</span>
-            <span class="action-btn__text">复制</span>
-          </button>
-        </div>
+				<div class="action-menu">
+					<button
+						ref="copyMenuButtonRef"
+						data-action-id="copy"
+						class="action-btn action-btn--icon action-btn--copy"
+						title="复制选项"
+						aria-label="复制 (copy)"
+						@click="toggleCopyMenu"
+					>
+						<span class="action-btn__icon emoji-badge emoji-badge--copy" aria-hidden="true">📋</span>
+						<span class="action-btn__text">复制</span>
+					</button>
+				</div>
 
-        <!-- Format button: visible and compact so users always have access -->
-        <button data-action-id="format" @click="$emit('format')" class="action-btn action-btn--icon action-btn--format" title="格式化" aria-label="格式化">
-          <span class="action-btn__icon emoji-badge emoji-badge--format" aria-hidden="true">📐</span>
-          <span class="action-btn__text">格式化</span>
-        </button>
+				<!-- Format button: visible and compact so users always have access -->
+				<button
+					data-action-id="format"
+					class="action-btn action-btn--icon action-btn--format"
+					title="格式化"
+					aria-label="格式化"
+					@click="$emit('format')"
+				>
+					<span class="action-btn__icon emoji-badge emoji-badge--format" aria-hidden="true">📐</span>
+					<span class="action-btn__text">格式化</span>
+				</button>
 
-        <button data-action-id="compare" @click="handleCompareClick" class="action-btn action-btn--icon action-btn--compare" title="对比" aria-label="对比 (compare)">
-          <span class="action-btn__icon emoji-badge emoji-badge--compare" aria-hidden="true">⚖️</span>
-          <span class="action-btn__text">对比</span>
-        </button>
+				<button
+					data-action-id="compare"
+					class="action-btn action-btn--icon action-btn--compare"
+					title="对比"
+					aria-label="对比 (compare)"
+					@click="handleCompareClick"
+				>
+					<span class="action-btn__icon emoji-badge emoji-badge--compare" aria-hidden="true">⚖️</span>
+					<span class="action-btn__text">对比</span>
+				</button>
 
-        <button data-action-id="escape" @click="escapeJson" class="action-btn action-btn--icon action-btn--escape" title="转义" aria-label="转义 (escape)">
-          <span class="action-btn__icon emoji-badge emoji-badge--escape" aria-hidden="true">🔒</span>
-          <span class="action-btn__text">转义</span>
-        </button>
+				<button
+					data-action-id="escape"
+					class="action-btn action-btn--icon action-btn--escape"
+					title="转义"
+					aria-label="转义 (escape)"
+					@click="escapeJson"
+				>
+					<span class="action-btn__icon emoji-badge emoji-badge--escape" aria-hidden="true">🔒</span>
+					<span class="action-btn__text">转义</span>
+				</button>
 
-        <button data-action-id="unescape" @click="unescapeJson" class="action-btn action-btn--icon action-btn--unescape" title="反转义" aria-label="反转义 (unescape)">
-          <span class="action-btn__icon emoji-badge emoji-badge--unescape" aria-hidden="true">🗝️</span>
-          <span class="action-btn__text">反转义</span>
-        </button>
+				<button
+					data-action-id="unescape"
+					class="action-btn action-btn--icon action-btn--unescape"
+					title="反转义"
+					aria-label="反转义 (unescape)"
+					@click="unescapeJson"
+				>
+					<span class="action-btn__icon emoji-badge emoji-badge--unescape" aria-hidden="true">🗝️</span>
+					<span class="action-btn__text">反转义</span>
+				</button>
 
-        <button data-action-id="table" @click="$emit('openTableView')" class="action-btn action-btn--icon action-btn--table" title="表格视图" aria-label="表格视图 (table view)">
-          <span class="action-btn__icon emoji-badge emoji-badge--table" aria-hidden="true">📊</span>
-          <span class="action-btn__text">表格</span>
-        </button>
+				<button
+					data-action-id="table"
+					class="action-btn action-btn--icon action-btn--table"
+					title="表格视图"
+					aria-label="表格视图 (table view)"
+					@click="$emit('openTableView')"
+				>
+					<span class="action-btn__icon emoji-badge emoji-badge--table" aria-hidden="true">📊</span>
+					<span class="action-btn__text">表格</span>
+				</button>
 
-        <button data-action-id="settings" @click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible" class="action-btn action-btn--icon action-btn--settings" title="设置" aria-label="设置">
-          <span class="action-btn__icon emoji-badge emoji-badge--settings" aria-hidden="true">⚙️</span>
-          <span class="action-btn__text">设置</span>
-        </button>
+				<button
+					data-action-id="settings"
+					class="action-btn action-btn--icon action-btn--settings"
+					title="设置"
+					aria-label="设置"
+					@click="store.editorSettings.controlPanelVisible = !store.editorSettings.controlPanelVisible"
+				>
+					<span class="action-btn__icon emoji-badge emoji-badge--settings" aria-hidden="true">⚙️</span>
+					<span class="action-btn__text">设置</span>
+				</button>
 
-        <!-- overflow More menu (shown when adjustActions hides labels) -->
-        <!-- no automatic collapse: rely on horizontal scrolling to keep all actions visible on one line -->
+				<!-- overflow More menu (shown when adjustActions hides labels) -->
+				<!-- no automatic collapse: rely on horizontal scrolling to keep all actions visible on one line -->
 
-        <!-- Help tooltip on the right -->
-        <div
-          class="help-wrapper"
-          @mouseenter="showHelpTooltip = true"
-          @mouseleave="showHelpTooltip = false"
-          ref="helpTooltipRef"
->
-          <button class="help-toggle" type="button"
-title="帮助"
-aria-label="帮助"
-            @click="showHelpTooltip = !showHelpTooltip" @blur="showHelpTooltip = false"
->
-            <span class="help-icon" aria-hidden="true">?</span>
-          </button>
-          <div v-if="showHelpTooltip" class="help-tooltip">
-            <div class="help-title">支持的功能与快捷键</div>
-            <div class="help-item">格式化：Shift + Alt + F（备用：Cmd/Ctrl + Shift + F）</div>
-            <div class="help-item">复制当前 JSON：Shift + Alt + J（备用：Cmd/Ctrl + Shift + J）</div>
-            <div class="help-item">单行复制：Shift + Alt + C（备用：Cmd/Ctrl + Shift + C）</div>
-            <div class="help-item">转义字符串复制：Shift + Alt + \（备用：Cmd/Ctrl + Shift + \）</div>
-            <div class="help-item">查询执行：Cmd/Ctrl + Enter（在查询输入框中）</div>
-            <div class="help-item">格式化开关：在设置中控制自动格式化</div>
-            <div class="help-item">关闭当前标签：Cmd/Ctrl + W（在编辑器或标签栏聚焦时）</div>
-            <div class="help-item">新建标签：Cmd/Ctrl + N</div>
-            <div class="help-item">标签右键菜单：关闭此 / 关闭其他 / 关闭左侧 / 关闭所有 / 收藏（收藏项以 🌟 标记并优先保留）</div>
-            <div class="help-item">备注：快捷键在不同平台或输入法下可能有差异，若无响应请尝试切换焦点到编辑器或标签栏。</div>
-          </div>
-        </div>
+				<!-- Help tooltip on the right -->
+				<div
+					ref="helpTooltipRef"
+					class="help-wrapper"
+					@mouseenter="showHelpTooltip = true"
+					@mouseleave="showHelpTooltip = false"
+				>
+					<button
+						class="help-toggle"
+						type="button"
+						title="帮助"
+						aria-label="帮助"
+						@click="showHelpTooltip = !showHelpTooltip"
+						@blur="showHelpTooltip = false"
+					>
+						<span class="help-icon" aria-hidden="true">?</span>
+					</button>
+					<div v-if="showHelpTooltip" class="help-tooltip">
+						<div class="help-title">
+							支持的功能与快捷键
+						</div>
+						<div class="help-item">
+							格式化：Shift + Alt + F（备用：Cmd/Ctrl + Shift + F）
+						</div>
+						<div class="help-item">
+							复制当前 JSON：Shift + Alt + J（备用：Cmd/Ctrl + Shift + J）
+						</div>
+						<div class="help-item">
+							单行复制：Shift + Alt + C（备用：Cmd/Ctrl + Shift + C）
+						</div>
+						<div class="help-item">
+							转义字符串复制：Shift + Alt + \（备用：Cmd/Ctrl + Shift + \）
+						</div>
+						<div class="help-item">
+							查询执行：Cmd/Ctrl + Enter（在查询输入框中）
+						</div>
+						<div class="help-item">
+							格式化开关：在设置中控制自动格式化
+						</div>
+						<div class="help-item">
+							关闭当前标签：Cmd/Ctrl + W（在编辑器或标签栏聚焦时）
+						</div>
+						<div class="help-item">
+							新建标签：Cmd/Ctrl + N
+						</div>
+						<div class="help-item">
+							标签右键菜单：关闭此 / 关闭其他 / 关闭左侧 / 关闭所有 / 收藏（收藏项以 🌟 标记并优先保留）
+						</div>
+						<div class="help-item">
+							备注：快捷键在不同平台或输入法下可能有差异，若无响应请尝试切换焦点到编辑器或标签栏。
+						</div>
+					</div>
+				</div>
 
-        <!-- transient copy error message -->
-        <div v-if="copyErrorMessage" class="copy-error">{{ copyErrorMessage }}</div>
-      </div>
-    </div>
-    <div v-if="queryError" class="query-error">{{ queryError }}</div>
+				<!-- transient copy error message -->
+				<div v-if="copyErrorMessage" class="copy-error">
+					{{ copyErrorMessage }}
+				</div>
+			</div>
+		</div>
+		<div v-if="queryError" class="query-error">
+			{{ queryError }}
+		</div>
 
-    <teleport to="body">
-      <div
-        v-if="showCopyMenu"
-        ref="copyMenuRef"
-        class="menu-dropdown"
-        :style="copyMenuStyles"
-      >
-        <button @click="copyToClipboard('singleline')" class="menu-item">📄 单行</button>
-        <button @click="copyToClipboard('go')" class="menu-item">🐹 Go 结构体</button>
-        <button @click="copyToClipboard('java')" class="menu-item">☕ Java 类</button>
-        <button @click="copyToClipboard('python')" class="menu-item">🐍 Python 类</button>
-        <button @click="copyToClipboard('typescript')" class="menu-item">🔵 TypeScript 接口</button>
-        <button @click="copyToClipboard('javascript')" class="menu-item">⚡ JavaScript 类</button>
-      </div>
-    </teleport>
-  </div>
+		<teleport to="body">
+			<div
+				v-if="showCopyMenu"
+				ref="copyMenuRef"
+				class="menu-dropdown"
+				:style="copyMenuStyles"
+			>
+				<button class="menu-item" @click="copyToClipboard('singleline')">
+					📄 单行
+				</button>
+				<button class="menu-item" @click="copyToClipboard('go')">
+					🐹 Go 结构体
+				</button>
+				<button class="menu-item" @click="copyToClipboard('java')">
+					☕ Java 类
+				</button>
+				<button class="menu-item" @click="copyToClipboard('python')">
+					🐍 Python 类
+				</button>
+				<button class="menu-item" @click="copyToClipboard('typescript')">
+					🔵 TypeScript 接口
+				</button>
+				<button class="menu-item" @click="copyToClipboard('javascript')">
+					⚡ JavaScript 类
+				</button>
+			</div>
+		</teleport>
+	</div>
 </template>
 
 <style scoped>

@@ -18,39 +18,39 @@ const collapsed = computed(() => store.diffSidebar.collapsed);
 
 // ── 统一标签栏逻辑 ──────────────────────────────────────
 const allTabs = [
-  { id: 'diff', label: '⚖️ 对比' },
-  { id: 'jsonpath', label: '🔍 JSONPath' },
-  { id: 'jq', label: '🌀 jq' },
+	{ id: 'diff', label: '⚖️ 对比' },
+	{ id: 'jsonpath', label: '🔍 JSONPath' },
+	{ id: 'jq', label: '🌀 jq' },
 ];
 
 const hasOutputContent = (tab) => {
-  const entry = store.outputPanel.content[tab];
-  return entry && (entry.error !== null || entry.value !== null);
+	const entry = store.outputPanel.content[tab];
+	return entry && (entry.error !== null || entry.value !== null);
 };
 
 // 始终显示"对比"标签；有内容时才显示查询结果标签
 const visibleTabs = computed(() =>
-  allTabs.filter((t) => t.id === 'diff' || hasOutputContent(t.id))
+	allTabs.filter((t) => t.id === 'diff' || hasOutputContent(t.id))
 );
 
 // 当前活跃标签：output 模式下取 outputPanel.currentTab，否则固定为 'diff'
 const activeTabId = computed(() =>
-  mode.value === 'output' ? store.outputPanel.currentTab : 'diff'
+	mode.value === 'output' ? store.outputPanel.currentTab : 'diff'
 );
 const isDiffOutputTab = computed(() => store.outputPanel.currentTab === 'diff');
 
 function switchTab(tabId) {
-  if (tabId === 'diff') {
-    // 切到对比模式：有对比结果则显示结果，否则显示输入
-    const hasResult = store.diffSidebar.leftContent || store.diffSidebar.rightContent;
-    store.diffSidebar.mode = hasResult ? 'result' : 'input';
-    store.outputPanel.visible = false;
-  } else {
-    // 切到查询结果
-    store.diffSidebar.mode = 'output';
-    store.outputPanel.currentTab = tabId;
-    store.outputPanel.visible = true;
-  }
+	if (tabId === 'diff') {
+		// 切到对比模式：有对比结果则显示结果，否则显示输入
+		const hasResult = store.diffSidebar.leftContent || store.diffSidebar.rightContent;
+		store.diffSidebar.mode = hasResult ? 'result' : 'input';
+		store.outputPanel.visible = false;
+	} else {
+		// 切到查询结果
+		store.diffSidebar.mode = 'output';
+		store.outputPanel.currentTab = tabId;
+		store.outputPanel.visible = true;
+	}
 }
 
 // ── Output 模式内容逻辑（原 OutputPanel 逻辑）────────────
@@ -63,220 +63,220 @@ let outputMonacoEditor = null;
 let outputMonacoThemeMediaQuery = null;
 
 const outputFormattedContent = computed(() => {
-  const entry = currentOutputEntry.value;
-  if (!entry) return '';
-  if (entry.error) return entry.error;
-  if (entry.value === null || entry.value === undefined) return '';
-  return typeof entry.value === 'string'
-    ? entry.value
-    : JSON.stringify(entry.value, null, getStringifyIndent());
+	const entry = currentOutputEntry.value;
+	if (!entry) return '';
+	if (entry.error) return entry.error;
+	if (entry.value === null || entry.value === undefined) return '';
+	return typeof entry.value === 'string'
+		? entry.value
+		: JSON.stringify(entry.value, null, getStringifyIndent());
 });
 
 const outputHasContent = computed(() => {
-  if (isDiffOutputTab.value) {
-    return !!(store.diffSidebar.leftContent || store.diffSidebar.rightContent);
-  }
-  const entry = currentOutputEntry.value;
-  return entry && (entry.error !== null || entry.value !== null);
+	if (isDiffOutputTab.value) {
+		return !!(store.diffSidebar.leftContent || store.diffSidebar.rightContent);
+	}
+	const entry = currentOutputEntry.value;
+	return entry && (entry.error !== null || entry.value !== null);
 });
 
 const outputIsError = computed(() => {
-  const entry = currentOutputEntry.value;
-  return entry && entry.error !== null && entry.error !== undefined;
+	const entry = currentOutputEntry.value;
+	return entry && entry.error !== null && entry.error !== undefined;
 });
 
 const outputMonacoContent = computed(() => {
-  const entry = currentOutputEntry.value;
-  if (!entry || entry.error || entry.value === null || entry.value === undefined) {
-    return '';
-  }
-  return typeof entry.value === 'string'
-    ? JSON.stringify(entry.value, null, getStringifyIndent())
-    : JSON.stringify(entry.value, null, getStringifyIndent());
+	const entry = currentOutputEntry.value;
+	if (!entry || entry.error || entry.value === null || entry.value === undefined) {
+		return '';
+	}
+	return typeof entry.value === 'string'
+		? JSON.stringify(entry.value, null, getStringifyIndent())
+		: JSON.stringify(entry.value, null, getStringifyIndent());
 });
 
 const shouldUseOutputMonaco = computed(() => {
-  return (
-    mode.value === 'output'
+	return (
+		mode.value === 'output'
     && !isDiffOutputTab.value
     && outputHasContent.value
     && !outputIsError.value
     && !outputMonacoLoadFailed.value
-  );
+	);
 });
 
 const getOutputMonacoTheme = () => {
-  if (typeof document !== 'undefined') {
-    const root = document.documentElement;
-    const themeMode = root?.dataset?.themeMode;
-    if (themeMode === 'dark') return 'vs-dark';
-    if (themeMode === 'light') return 'vs';
-  }
+	if (typeof document !== 'undefined') {
+		const root = document.documentElement;
+		const themeMode = root?.dataset?.themeMode;
+		if (themeMode === 'dark') return 'vs-dark';
+		if (themeMode === 'light') return 'vs';
+	}
 
-  const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
-  return mediaQuery?.matches ? 'vs-dark' : 'vs';
+	const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
+	return mediaQuery?.matches ? 'vs-dark' : 'vs';
 };
 
 const applyOutputMonacoTheme = () => {
-  if (!outputMonaco?.editor || typeof outputMonaco.editor.setTheme !== 'function') {
-    return;
-  }
-  outputMonaco.editor.setTheme(getOutputMonacoTheme());
+	if (!outputMonaco?.editor || typeof outputMonaco.editor.setTheme !== 'function') {
+		return;
+	}
+	outputMonaco.editor.setTheme(getOutputMonacoTheme());
 };
 
 const disposeOutputMonaco = () => {
-  if (outputMonacoThemeMediaQuery && typeof outputMonacoThemeMediaQuery.removeEventListener === 'function') {
-    outputMonacoThemeMediaQuery.removeEventListener('change', applyOutputMonacoTheme);
-  }
-  outputMonacoThemeMediaQuery = null;
-  if (outputMonacoEditor && typeof outputMonacoEditor.dispose === 'function') {
-    outputMonacoEditor.dispose();
-  }
-  outputMonacoEditor = null;
+	if (outputMonacoThemeMediaQuery && typeof outputMonacoThemeMediaQuery.removeEventListener === 'function') {
+		outputMonacoThemeMediaQuery.removeEventListener('change', applyOutputMonacoTheme);
+	}
+	outputMonacoThemeMediaQuery = null;
+	if (outputMonacoEditor && typeof outputMonacoEditor.dispose === 'function') {
+		outputMonacoEditor.dispose();
+	}
+	outputMonacoEditor = null;
 };
 
 const loadOutputMonaco = async () => {
-  if (outputMonaco?.editor) {
-    return outputMonaco;
-  }
+	if (outputMonaco?.editor) {
+		return outputMonaco;
+	}
 
-  outputMonaco = monacoModule;
-  if (!outputMonaco?.editor) {
-    outputMonacoLoadFailed.value = true;
-    return null;
-  }
+	outputMonaco = monacoModule;
+	if (!outputMonaco?.editor) {
+		outputMonacoLoadFailed.value = true;
+		return null;
+	}
 
-  return outputMonaco;
+	return outputMonaco;
 };
 
 const createOutputMonacoViewer = (monacoInstance, value) => {
-  applyOutputMonacoTheme();
-  outputMonacoEditor = monacoInstance.editor.create(outputMonacoContainer.value, {
-    value,
-    language: 'json',
-    readOnly: true,
-    domReadOnly: true,
-    automaticLayout: true,
-    minimap: { enabled: false },
-    glyphMargin: false,
-    folding: true,
-    lineNumbers: 'on',
-    scrollBeyondLastLine: false,
-    renderLineHighlight: 'none',
-    overviewRulerBorder: false,
-    wordWrap: 'on'
-  });
+	applyOutputMonacoTheme();
+	outputMonacoEditor = monacoInstance.editor.create(outputMonacoContainer.value, {
+		value,
+		language: 'json',
+		readOnly: true,
+		domReadOnly: true,
+		automaticLayout: true,
+		minimap: { enabled: false },
+		glyphMargin: false,
+		folding: true,
+		lineNumbers: 'on',
+		scrollBeyondLastLine: false,
+		renderLineHighlight: 'none',
+		overviewRulerBorder: false,
+		wordWrap: 'on'
+	});
 
-  const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
-  if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
-    outputMonacoThemeMediaQuery = mediaQuery;
-    outputMonacoThemeMediaQuery.addEventListener('change', applyOutputMonacoTheme);
-  }
+	const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
+	if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
+		outputMonacoThemeMediaQuery = mediaQuery;
+		outputMonacoThemeMediaQuery.addEventListener('change', applyOutputMonacoTheme);
+	}
 };
 
 const updateOutputMonacoValue = (value) => {
-  const model = typeof outputMonacoEditor?.getModel === 'function' ? outputMonacoEditor.getModel() : null;
-  if (model && typeof model.setValue === 'function') {
-    if (typeof model.getValue !== 'function' || model.getValue() !== value) {
-      model.setValue(value);
-    }
-  } else if (typeof outputMonacoEditor?.setValue === 'function') {
-    outputMonacoEditor.setValue(value);
-  }
+	const model = typeof outputMonacoEditor?.getModel === 'function' ? outputMonacoEditor.getModel() : null;
+	if (model && typeof model.setValue === 'function') {
+		if (typeof model.getValue !== 'function' || model.getValue() !== value) {
+			model.setValue(value);
+		}
+	} else if (typeof outputMonacoEditor?.setValue === 'function') {
+		outputMonacoEditor.setValue(value);
+	}
 
-  if (typeof outputMonacoEditor?.layout === 'function') {
-    outputMonacoEditor.layout();
-  }
+	if (typeof outputMonacoEditor?.layout === 'function') {
+		outputMonacoEditor.layout();
+	}
 };
 
 const ensureOutputMonacoViewer = async () => {
-  if (!shouldUseOutputMonaco.value) {
-    disposeOutputMonaco();
-    return;
-  }
+	if (!shouldUseOutputMonaco.value) {
+		disposeOutputMonaco();
+		return;
+	}
 
-  await nextTick();
-  if (!outputMonacoContainer.value) {
-    return;
-  }
+	await nextTick();
+	if (!outputMonacoContainer.value) {
+		return;
+	}
 
-  const monacoInstance = await loadOutputMonaco();
-  if (!monacoInstance?.editor) {
-    return;
-  }
+	const monacoInstance = await loadOutputMonaco();
+	if (!monacoInstance?.editor) {
+		return;
+	}
 
-  const value = outputMonacoContent.value;
-  if (!outputMonacoEditor) {
-    createOutputMonacoViewer(monacoInstance, value);
-    return;
-  }
+	const value = outputMonacoContent.value;
+	if (!outputMonacoEditor) {
+		createOutputMonacoViewer(monacoInstance, value);
+		return;
+	}
 
-  updateOutputMonacoValue(value);
+	updateOutputMonacoValue(value);
 };
 
 async function handleCopyOutput() {
-  if (isDiffOutputTab.value) {
-    notify.warn('对比结果请使用行级对比查看或复制主编辑区内容');
-    return;
-  }
-  if (!outputHasContent.value) return;
-  try {
-    if (globalThis.window?.utools) {
-      globalThis.window.utools.copyText(outputFormattedContent.value);
-    } else {
-      await navigator.clipboard.writeText(outputFormattedContent.value);
-    }
-    notify.success('已复制输出内容');
-  } catch (e) {
-    notify.error('复制失败: ' + e.message);
-  }
+	if (isDiffOutputTab.value) {
+		notify.warn('对比结果请使用行级对比查看或复制主编辑区内容');
+		return;
+	}
+	if (!outputHasContent.value) return;
+	try {
+		if (globalThis.window?.utools) {
+			globalThis.window.utools.copyText(outputFormattedContent.value);
+		} else {
+			await navigator.clipboard.writeText(outputFormattedContent.value);
+		}
+		notify.success('已复制输出内容');
+	} catch (e) {
+		notify.error('复制失败: ' + e.message);
+	}
 }
 
 async function handleInsertToEditor() {
-  if (isDiffOutputTab.value) {
-    notify.warn('对比结果不支持直接替换主编辑区');
-    return;
-  }
-  if (!outputHasContent.value) return;
-  const entry = currentOutputEntry.value;
-  if (!entry) return;
-  if (entry.error) { notify.warn('无法插入：输出为错误信息'); return; }
-  try {
-    let content = '';
-    if (typeof entry.value === 'string') {
-      const detected = await detectAndConvert(entry.value);
-      content = detected.success ? detected.data : entry.value;
-    } else {
-      content = JSON.stringify(entry.value, null, getStringifyIndent());
-    }
-    const active = store.getActiveTab();
-    if (!active) { notify.warn('没有打开的主编辑标签'); return; }
-    store.updateTabContent(active.id, content);
-    notify.success('已替换主编辑区内容');
-  } catch (e) {
-    notify.error('插入失败: ' + e.message);
-  }
+	if (isDiffOutputTab.value) {
+		notify.warn('对比结果不支持直接替换主编辑区');
+		return;
+	}
+	if (!outputHasContent.value) return;
+	const entry = currentOutputEntry.value;
+	if (!entry) return;
+	if (entry.error) { notify.warn('无法插入：输出为错误信息'); return; }
+	try {
+		let content = '';
+		if (typeof entry.value === 'string') {
+			const detected = await detectAndConvert(entry.value);
+			content = detected.success ? detected.data : entry.value;
+		} else {
+			content = JSON.stringify(entry.value, null, getStringifyIndent());
+		}
+		const active = store.getActiveTab();
+		if (!active) { notify.warn('没有打开的主编辑标签'); return; }
+		store.updateTabContent(active.id, content);
+		notify.success('已替换主编辑区内容');
+	} catch (e) {
+		notify.error('插入失败: ' + e.message);
+	}
 }
 
 // ── 关闭按钮：统一处理所有模式 ────────────────────────────
 function closePanel() {
-  if (mode.value === 'output') {
-    store.hideOutputPanel();
-  } else {
-    closeSidebar();
-  }
+	if (mode.value === 'output') {
+		store.hideOutputPanel();
+	} else {
+		closeSidebar();
+	}
 }
 
 // 左侧仅为待比对输入 A
 const leftInput = computed({
-  get: () => store.diffSidebar.leftInput,
-  set: (v) => { store.diffSidebar.leftInput = v; }
+	get: () => store.diffSidebar.leftInput,
+	set: (v) => { store.diffSidebar.leftInput = v; }
 });
 
 // 读取主编辑区当前内容作为基准 B（只读）
 const rightContent = computed(() => {
-  const active = store.getActiveTab();
-  return active ? active.content : '';
+	const active = store.getActiveTab();
+	return active ? active.content : '';
 });
 
 const error = computed(() => store.diffSidebar.error);
@@ -292,321 +292,358 @@ const SIDEBAR_MIN_WIDTH = 380;
 const SIDEBAR_MAX_WIDTH = 920;
 
 const clampSidebarWidth = (width) => {
-  const numeric = Number(width);
-  if (!Number.isFinite(numeric)) return Math.max(520, SIDEBAR_MIN_WIDTH);
-  const viewport = typeof window !== 'undefined' ? window.innerWidth : 1280;
-  const viewportLimitedMax = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, viewport - 220));
-  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(viewportLimitedMax, numeric));
+	const numeric = Number(width);
+	if (!Number.isFinite(numeric)) return Math.max(520, SIDEBAR_MIN_WIDTH);
+	const viewport = typeof window !== 'undefined' ? window.innerWidth : 1280;
+	const viewportLimitedMax = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, viewport - 220));
+	return Math.max(SIDEBAR_MIN_WIDTH, Math.min(viewportLimitedMax, numeric));
 };
 
 const getDefaultSidebarWidth = () => {
-  if (typeof window === 'undefined') return 560;
-  const byClamp = Math.min(640, Math.max(520, window.innerWidth * 0.42));
-  return clampSidebarWidth(byClamp);
+	if (typeof window === 'undefined') return 560;
+	const byClamp = Math.min(640, Math.max(520, window.innerWidth * 0.42));
+	return clampSidebarWidth(byClamp);
 };
 
 const getCurrentSidebarWidth = () => {
-  const measured = sidebarRef.value?.getBoundingClientRect?.().width;
-  if (Number.isFinite(measured) && measured > 0) {
-    return measured;
-  }
-  if (sidebarWidth.value) {
-    return sidebarWidth.value;
-  }
-  return getDefaultSidebarWidth();
+	const measured = sidebarRef.value?.getBoundingClientRect?.().width;
+	if (Number.isFinite(measured) && measured > 0) {
+		return measured;
+	}
+	if (sidebarWidth.value) {
+		return sidebarWidth.value;
+	}
+	return getDefaultSidebarWidth();
 };
 
 const sidebarInlineStyle = computed(() => {
-  if (!sidebarWidth.value) {
-    return null;
-  }
-  return {
-    width: `${sidebarWidth.value}px`
-  };
+	if (!sidebarWidth.value) {
+		return null;
+	}
+	return {
+		width: `${sidebarWidth.value}px`
+	};
 });
 
 const clearSidebarResizeSelection = () => {
-  isSidebarResizing.value = false;
-  try {
-    if (typeof document !== 'undefined' && document.body) {
-      document.body.style.userSelect = '';
-      document.body.style.cursor = '';
-    }
-  } catch (_) {
-    // ignore
-  }
+	isSidebarResizing.value = false;
+	try {
+		if (typeof document !== 'undefined' && document.body) {
+			document.body.style.userSelect = '';
+			document.body.style.cursor = '';
+		}
+	} catch (_) {
+		// ignore
+	}
 };
 
 const startSidebarResize = (event) => {
-  if (event.button !== 0 || !visible.value || collapsed.value) {
-    return;
-  }
-  event.preventDefault();
-  const startX = event.clientX;
-  const startWidth = getCurrentSidebarWidth();
+	if (event.button !== 0 || !visible.value || collapsed.value) {
+		return;
+	}
+	event.preventDefault();
+	const startX = event.clientX;
+	const startWidth = getCurrentSidebarWidth();
 
-  const onMove = (moveEvent) => {
-    const next = startWidth - (moveEvent.clientX - startX);
-    sidebarWidth.value = clampSidebarWidth(next);
-  };
+	const onMove = (moveEvent) => {
+		const next = startWidth - (moveEvent.clientX - startX);
+		sidebarWidth.value = clampSidebarWidth(next);
+	};
 
-  const stop = () => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', stop);
-      }
-    } catch (_) {
-      // ignore
-    }
-    clearSidebarResizeSelection();
-  };
+	const stop = () => {
+		try {
+			if (typeof window !== 'undefined') {
+				window.removeEventListener('mousemove', onMove);
+				window.removeEventListener('mouseup', stop);
+			}
+		} catch (_) {
+			// ignore
+		}
+		clearSidebarResizeSelection();
+	};
 
-  isSidebarResizing.value = true;
-  try {
-    if (typeof document !== 'undefined' && document.body) {
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'col-resize';
-    }
-  } catch (_) {
-    // ignore
-  }
+	isSidebarResizing.value = true;
+	try {
+		if (typeof document !== 'undefined' && document.body) {
+			document.body.style.userSelect = 'none';
+			document.body.style.cursor = 'col-resize';
+		}
+	} catch (_) {
+		// ignore
+	}
 
-  if (typeof window !== 'undefined') {
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', stop);
-  }
+	if (typeof window !== 'undefined') {
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', stop);
+	}
 };
 
 const resetSidebarWidth = () => {
-  sidebarWidth.value = null;
+	sidebarWidth.value = null;
 };
 
 const editorRef = ref(null);
 
 // 调用 Editor 的 format（若存在）
 function handleFormatLeft() {
-  if (editorRef.value && editorRef.value.format) {
-    editorRef.value.format();
-  } else {
-    try {
-      const parsed = JSON.parse(leftInput.value || '');
-      store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
-      leftError.value = '';
-    } catch (e) {
-      leftError.value = 'JSON 格式错误: ' + e.message;
-    }
-  }
+	if (editorRef.value && editorRef.value.format) {
+		editorRef.value.format();
+	} else {
+		try {
+			const parsed = JSON.parse(leftInput.value || '');
+			store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
+			leftError.value = '';
+		} catch (e) {
+			leftError.value = 'JSON 格式错误: ' + e.message;
+		}
+	}
 }
 
 async function handleLeftPaste() {
-  try {
-    let text = '';
-    if (navigator.clipboard && navigator.clipboard.readText) {
-      text = await navigator.clipboard.readText();
-    } else {
-      notify.warn('当前环境不支持读取剪贴板');
-      return;
-    }
-    if (!text) return;
-    try {
-      const parsed = JSON.parse(text);
-      store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
-    } catch {
-      store.diffSidebar.leftInput = text;
-    }
-    leftError.value = '';
-  } catch (e) {
-    notify.error('粘贴失败: ' + e.message);
-  }
+	try {
+		let text = '';
+		if (navigator.clipboard && navigator.clipboard.readText) {
+			text = await navigator.clipboard.readText();
+		} else {
+			notify.warn('当前环境不支持读取剪贴板');
+			return;
+		}
+		if (!text) return;
+		try {
+			const parsed = JSON.parse(text);
+			store.diffSidebar.leftInput = JSON.stringify(parsed, null, getStringifyIndent());
+		} catch {
+			store.diffSidebar.leftInput = text;
+		}
+		leftError.value = '';
+	} catch (e) {
+		notify.error('粘贴失败: ' + e.message);
+	}
 }
 
 function handleLeftChange(content) {
-  store.diffSidebar.leftInput = content;
-  if (leftError.value) leftError.value = '';
+	store.diffSidebar.leftInput = content;
+	if (leftError.value) leftError.value = '';
 }
 
 function handleBackToInput() {
-  store.diffSidebar.mode = 'input';
+	store.diffSidebar.mode = 'input';
 }
 
 // 执行树形对比
 async function handleCompare() {
-  leftError.value = '';
-  globalError.value = '';
-  if (!leftInput.value || !leftInput.value.trim()) {
-    leftError.value = '请输入 待比对 JSON';
-    return;
-  }
-  if (!rightContent.value || !rightContent.value.trim()) {
-    globalError.value = '主编辑区(JSON 基准)为空或不可用';
-    store.showDiffSidebar(leftInput.value);
-    return;
-  }
+	leftError.value = '';
+	globalError.value = '';
+	if (!leftInput.value || !leftInput.value.trim()) {
+		leftError.value = '请输入 待比对 JSON';
+		return;
+	}
+	if (!rightContent.value || !rightContent.value.trim()) {
+		globalError.value = '主编辑区(JSON 基准)为空或不可用';
+		store.showDiffSidebar(leftInput.value);
+		return;
+	}
 
-  isComparing.value = true;
-  try {
-    // 校验 JSON 格式
-    try {
-      JSON.parse(leftInput.value);
-    } catch (e) {
-      leftError.value = '待比对 JSON 格式错误: ' + e.message;
-      isComparing.value = false;
-      return;
-    }
-    try {
-      JSON.parse(rightContent.value);
-    } catch (e) {
-      globalError.value = '主编辑区 JSON 格式错误: ' + e.message;
-      isComparing.value = false;
-      return;
-    }
+	isComparing.value = true;
+	try {
+		// 校验 JSON 格式
+		try {
+			JSON.parse(leftInput.value);
+		} catch (e) {
+			leftError.value = '待比对 JSON 格式错误: ' + e.message;
+			isComparing.value = false;
+			return;
+		}
+		try {
+			JSON.parse(rightContent.value);
+		} catch (e) {
+			globalError.value = '主编辑区 JSON 格式错误: ' + e.message;
+			isComparing.value = false;
+			return;
+		}
 
-    const sortedLeft = stringifySortedJson(leftInput.value);
-    const sortedRight = stringifySortedJson(rightContent.value);
-    store.showOutputPanel('diff', {
-      left: sortedLeft,
-      right: sortedRight,
-      diffPayload: {
-        diffLines: []
-      }
-    });
-  } catch (e) {
-    store.setDiffError('对比失败: ' + e.message);
-  } finally {
-    isComparing.value = false;
-  }
+		const sortedLeft = stringifySortedJson(leftInput.value);
+		const sortedRight = stringifySortedJson(rightContent.value);
+		store.showOutputPanel('diff', {
+			left: sortedLeft,
+			right: sortedRight,
+			diffPayload: {
+				diffLines: []
+			}
+		});
+	} catch (e) {
+		store.setDiffError('对比失败: ' + e.message);
+	} finally {
+		isComparing.value = false;
+	}
 }
 
 function openLineDiff() {
-  const left = store.diffSidebar.leftContent || leftInput.value || '';
-  const right = store.diffSidebar.rightContent || rightContent.value || '';
-  emit('openLineDiff', left, right);
+	const left = store.diffSidebar.leftContent || leftInput.value || '';
+	const right = store.diffSidebar.rightContent || rightContent.value || '';
+	emit('openLineDiff', left, right);
 }
 
 function openCenteredDiff() {
-  const left = store.diffSidebar.leftContent || leftInput.value || '';
-  const right = store.diffSidebar.rightContent || rightContent.value || '';
-  emit('openCenteredDiff', left, right);
+	const left = store.diffSidebar.leftContent || leftInput.value || '';
+	const right = store.diffSidebar.rightContent || rightContent.value || '';
+	emit('openCenteredDiff', left, right);
 }
 
 function closeSidebar() {
-  store.hideDiffSidebar();
-  leftError.value = '';
-  globalError.value = '';
+	store.hideDiffSidebar();
+	leftError.value = '';
+	globalError.value = '';
 }
 
 onUnmounted(() => {
-  clearSidebarResizeSelection();
+	clearSidebarResizeSelection();
 });
 
 watch(shouldUseOutputMonaco, () => {
-  void ensureOutputMonacoViewer();
+	void ensureOutputMonacoViewer();
 });
 
 watch(outputMonacoContent, () => {
-  void ensureOutputMonacoViewer();
+	void ensureOutputMonacoViewer();
 });
 
 watch(() => store.outputPanel.currentTab, () => {
-  void ensureOutputMonacoViewer();
+	void ensureOutputMonacoViewer();
 });
 
 onMounted(() => {
-  void ensureOutputMonacoViewer();
+	void ensureOutputMonacoViewer();
 });
 
 onBeforeUnmount(() => {
-  disposeOutputMonaco();
+	disposeOutputMonaco();
 });
 
 </script>
 
 <template>
-  <aside ref="sidebarRef" class="diff-sidebar" :class="{ active: visible, collapsed: collapsed }" :style="sidebarInlineStyle">
-    <div
-      v-if="visible && !collapsed"
-      class="diff-sidebar-resizer"
-      :class="{ active: isSidebarResizing }"
-      @mousedown="startSidebarResize"
-      @dblclick="resetSidebarWidth"
-      title="拖动调整右侧栏宽度，双击恢复默认"
-    ></div>
-    <header class="diff-sidebar-header">
-      <div class="sidebar-tabs">
-        <button
-          v-for="tab in visibleTabs"
-          :key="tab.id"
-          :class="['sidebar-tab', { active: tab.id === activeTabId }]"
-          @click="switchTab(tab.id)"
-        >{{ tab.label }}</button>
-      </div>
-      <button class="close-btn" @click="closePanel" title="关闭" aria-label="关闭侧栏">✕</button>
-    </header>
+	<aside
+		ref="sidebarRef"
+		class="diff-sidebar"
+		:class="{ active: visible, collapsed: collapsed }"
+		:style="sidebarInlineStyle"
+	>
+		<div
+			v-if="visible && !collapsed"
+			class="diff-sidebar-resizer"
+			:class="{ active: isSidebarResizing }"
+			title="拖动调整右侧栏宽度，双击恢复默认"
+			@mousedown="startSidebarResize"
+			@dblclick="resetSidebarWidth"
+		/>
+		<header class="diff-sidebar-header">
+			<div class="sidebar-tabs">
+				<button
+					v-for="tab in visibleTabs"
+					:key="tab.id"
+					:class="['sidebar-tab', { active: tab.id === activeTabId }]"
+					@click="switchTab(tab.id)"
+				>
+					{{ tab.label }}
+				</button>
+			</div>
+			<button
+				class="close-btn"
+				title="关闭"
+				aria-label="关闭侧栏"
+				@click="closePanel"
+			>
+				✕
+			</button>
+		</header>
 
-    <div v-if="mode === 'input'" class="input-mode">
-      <div class="input-header">
-        <div class="controls">
-          <button class="diff-btn diff-btn--ghost" @click="handleFormatLeft">格式化</button>
-          <button class="diff-btn diff-btn--ghost" @click="handleLeftPaste">粘贴并格式化</button>
-        </div>
-        <div class="actions">
-          <button class="diff-btn diff-btn--primary" @click="handleCompare" :disabled="isComparing">⚖️ 对比主编辑区</button>
-        </div>
-      </div>
+		<div v-if="mode === 'input'" class="input-mode">
+			<div class="input-header">
+				<div class="controls">
+					<button class="diff-btn diff-btn--ghost" @click="handleFormatLeft">
+						格式化
+					</button>
+					<button class="diff-btn diff-btn--ghost" @click="handleLeftPaste">
+						粘贴并格式化
+					</button>
+				</div>
+				<div class="actions">
+					<button class="diff-btn diff-btn--primary" :disabled="isComparing" @click="handleCompare">
+						⚖️ 对比主编辑区
+					</button>
+				</div>
+			</div>
 
-      <div class="editor-wrapper-large">
-        <Editor ref="editorRef" :content="leftInput" @change="handleLeftChange" />
-      </div>
-      <p v-if="leftError" class="error-hint">{{ leftError }}</p>
-    </div>
+			<div class="editor-wrapper-large">
+				<Editor ref="editorRef" :content="leftInput" @change="handleLeftChange" />
+			</div>
+			<p v-if="leftError" class="error-hint">
+				{{ leftError }}
+			</p>
+		</div>
 
-    <div v-else-if="mode === 'result'" class="result-mode">
-      <div class="result-toolbar">
-        <div class="actions">
-          <button class="diff-btn diff-btn--ghost" @click="openLineDiff">居中查看</button>
-          <button class="diff-btn diff-btn--ghost" @click="handleBackToInput">返回编辑</button>
-          <button class="diff-btn diff-btn--ghost" @click="closeSidebar">关闭</button>
-        </div>
-      </div>
+		<div v-else-if="mode === 'result'" class="result-mode">
+			<div class="result-toolbar">
+				<div class="actions">
+					<button class="diff-btn diff-btn--ghost" @click="openLineDiff">
+						居中查看
+					</button>
+					<button class="diff-btn diff-btn--ghost" @click="handleBackToInput">
+						返回编辑
+					</button>
+					<button class="diff-btn diff-btn--ghost" @click="closeSidebar">
+						关闭
+					</button>
+				</div>
+			</div>
 
-      <div class="result-content">
-        <div v-if="error" class="global-error">{{ error }}</div>
-        <div v-else class="result-inner">
-          <DiffView :leftContent="store.diffSidebar.leftContent || leftInput" :rightContent="store.diffSidebar.rightContent || rightContent" :singleColumn="true" />
-        </div>
-      </div>
-    </div>
+			<div class="result-content">
+				<div v-if="error" class="global-error">
+					{{ error }}
+				</div>
+				<div v-else class="result-inner">
+					<DiffView :left-content="store.diffSidebar.leftContent || leftInput" :right-content="store.diffSidebar.rightContent || rightContent" :single-column="true" />
+				</div>
+			</div>
+		</div>
 
-    <!-- output 模式：jsonpath / jq 查询结果 -->
-    <div v-else-if="mode === 'output'" class="output-mode">
-      <div v-if="isDiffOutputTab" class="result-mode">
-        <div class="result-toolbar">
-          <div class="actions">
-            <button class="diff-btn diff-btn--ghost" @click="openLineDiff">居中查看</button>
-          </div>
-        </div>
-        <div class="result-content">
-          <div v-if="error" class="global-error">{{ error }}</div>
-          <div v-else class="result-inner">
-            <DiffView :leftContent="store.diffSidebar.leftContent || leftInput" :rightContent="store.diffSidebar.rightContent || rightContent" :singleColumn="true" />
-          </div>
-        </div>
-      </div>
-      <div class="output-content" v-else-if="outputHasContent">
-        <div v-if="shouldUseOutputMonaco" ref="outputMonacoContainer" class="output-monaco"></div>
-        <pre v-else :class="['output-text', { 'is-error': outputIsError }]">{{ outputFormattedContent }}</pre>
-        <div class="output-actions">
-          <button @click="handleCopyOutput" class="diff-btn diff-btn--ghost">📋 复制</button>
-          <button @click="handleInsertToEditor" class="diff-btn diff-btn--ghost" title="替换主编辑区">🔁 替换主编辑区</button>
-        </div>
-      </div>
-      <div class="result-empty" v-else>
-        <p>暂无输出内容</p>
-      </div>
-    </div>
-
-  </aside>
+		<!-- output 模式：jsonpath / jq 查询结果 -->
+		<div v-else-if="mode === 'output'" class="output-mode">
+			<div v-if="isDiffOutputTab" class="result-mode">
+				<div class="result-toolbar">
+					<div class="actions">
+						<button class="diff-btn diff-btn--ghost" @click="openLineDiff">
+							居中查看
+						</button>
+					</div>
+				</div>
+				<div class="result-content">
+					<div v-if="error" class="global-error">
+						{{ error }}
+					</div>
+					<div v-else class="result-inner">
+						<DiffView :left-content="store.diffSidebar.leftContent || leftInput" :right-content="store.diffSidebar.rightContent || rightContent" :single-column="true" />
+					</div>
+				</div>
+			</div>
+			<div v-else-if="outputHasContent" class="output-content">
+				<div v-if="shouldUseOutputMonaco" ref="outputMonacoContainer" class="output-monaco" />
+				<pre v-else :class="['output-text', { 'is-error': outputIsError }]">{{ outputFormattedContent }}</pre>
+				<div class="output-actions">
+					<button class="diff-btn diff-btn--ghost" @click="handleCopyOutput">
+						📋 复制
+					</button>
+					<button class="diff-btn diff-btn--ghost" title="替换主编辑区" @click="handleInsertToEditor">
+						🔁 替换主编辑区
+					</button>
+				</div>
+			</div>
+			<div v-else class="result-empty">
+				<p>暂无输出内容</p>
+			</div>
+		</div>
+	</aside>
 </template>
 
 <style scoped>

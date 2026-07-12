@@ -17,20 +17,20 @@ import { Builder, parseStringPromise } from 'xml2js';
  *  - renderOpts: { pretty, indent, newline }
  */
 export function jsonToXmlSafe(obj, options = {}) {
-  const rootName = options.rootName || 'root';
-  const headless = options.headless === true;
-  const renderOpts = options.renderOpts || { pretty: true, indent: '  ', newline: '\n' };
+	const rootName = options.rootName || 'root';
+	const headless = options.headless === true;
+	const renderOpts = options.renderOpts || { pretty: true, indent: '  ', newline: '\n' };
 
-  try {
-    const builder = new Builder({
-      rootName,
-      headless,
-      renderOpts
-    });
-    return builder.buildObject(obj);
-  } catch (e) {
-    throw new Error(`jsonToXmlSafe failed: ${e?.message || String(e)}`);
-  }
+	try {
+		const builder = new Builder({
+			rootName,
+			headless,
+			renderOpts
+		});
+		return builder.buildObject(obj);
+	} catch (e) {
+		throw new Error(`jsonToXmlSafe failed: ${e?.message || String(e)}`);
+	}
 }
 
 /**
@@ -39,19 +39,19 @@ export function jsonToXmlSafe(obj, options = {}) {
  * options passed to xml2js.parseStringPromise are accepted.
  */
 export async function xmlToJsonSafe(xml, options = {}) {
-  if (typeof xml !== 'string') {
-    return { success: false, error: 'xml must be a string' };
-  }
-  try {
-    const parseOpts = options.parseOpts || { explicitArray: false, explicitRoot: true, mergeAttrs: true, trim: true };
-    const result = await parseStringPromise(xml, parseOpts);
-    return { success: true, data: result };
-  } catch (e) {
-    return { success: false, error: e?.message || String(e) };
-  }
+	if (typeof xml !== 'string') {
+		return { success: false, error: 'xml must be a string' };
+	}
+	try {
+		const parseOpts = options.parseOpts || { explicitArray: false, explicitRoot: true, mergeAttrs: true, trim: true };
+		const result = await parseStringPromise(xml, parseOpts);
+		return { success: true, data: result };
+	} catch (e) {
+		return { success: false, error: e?.message || String(e) };
+	}
 }
 
 export default {
-  jsonToXmlSafe,
-  xmlToJsonSafe
+	jsonToXmlSafe,
+	xmlToJsonSafe
 };

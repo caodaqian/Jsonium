@@ -1,188 +1,211 @@
 <script setup>
-  import { nextTick, ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 
 const props = defineProps({
-  tabs: {
-    type: Array,
-    default: () => []
-  },
-  activeTabId: {
-    type: [String, Number],
-    default: null
-  }
+	tabs: {
+		type: Array,
+		default: () => []
+	},
+	activeTabId: {
+		type: [String, Number],
+		default: null
+	}
 });
 
 const emit = defineEmits([
-  'selectTab',
-  'closeTab',
-  'newTab',
-  'renameTab',
-  'toggleFavorite',
-  'closeOtherTabs',
-  'closeAllTabs',
-  'closeLeftTabs'
+	'selectTab',
+	'closeTab',
+	'newTab',
+	'renameTab',
+	'toggleFavorite',
+	'closeOtherTabs',
+	'closeAllTabs',
+	'closeLeftTabs'
 ]);
 
 const editingTabId = ref(null);
 const editingName = ref('');
 
 function startEdit(tab) {
-  editingTabId.value = tab.id;
-  editingName.value = tab.name;
+	editingTabId.value = tab.id;
+	editingName.value = tab.name;
 }
 
 function saveEdit(tabId) {
-  // 保存重命名并通知父组件
-  emit('renameTab', tabId, editingName.value);
-  editingTabId.value = null;
-  editingName.value = '';
+	// 保存重命名并通知父组件
+	emit('renameTab', tabId, editingName.value);
+	editingTabId.value = null;
+	editingName.value = '';
 }
 
 function handleKeyDown(e, tabId) {
-  if (e.key === 'Enter') {
-    saveEdit(tabId);
-  } else if (e.key === 'Escape') {
-    editingTabId.value = null;
-  }
+	if (e.key === 'Enter') {
+		saveEdit(tabId);
+	} else if (e.key === 'Escape') {
+		editingTabId.value = null;
+	}
 }
 
 const showMenu = ref(false);
 const menuX = ref(0);
 const menuY = ref(0);
 const menuTabId = ref(null);
-  const menuRef = ref(null);
+const menuRef = ref(null);
 
 function onContextmenu(tab, e) {
-  try {
-    menuTabId.value = tab.id;
-    showMenu.value = true;
-    menuX.value = e.clientX || 0;
-    menuY.value = e.clientY || 0;
-    e.preventDefault && e.preventDefault();
+	try {
+		menuTabId.value = tab.id;
+		showMenu.value = true;
+		menuX.value = e.clientX || 0;
+		menuY.value = e.clientY || 0;
+		e.preventDefault && e.preventDefault();
 
-    // Wait for menu element to render, then adjust to keep it inside viewport
-    nextTick(() => {
-      try {
-        const el = menuRef.value;
-        if (!el || typeof window === 'undefined') return;
-        const rect = el.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+		// Wait for menu element to render, then adjust to keep it inside viewport
+		nextTick(() => {
+			try {
+				const el = menuRef.value;
+				if (!el || typeof window === 'undefined') return;
+				const rect = el.getBoundingClientRect();
+				const vw = window.innerWidth;
+				const vh = window.innerHeight;
 
-        let left = menuX.value;
-        let top = menuY.value;
+				let left = menuX.value;
+				let top = menuY.value;
 
-        // If menu would overflow right edge, shift it left
-        if (left + rect.width > vw) {
-          left = Math.max(8, vw - rect.width - 8);
-        }
+				// If menu would overflow right edge, shift it left
+				if (left + rect.width > vw) {
+					left = Math.max(8, vw - rect.width - 8);
+				}
 
-        // If menu would overflow bottom edge, shift it up
-        if (top + rect.height > vh) {
-          top = Math.max(8, vh - rect.height - 8);
-        }
+				// If menu would overflow bottom edge, shift it up
+				if (top + rect.height > vh) {
+					top = Math.max(8, vh - rect.height - 8);
+				}
 
-        // If menu would overflow left/top (rare), clamp to small margin
-        if (left < 8) left = 8;
-        if (top < 8) top = 8;
+				// If menu would overflow left/top (rare), clamp to small margin
+				if (left < 8) left = 8;
+				if (top < 8) top = 8;
 
-        menuX.value = left;
-        menuY.value = top;
-      } catch (_) { }
-    });
-  } catch (err) {
-    // ignore
-  }
+				menuX.value = left;
+				menuY.value = top;
+			} catch (_) { }
+		});
+	} catch (err) {
+		// ignore
+	}
 }
 
 function closeMenu() {
-  showMenu.value = false;
-  menuTabId.value = null;
+	showMenu.value = false;
+	menuTabId.value = null;
 }
 
 function onMenuAction(action) {
-  const id = menuTabId.value;
-  closeMenu();
-  if (!id) return;
-  if (action === 'close') emit('closeTab', id);
-  else if (action === 'closeOthers') emit('closeOtherTabs', id);
-  else if (action === 'closeLeft') emit('closeLeftTabs', id);
-  else if (action === 'closeAll') emit('closeAllTabs');
-  else if (action === 'toggleFav') emit('toggleFavorite', id);
+	const id = menuTabId.value;
+	closeMenu();
+	if (!id) return;
+	if (action === 'close') emit('closeTab', id);
+	else if (action === 'closeOthers') emit('closeOtherTabs', id);
+	else if (action === 'closeLeft') emit('closeLeftTabs', id);
+	else if (action === 'closeAll') emit('closeAllTabs');
+	else if (action === 'toggleFav') emit('toggleFavorite', id);
 }
 
 // 自动在 showMenu 打开/关闭时注册 window 点击以便点空白区域关闭菜单
 watch(showMenu, (v) => {
-  try {
-    if (typeof window === 'undefined' || !window.addEventListener) return;
-    if (v) window.addEventListener('click', closeMenu);
-    else window.removeEventListener('click', closeMenu);
-  } catch (_) { }
+	try {
+		if (typeof window === 'undefined' || !window.addEventListener) return;
+		if (v) window.addEventListener('click', closeMenu);
+		else window.removeEventListener('click', closeMenu);
+	} catch (_) { }
 });
 </script>
 
 <template>
-  <div class="tab-bar">
-    <div class="tabs-scroll" role="tablist" aria-label="JSON 标签页">
-      <div
-        v-for="tab in tabs"
-        :key="tab.id"
-        :class="['tab', { active: tab.id === activeTabId }]"
-role="tab"
-        :aria-selected="tab.id === activeTabId" tabindex="0"
-        @click="emit('selectTab', tab.id)"
-        @keydown.enter.prevent="emit('selectTab', tab.id)" @keydown.space.prevent="emit('selectTab', tab.id)"
-        @mousedown.middle.prevent="emit('closeTab', tab.id)"
-        @contextmenu.prevent="onContextmenu(tab, $event)"
-      >
-        <div class="tab-content">
-          <span v-if="editingTabId === tab.id" class="tab-label-edit">
-            <input
-:id="`tab-name-${tab.id}`"
-              v-model="editingName"
-aria-label="标签页名称"
-              @blur="saveEdit(tab.id)"
-              @keydown="handleKeyDown($event, tab.id)"
-              @click.stop
-              class="tab-input"
-              autofocus
-            />
-          </span>
-          <span v-else class="tab-label" @dblclick="startEdit(tab)">
-            <span v-if="tab.favorited" class="tab-star">🌟</span>
-            {{ tab.name }}
-          </span>
-          <span v-if="tab.isModified" class="tab-modified">●</span>
-        </div>
-        <button
-          class="tab-close"
-          @click.stop="emit('closeTab', tab.id)"
-          title="关闭"
-        >
-          ×
-        </button>
-      </div>
-    </div>
+	<div class="tab-bar">
+		<div class="tabs-scroll" role="tablist" aria-label="JSON 标签页">
+			<div
+				v-for="tab in tabs"
+				:key="tab.id"
+				:class="['tab', { active: tab.id === activeTabId }]"
+				role="tab"
+				:aria-selected="tab.id === activeTabId"
+				tabindex="0"
+				@click="emit('selectTab', tab.id)"
+				@keydown.enter.prevent="emit('selectTab', tab.id)"
+				@keydown.space.prevent="emit('selectTab', tab.id)"
+				@mousedown.middle.prevent="emit('closeTab', tab.id)"
+				@contextmenu.prevent="onContextmenu(tab, $event)"
+			>
+				<div class="tab-content">
+					<span v-if="editingTabId === tab.id" class="tab-label-edit">
+						<input
+							:id="`tab-name-${tab.id}`"
+							v-model="editingName"
+							aria-label="标签页名称"
+							class="tab-input"
+							autofocus
+							@blur="saveEdit(tab.id)"
+							@keydown="handleKeyDown($event, tab.id)"
+							@click.stop
+						>
+					</span>
+					<span v-else class="tab-label" @dblclick="startEdit(tab)">
+						<span v-if="tab.favorited" class="tab-star">🌟</span>
+						{{ tab.name }}
+					</span>
+					<span v-if="tab.isModified" class="tab-modified">●</span>
+				</div>
+				<button
+					class="tab-close"
+					title="关闭"
+					@click.stop="emit('closeTab', tab.id)"
+				>
+					×
+				</button>
+			</div>
+		</div>
 
-    <div v-if="showMenu" ref="menuRef" class="tab-context-menu" :style="{ left: menuX + 'px', top: menuY + 'px' }"
-      @click.stop>
-      <ul class="menu-list" role="menu">
-        <li><button type="button" role="menuitem" @click.stop="onMenuAction('close')">关闭此标签页</button></li>
-        <li><button type="button" role="menuitem" @click.stop="onMenuAction('closeOthers')">关闭其他标签页</button></li>
-        <li><button type="button" role="menuitem" @click.stop="onMenuAction('closeLeft')">关闭左侧标签页</button></li>
-        <li><button type="button" role="menuitem" @click.stop="onMenuAction('closeAll')">关闭所有标签页</button></li>
-        <li>
-          <button type="button" role="menuitem" @click.stop="onMenuAction('toggleFav')">
-            {{(tabs.find(t => t.id === menuTabId) && tabs.find(t => t.id === menuTabId).favorited) ? '取消收藏' : '收藏'}}
-          </button>
-        </li>
-      </ul>
-    </div>
+		<div
+			v-if="showMenu"
+			ref="menuRef"
+			class="tab-context-menu"
+			:style="{ left: menuX + 'px', top: menuY + 'px' }"
+			@click.stop
+		>
+			<ul class="menu-list" role="menu">
+				<li>
+					<button type="button" role="menuitem" @click.stop="onMenuAction('close')">
+						关闭此标签页
+					</button>
+				</li>
+				<li>
+					<button type="button" role="menuitem" @click.stop="onMenuAction('closeOthers')">
+						关闭其他标签页
+					</button>
+				</li>
+				<li>
+					<button type="button" role="menuitem" @click.stop="onMenuAction('closeLeft')">
+						关闭左侧标签页
+					</button>
+				</li>
+				<li>
+					<button type="button" role="menuitem" @click.stop="onMenuAction('closeAll')">
+						关闭所有标签页
+					</button>
+				</li>
+				<li>
+					<button type="button" role="menuitem" @click.stop="onMenuAction('toggleFav')">
+						{{ (tabs.find(t => t.id === menuTabId) && tabs.find(t => t.id === menuTabId).favorited) ? '取消收藏' : '收藏' }}
+					</button>
+				</li>
+			</ul>
+		</div>
 
-    <button class="tab-new" @click="emit('newTab')" title="新建标签页">
-      +
-    </button>
-  </div>
+		<button class="tab-new" title="新建标签页" @click="emit('newTab')">
+			+
+		</button>
+	</div>
 </template>
 
 <style scoped>

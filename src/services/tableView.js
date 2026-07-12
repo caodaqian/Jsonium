@@ -21,11 +21,11 @@ import { getStringifyIndent } from '../utils/indent.js';
  * @returns {'jsonpath'|'jq'|'dot'}
  */
 export function detectPathType(path) {
-  if (!path) return 'dot';
-  const p = path.trim();
-  if (p.startsWith('$')) return 'jsonpath';
-  if (p.startsWith('.')) return 'jq';
-  return 'dot';
+	if (!path) return 'dot';
+	const p = path.trim();
+	if (p.startsWith('$')) return 'jsonpath';
+	if (p.startsWith('.')) return 'jq';
+	return 'dot';
 }
 
 /**
@@ -39,55 +39,55 @@ export function detectPathType(path) {
  *   - refPath：JSONPath 字符串路径（用于写回定位），仅 jsonpath/dot 有意义
  */
 export function resolveArrayPath(parsed, path) {
-  const type = detectPathType(path);
+	const type = detectPathType(path);
 
-  if (type === 'dot') {
-    const arr = getByDotPath(parsed, path);
-    return { array: arr, refPath: path };
-  }
+	if (type === 'dot') {
+		const arr = getByDotPath(parsed, path);
+		return { array: arr, refPath: path };
+	}
 
-  if (type === 'jsonpath') {
-    try {
-      const results = JSONPath({ path, json: parsed });
-      if (!Array.isArray(results) || results.length === 0) {
-        return { array: null, refPath: null, error: `JSONPath "${path}" 无匹配结果` };
-      }
-      // 若结果数组只有一项且该项本身是数组，将其展开（典型场景：$.items -> 数组节点）
-      if (results.length === 1 && Array.isArray(results[0])) {
-        // 同时获取精确路径用于写回
-        const pathStrs = JSONPath({ path, json: parsed, resultType: 'path' });
-        const refPath = pathStrs && pathStrs[0] ? pathStrs[0] : null;
-        return { array: results[0], refPath };
-      }
-      // 若结果只有一项但该项不是数组，说明路径指向了一个非数组节点 → 报错
-      if (results.length === 1 && !Array.isArray(results[0])) {
-        return { array: null, refPath: null, error: `JSONPath "${path}" 指向的值不是数组` };
-      }
-      // 否则把匹配到的若干元素本身当作行集合
-      return { array: results, refPath: null };
-    } catch (e) {
-      return { array: null, refPath: null, error: `JSONPath 解析失败: ${e.message}` };
-    }
-  }
+	if (type === 'jsonpath') {
+		try {
+			const results = JSONPath({ path, json: parsed });
+			if (!Array.isArray(results) || results.length === 0) {
+				return { array: null, refPath: null, error: `JSONPath "${path}" 无匹配结果` };
+			}
+			// 若结果数组只有一项且该项本身是数组，将其展开（典型场景：$.items -> 数组节点）
+			if (results.length === 1 && Array.isArray(results[0])) {
+				// 同时获取精确路径用于写回
+				const pathStrs = JSONPath({ path, json: parsed, resultType: 'path' });
+				const refPath = pathStrs && pathStrs[0] ? pathStrs[0] : null;
+				return { array: results[0], refPath };
+			}
+			// 若结果只有一项但该项不是数组，说明路径指向了一个非数组节点 → 报错
+			if (results.length === 1 && !Array.isArray(results[0])) {
+				return { array: null, refPath: null, error: `JSONPath "${path}" 指向的值不是数组` };
+			}
+			// 否则把匹配到的若干元素本身当作行集合
+			return { array: results, refPath: null };
+		} catch (e) {
+			return { array: null, refPath: null, error: `JSONPath 解析失败: ${e.message}` };
+		}
+	}
 
-  if (type === 'jq') {
-    // 使用内部的简化 jq 实现
-    try {
-      const arr = evalSimpleJq(parsed, path);
-      if (arr === null || arr === undefined) {
-        return { array: null, refPath: null, error: `jq 表达式 "${path}" 无匹配结果` };
-      }
-      if (Array.isArray(arr)) {
-        // 若结果是单个数组（即整个节点本身是数组），直接使用
-        return { array: arr, refPath: null };
-      }
-      return { array: null, refPath: null, error: `jq 表达式 "${path}" 未返回数组` };
-    } catch (e) {
-      return { array: null, refPath: null, error: `jq 解析失败: ${e.message}` };
-    }
-  }
+	if (type === 'jq') {
+		// 使用内部的简化 jq 实现
+		try {
+			const arr = evalSimpleJq(parsed, path);
+			if (arr === null || arr === undefined) {
+				return { array: null, refPath: null, error: `jq 表达式 "${path}" 无匹配结果` };
+			}
+			if (Array.isArray(arr)) {
+				// 若结果是单个数组（即整个节点本身是数组），直接使用
+				return { array: arr, refPath: null };
+			}
+			return { array: null, refPath: null, error: `jq 表达式 "${path}" 未返回数组` };
+		} catch (e) {
+			return { array: null, refPath: null, error: `jq 解析失败: ${e.message}` };
+		}
+	}
 
-  return { array: null, refPath: null, error: `未知路径类型` };
+	return { array: null, refPath: null, error: `未知路径类型` };
 }
 
 /**
@@ -98,31 +98,31 @@ export function resolveArrayPath(parsed, path) {
  * @returns {any}
  */
 function evalSimpleJq(data, expr) {
-  let e = expr.trim();
-  if (e.startsWith('.')) e = e.slice(1);
-  if (e === '' || e === '.') return data;
-  // 逐步解析 .key 与 [n] 访问
-  const tokenRe = /([^.[[\]]+)|\[(\d+)\]/g;
-  let cur = data;
-  // 按分隔符 . 与 [ 切分，逐步访问
-  let remaining = e;
-  while (remaining.length > 0 && cur != null) {
-    // 匹配 .key 或 [n] 或 key
-    const dotMatch = remaining.match(/^\.?([^.[[\]]+)(.*)/);
-    const bracketMatch = remaining.match(/^\[(\d+)\](.*)/);
-    if (dotMatch) {
-      const key = dotMatch[1];
-      remaining = dotMatch[2] || '';
-      cur = cur[key];
-    } else if (bracketMatch) {
-      const idx = parseInt(bracketMatch[1], 10);
-      remaining = bracketMatch[2] || '';
-      cur = Array.isArray(cur) ? cur[idx] : undefined;
-    } else {
-      break;
-    }
-  }
-  return cur;
+	let e = expr.trim();
+	if (e.startsWith('.')) e = e.slice(1);
+	if (e === '' || e === '.') return data;
+	// 逐步解析 .key 与 [n] 访问
+	const tokenRe = /([^.[[\]]+)|\[(\d+)\]/g;
+	let cur = data;
+	// 按分隔符 . 与 [ 切分，逐步访问
+	let remaining = e;
+	while (remaining.length > 0 && cur != null) {
+		// 匹配 .key 或 [n] 或 key
+		const dotMatch = remaining.match(/^\.?([^.[[\]]+)(.*)/);
+		const bracketMatch = remaining.match(/^\[(\d+)\](.*)/);
+		if (dotMatch) {
+			const key = dotMatch[1];
+			remaining = dotMatch[2] || '';
+			cur = cur[key];
+		} else if (bracketMatch) {
+			const idx = parseInt(bracketMatch[1], 10);
+			remaining = bracketMatch[2] || '';
+			cur = Array.isArray(cur) ? cur[idx] : undefined;
+		} else {
+			break;
+		}
+	}
+	return cur;
 }
 
 /**
@@ -134,18 +134,18 @@ function evalSimpleJq(data, expr) {
  * @returns {string}
  */
 function jsonPathStrToDotPath(pathStr) {
-  // 去掉开头的 $
-  let s = pathStr.replace(/^\$/, '');
-  // 替换 ['key'] 为 .key
-  s = s.replace(/\['([^']+)'\]/g, '.$1');
-  // 替换 ["key"] 为 .key
-  s = s.replace(/\["([^"]+)"\]/g, '.$1');
-  // 替换 [n] 数字索引为 .n（getByDotPath 不支持数组下标，但这里我们用点路径会失败）
-  // 对于数字索引，实际上 getByDotPath 会把 '0' 作为属性名访问数组，刚好有效
-  s = s.replace(/\[(\d+)\]/g, '.$1');
-  // 去掉开头多余的 .
-  s = s.replace(/^\./, '');
-  return s;
+	// 去掉开头的 $
+	let s = pathStr.replace(/^\$/, '');
+	// 替换 ['key'] 为 .key
+	s = s.replace(/\['([^']+)'\]/g, '.$1');
+	// 替换 ["key"] 为 .key
+	s = s.replace(/\["([^"]+)"\]/g, '.$1');
+	// 替换 [n] 数字索引为 .n（getByDotPath 不支持数组下标，但这里我们用点路径会失败）
+	// 对于数字索引，实际上 getByDotPath 会把 '0' 作为属性名访问数组，刚好有效
+	s = s.replace(/\[(\d+)\]/g, '.$1');
+	// 去掉开头多余的 .
+	s = s.replace(/^\./, '');
+	return s;
 }
 
 // =============================================
@@ -160,14 +160,14 @@ function jsonPathStrToDotPath(pathStr) {
  * @returns {any}
  */
 export function getByDotPath(obj, path) {
-  if (obj == null || !path) return undefined;
-  const parts = path.split('.');
-  let cur = obj;
-  for (const part of parts) {
-    if (cur == null || typeof cur !== 'object') return undefined;
-    cur = cur[part];
-  }
-  return cur;
+	if (obj == null || !path) return undefined;
+	const parts = path.split('.');
+	let cur = obj;
+	for (const part of parts) {
+		if (cur == null || typeof cur !== 'object') return undefined;
+		cur = cur[part];
+	}
+	return cur;
 }
 
 /**
@@ -177,17 +177,17 @@ export function getByDotPath(obj, path) {
  * @param {any} value
  */
 export function setByDotPath(obj, path, value) {
-  if (obj == null || !path) return;
-  const parts = path.split('.');
-  let cur = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i];
-    if (cur[part] == null || typeof cur[part] !== 'object') {
-      cur[part] = {};
-    }
-    cur = cur[part];
-  }
-  cur[parts[parts.length - 1]] = value;
+	if (obj == null || !path) return;
+	const parts = path.split('.');
+	let cur = obj;
+	for (let i = 0; i < parts.length - 1; i++) {
+		const part = parts[i];
+		if (cur[part] == null || typeof cur[part] !== 'object') {
+			cur[part] = {};
+		}
+		cur = cur[part];
+	}
+	cur[parts[parts.length - 1]] = value;
 }
 
 // =============================================
@@ -202,27 +202,27 @@ export function setByDotPath(obj, path, value) {
  * @returns {string[]}
  */
 export function collectAllPaths(rows, maxDepth = 3) {
-  const pathSet = new Set();
+	const pathSet = new Set();
 
-  function traverse(obj, prefix, depth) {
-    if (depth > maxDepth || obj == null || typeof obj !== 'object' || Array.isArray(obj)) return;
-    for (const key of Object.keys(obj)) {
-      if (key === '_rowIndex') continue;
-      const fullPath = prefix ? `${prefix}.${key}` : key;
-      pathSet.add(fullPath);
-      if (depth < maxDepth && obj[key] != null && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
-        traverse(obj[key], fullPath, depth + 1);
-      }
-    }
-  }
+	function traverse(obj, prefix, depth) {
+		if (depth > maxDepth || obj == null || typeof obj !== 'object' || Array.isArray(obj)) return;
+		for (const key of Object.keys(obj)) {
+			if (key === '_rowIndex') continue;
+			const fullPath = prefix ? `${prefix}.${key}` : key;
+			pathSet.add(fullPath);
+			if (depth < maxDepth && obj[key] != null && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+				traverse(obj[key], fullPath, depth + 1);
+			}
+		}
+	}
 
-  // 仅对前 100 行采样，避免超大数组卡顿
-  const sample = rows.slice(0, 100);
-  for (const row of sample) {
-    traverse(row, '', 1);
-  }
+	// 仅对前 100 行采样，避免超大数组卡顿
+	const sample = rows.slice(0, 100);
+	for (const row of sample) {
+		traverse(row, '', 1);
+	}
 
-  return Array.from(pathSet);
+	return Array.from(pathSet);
 }
 
 /**
@@ -233,63 +233,63 @@ export function collectAllPaths(rows, maxDepth = 3) {
  * @returns {import('./tableView.js').TableColumn[]}
  */
 export function detectColumnTypes(rows, paths) {
-  const sample = rows.slice(0, 100);
+	const sample = rows.slice(0, 100);
 
-  return paths.map(path => {
-    const typeCounts = {};
-    for (const row of sample) {
-      const val = getByDotPath(row, path);
-      let type = 'string';
-      if (val === null || val === undefined) type = 'null';
-      else if (typeof val === 'number') type = 'number';
-      else if (typeof val === 'boolean') type = 'boolean';
-      else if (Array.isArray(val)) type = 'array';
-      else if (typeof val === 'object') type = 'object';
-      else type = 'string';
-      typeCounts[type] = (typeCounts[type] || 0) + 1;
-    }
-    // 找出出现最多的类型（排除 null）
-    let dominantType = 'string';
-    let maxCount = 0;
-    for (const [t, cnt] of Object.entries(typeCounts)) {
-      if (t !== 'null' && cnt > maxCount) {
-        dominantType = t;
-        maxCount = cnt;
-      }
-    }
-    if (maxCount === 0) dominantType = 'string'; // 全是 null
+	return paths.map(path => {
+		const typeCounts = {};
+		for (const row of sample) {
+			const val = getByDotPath(row, path);
+			let type = 'string';
+			if (val === null || val === undefined) type = 'null';
+			else if (typeof val === 'number') type = 'number';
+			else if (typeof val === 'boolean') type = 'boolean';
+			else if (Array.isArray(val)) type = 'array';
+			else if (typeof val === 'object') type = 'object';
+			else type = 'string';
+			typeCounts[type] = (typeCounts[type] || 0) + 1;
+		}
+		// 找出出现最多的类型（排除 null）
+		let dominantType = 'string';
+		let maxCount = 0;
+		for (const [t, cnt] of Object.entries(typeCounts)) {
+			if (t !== 'null' && cnt > maxCount) {
+				dominantType = t;
+				maxCount = cnt;
+			}
+		}
+		if (maxCount === 0) dominantType = 'string'; // 全是 null
 
-    return {
-      id: path,
-      path,
-      label: path,
-      type: dominantType,
-      visible: true,
-      editable: dominantType !== 'object' && dominantType !== 'array'
-    };
-  });
+		return {
+			id: path,
+			path,
+			label: path,
+			type: dominantType,
+			visible: true,
+			editable: dominantType !== 'object' && dominantType !== 'array'
+		};
+	});
 }
 
 export function suggestArrayPaths(data, { limit = 8, maxDepth = 5 } = {}) {
-  const paths = [];
+	const paths = [];
 
-  function visit(value, prefix, depth) {
-    if (paths.length >= limit || depth > maxDepth || value == null || typeof value !== 'object') return;
+	function visit(value, prefix, depth) {
+		if (paths.length >= limit || depth > maxDepth || value == null || typeof value !== 'object') return;
 
-    if (Array.isArray(value)) {
-      if (prefix) paths.push(prefix);
-      return;
-    }
+		if (Array.isArray(value)) {
+			if (prefix) paths.push(prefix);
+			return;
+		}
 
-    for (const [key, child] of Object.entries(value)) {
-      if (paths.length >= limit) return;
-      const childPath = prefix ? `${prefix}.${key}` : key;
-      visit(child, childPath, depth + 1);
-    }
-  }
+		for (const [key, child] of Object.entries(value)) {
+			if (paths.length >= limit) return;
+			const childPath = prefix ? `${prefix}.${key}` : key;
+			visit(child, childPath, depth + 1);
+		}
+	}
 
-  visit(data, '', 0);
-  return paths;
+	visit(data, '', 0);
+	return paths;
 }
 
 // =============================================
@@ -307,70 +307,70 @@ export function suggestArrayPaths(data, { limit = 8, maxDepth = 5 } = {}) {
  * @returns {{ success: boolean, rows: object[], columns: object[], totalRows: number, error?: string }}
  */
 export function extractTableFromJson(jsonString, { arrayPath = null, sampleLimit = 200 } = {}) {
-  try {
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonString);
-    } catch (e) {
-      return { success: false, rows: [], columns: [], totalRows: 0, error: `JSON 解析失败: ${e.message}` };
-    }
+	try {
+		let parsed;
+		try {
+			parsed = JSON.parse(jsonString);
+		} catch (e) {
+			return { success: false, rows: [], columns: [], totalRows: 0, error: `JSON 解析失败: ${e.message}` };
+		}
 
-    // 定位目标数组（支持 JSONPath / jq / 点路径）
-    let targetArray;
-    if (arrayPath) {
-      const resolved = resolveArrayPath(parsed, arrayPath);
-      if (resolved.error) {
-        return { success: false, rows: [], columns: [], totalRows: 0, error: resolved.error };
-      }
-      targetArray = resolved.array;
-    } else {
-      targetArray = parsed;
-    }
+		// 定位目标数组（支持 JSONPath / jq / 点路径）
+		let targetArray;
+		if (arrayPath) {
+			const resolved = resolveArrayPath(parsed, arrayPath);
+			if (resolved.error) {
+				return { success: false, rows: [], columns: [], totalRows: 0, error: resolved.error };
+			}
+			targetArray = resolved.array;
+		} else {
+			targetArray = parsed;
+		}
 
-    if (!Array.isArray(targetArray)) {
-      const suggestions = suggestArrayPaths(parsed);
-      return {
-        success: false,
-        rows: [],
-        columns: [],
-        totalRows: 0,
-        suggestions,
-        error: arrayPath
-          ? `路径 "${arrayPath}" 对应的值不是数组`
-          : 'JSON 根节点不是数组，请指定目标数组路径'
-      };
-    }
+		if (!Array.isArray(targetArray)) {
+			const suggestions = suggestArrayPaths(parsed);
+			return {
+				success: false,
+				rows: [],
+				columns: [],
+				totalRows: 0,
+				suggestions,
+				error: arrayPath
+					? `路径 "${arrayPath}" 对应的值不是数组`
+					: 'JSON 根节点不是数组，请指定目标数组路径'
+			};
+		}
 
-    if (targetArray.length === 0) {
-      return { success: true, rows: [], columns: [], totalRows: 0 };
-    }
+		if (targetArray.length === 0) {
+			return { success: true, rows: [], columns: [], totalRows: 0 };
+		}
 
-    // 构建行：每行保留原始数组索引
-    const rows = targetArray.map((item, index) => {
-      if (item == null || typeof item !== 'object' || Array.isArray(item)) {
-        // 原子值行：用 _value 字段包装
-        return { _rowIndex: index, _value: item };
-      }
-      return { _rowIndex: index, ...item };
-    });
+		// 构建行：每行保留原始数组索引
+		const rows = targetArray.map((item, index) => {
+			if (item == null || typeof item !== 'object' || Array.isArray(item)) {
+				// 原子值行：用 _value 字段包装
+				return { _rowIndex: index, _value: item };
+			}
+			return { _rowIndex: index, ...item };
+		});
 
-    // 收集所有路径并推断类型（使用前 sampleLimit 行）
-    const sampleRows = rows.slice(0, sampleLimit);
-    const paths = collectAllPaths(sampleRows, 3);
+		// 收集所有路径并推断类型（使用前 sampleLimit 行）
+		const sampleRows = rows.slice(0, sampleLimit);
+		const paths = collectAllPaths(sampleRows, 3);
 
-    // 若为原子值数组，只有 _value 路径
-    const finalPaths = paths.length > 0 ? paths : ['_value'];
-    const columns = detectColumnTypes(rows, finalPaths);
+		// 若为原子值数组，只有 _value 路径
+		const finalPaths = paths.length > 0 ? paths : ['_value'];
+		const columns = detectColumnTypes(rows, finalPaths);
 
-    return {
-      success: true,
-      rows,
-      columns,
-      totalRows: rows.length
-    };
-  } catch (e) {
-    return { success: false, rows: [], columns: [], totalRows: 0, error: `提取失败: ${e.message}` };
-  }
+		return {
+			success: true,
+			rows,
+			columns,
+			totalRows: rows.length
+		};
+	} catch (e) {
+		return { success: false, rows: [], columns: [], totalRows: 0, error: `提取失败: ${e.message}` };
+	}
 }
 
 // =============================================
@@ -387,82 +387,82 @@ export function extractTableFromJson(jsonString, { arrayPath = null, sampleLimit
  * @returns {{ success: boolean, jsonString: string, error?: string }}
  */
 export function applyEditsToJson(jsonString, { arrayPath = null, edits = [] } = {}) {
-  try {
-    if (!edits || edits.length === 0) {
-      return { success: true, jsonString };
-    }
+	try {
+		if (!edits || edits.length === 0) {
+			return { success: true, jsonString };
+		}
 
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonString);
-    } catch (e) {
-      return { success: false, jsonString, error: `JSON 解析失败: ${e.message}` };
-    }
+		let parsed;
+		try {
+			parsed = JSON.parse(jsonString);
+		} catch (e) {
+			return { success: false, jsonString, error: `JSON 解析失败: ${e.message}` };
+		}
 
-    let targetArray;
-    if (arrayPath) {
-      const type = detectPathType(arrayPath);
+		let targetArray;
+		if (arrayPath) {
+			const type = detectPathType(arrayPath);
 
-      if (type === 'jsonpath') {
-        // 使用 JSONPath 的 path 模式获取精确路径，然后通过 pathUtils 原位写入
-        let paths;
-        try {
-          paths = JSONPath({ path: arrayPath, json: parsed, resultType: 'path' });
-        } catch (e) {
-          return { success: false, jsonString, error: `JSONPath 解析失败: ${e.message}` };
-        }
-        if (!paths || paths.length === 0) {
-          return { success: false, jsonString, error: `JSONPath "${arrayPath}" 无匹配结果` };
-        }
-        if (paths.length > 1) {
-          return { success: false, jsonString, error: `JSONPath "${arrayPath}" 匹配到多个节点，不支持写回（请使用更精确的路径）` };
-        }
-        // JSONPath resultType:'path' 返回字符串，如 "$['data']['users']"
-        // 需要解析为 dot 路径以便 getByDotPath 使用
-        const pathRaw = paths[0]; // 字符串形式: $['data']['users'] 或 $.data.users
-        const pathStr = jsonPathStrToDotPath(pathRaw);
-        targetArray = getByDotPath(parsed, pathStr);
-        if (!Array.isArray(targetArray)) {
-          return { success: false, jsonString, error: '目标路径不是数组' };
-        }
-      } else if (type === 'jq') {
-        // jq 表达式：获取数组引用（evalSimpleJq 返回对原始对象的引用，可直接修改）
-        try {
-          targetArray = evalSimpleJq(parsed, arrayPath);
-        } catch (e) {
-          return { success: false, jsonString, error: `jq 解析失败: ${e.message}` };
-        }
-        if (!Array.isArray(targetArray)) {
-          return { success: false, jsonString, error: `jq 表达式 "${arrayPath}" 未返回数组，不支持写回` };
-        }
-      } else {
-        // 点路径（原有行为）
-        targetArray = getByDotPath(parsed, arrayPath);
-      }
-    } else {
-      targetArray = parsed;
-    }
+			if (type === 'jsonpath') {
+				// 使用 JSONPath 的 path 模式获取精确路径，然后通过 pathUtils 原位写入
+				let paths;
+				try {
+					paths = JSONPath({ path: arrayPath, json: parsed, resultType: 'path' });
+				} catch (e) {
+					return { success: false, jsonString, error: `JSONPath 解析失败: ${e.message}` };
+				}
+				if (!paths || paths.length === 0) {
+					return { success: false, jsonString, error: `JSONPath "${arrayPath}" 无匹配结果` };
+				}
+				if (paths.length > 1) {
+					return { success: false, jsonString, error: `JSONPath "${arrayPath}" 匹配到多个节点，不支持写回（请使用更精确的路径）` };
+				}
+				// JSONPath resultType:'path' 返回字符串，如 "$['data']['users']"
+				// 需要解析为 dot 路径以便 getByDotPath 使用
+				const pathRaw = paths[0]; // 字符串形式: $['data']['users'] 或 $.data.users
+				const pathStr = jsonPathStrToDotPath(pathRaw);
+				targetArray = getByDotPath(parsed, pathStr);
+				if (!Array.isArray(targetArray)) {
+					return { success: false, jsonString, error: '目标路径不是数组' };
+				}
+			} else if (type === 'jq') {
+				// jq 表达式：获取数组引用（evalSimpleJq 返回对原始对象的引用，可直接修改）
+				try {
+					targetArray = evalSimpleJq(parsed, arrayPath);
+				} catch (e) {
+					return { success: false, jsonString, error: `jq 解析失败: ${e.message}` };
+				}
+				if (!Array.isArray(targetArray)) {
+					return { success: false, jsonString, error: `jq 表达式 "${arrayPath}" 未返回数组，不支持写回` };
+				}
+			} else {
+				// 点路径（原有行为）
+				targetArray = getByDotPath(parsed, arrayPath);
+			}
+		} else {
+			targetArray = parsed;
+		}
 
-    if (!Array.isArray(targetArray)) {
-      return { success: false, jsonString, error: '目标路径不是数组' };
-    }
+		if (!Array.isArray(targetArray)) {
+			return { success: false, jsonString, error: '目标路径不是数组' };
+		}
 
-    for (const edit of edits) {
-      const { rowIndex, columnPath, newValue } = edit;
-      if (rowIndex < 0 || rowIndex >= targetArray.length) continue;
-      const item = targetArray[rowIndex];
-      if (columnPath === '_value') {
-        // 原子值行
-        targetArray[rowIndex] = newValue;
-      } else if (item != null && typeof item === 'object' && !Array.isArray(item)) {
-        setByDotPath(item, columnPath, newValue);
-      }
-    }
+		for (const edit of edits) {
+			const { rowIndex, columnPath, newValue } = edit;
+			if (rowIndex < 0 || rowIndex >= targetArray.length) continue;
+			const item = targetArray[rowIndex];
+			if (columnPath === '_value') {
+				// 原子值行
+				targetArray[rowIndex] = newValue;
+			} else if (item != null && typeof item === 'object' && !Array.isArray(item)) {
+				setByDotPath(item, columnPath, newValue);
+			}
+		}
 
-    return { success: true, jsonString: JSON.stringify(parsed, null, getStringifyIndent()) };
-  } catch (e) {
-    return { success: false, jsonString, error: `应用修改失败: ${e.message}` };
-  }
+		return { success: true, jsonString: JSON.stringify(parsed, null, getStringifyIndent()) };
+	} catch (e) {
+		return { success: false, jsonString, error: `应用修改失败: ${e.message}` };
+	}
 }
 
 // =============================================
@@ -476,51 +476,51 @@ export function applyEditsToJson(jsonString, { arrayPath = null, edits = [] } = 
  * @returns {object[]}
  */
 export function filterAndSortRows(rows, { globalSearch = '', columnFilters = {}, sortColumn = null, sortDir = 'asc' } = {}) {
-  let result = rows;
+	let result = rows;
 
-  // 全局搜索（对每行所有字段做字符串匹配，忽略大小写）
-  if (globalSearch && globalSearch.trim()) {
-    const q = globalSearch.trim().toLowerCase();
-    result = result.filter(row => {
-      return Object.entries(row).some(([key, val]) => {
-        if (key === '_rowIndex') return false;
-        return String(val).toLowerCase().includes(q);
-      });
-    });
-  }
+	// 全局搜索（对每行所有字段做字符串匹配，忽略大小写）
+	if (globalSearch && globalSearch.trim()) {
+		const q = globalSearch.trim().toLowerCase();
+		result = result.filter(row => {
+			return Object.entries(row).some(([key, val]) => {
+				if (key === '_rowIndex') return false;
+				return String(val).toLowerCase().includes(q);
+			});
+		});
+	}
 
-  // 列过滤
-  for (const [colPath, filterVal] of Object.entries(columnFilters)) {
-    if (!filterVal || !filterVal.trim()) continue;
-    const q = filterVal.trim().toLowerCase();
-    result = result.filter(row => {
-      const val = getByDotPath(row, colPath);
-      return String(val == null ? '' : val).toLowerCase().includes(q);
-    });
-  }
+	// 列过滤
+	for (const [colPath, filterVal] of Object.entries(columnFilters)) {
+		if (!filterVal || !filterVal.trim()) continue;
+		const q = filterVal.trim().toLowerCase();
+		result = result.filter(row => {
+			const val = getByDotPath(row, colPath);
+			return String(val == null ? '' : val).toLowerCase().includes(q);
+		});
+	}
 
-  // 排序
-  if (sortColumn) {
-    result = [...result].sort((a, b) => {
-      const av = getByDotPath(a, sortColumn);
-      const bv = getByDotPath(b, sortColumn);
-      // null/undefined 排在末尾
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      const aStr = typeof av === 'string' ? av : String(av);
-      const bStr = typeof bv === 'string' ? bv : String(bv);
-      // 尝试数字比较
-      const aNum = Number(av);
-      const bNum = Number(bv);
-      if (!isNaN(aNum) && !isNaN(bNum)) {
-        return sortDir === 'asc' ? aNum - bNum : bNum - aNum;
-      }
-      return sortDir === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
-    });
-  }
+	// 排序
+	if (sortColumn) {
+		result = [...result].sort((a, b) => {
+			const av = getByDotPath(a, sortColumn);
+			const bv = getByDotPath(b, sortColumn);
+			// null/undefined 排在末尾
+			if (av == null && bv == null) return 0;
+			if (av == null) return 1;
+			if (bv == null) return -1;
+			const aStr = typeof av === 'string' ? av : String(av);
+			const bStr = typeof bv === 'string' ? bv : String(bv);
+			// 尝试数字比较
+			const aNum = Number(av);
+			const bNum = Number(bv);
+			if (!isNaN(aNum) && !isNaN(bNum)) {
+				return sortDir === 'asc' ? aNum - bNum : bNum - aNum;
+			}
+			return sortDir === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+		});
+	}
 
-  return result;
+	return result;
 }
 
 // =============================================
@@ -534,26 +534,26 @@ export function filterAndSortRows(rows, { globalSearch = '', columnFilters = {},
  * @param {string} filename
  */
 export function exportTableToCsv(columns, rows, filename = 'table-export.csv') {
-  const visibleCols = columns.filter(c => c.visible);
-  const header = visibleCols.map(c => csvEscape(c.label)).join(',');
-  const lines = rows.map(row => {
-    return visibleCols.map(col => {
-      const val = getByDotPath(row, col.path);
-      if (val === null || val === undefined) return '';
-      if (typeof val === 'object') return csvEscape(JSON.stringify(val));
-      return csvEscape(String(val));
-    }).join(',');
-  });
-  const content = [header, ...lines].join('\n');
-  downloadFile(content, filename, 'text/csv;charset=utf-8;');
+	const visibleCols = columns.filter(c => c.visible);
+	const header = visibleCols.map(c => csvEscape(c.label)).join(',');
+	const lines = rows.map(row => {
+		return visibleCols.map(col => {
+			const val = getByDotPath(row, col.path);
+			if (val === null || val === undefined) return '';
+			if (typeof val === 'object') return csvEscape(JSON.stringify(val));
+			return csvEscape(String(val));
+		}).join(',');
+	});
+	const content = [header, ...lines].join('\n');
+	downloadFile(content, filename, 'text/csv;charset=utf-8;');
 }
 
 function csvEscape(str) {
-  const s = String(str);
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
+	const s = String(str);
+	if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+		return '"' + s.replace(/"/g, '""') + '"';
+	}
+	return s;
 }
 
 /**
@@ -563,27 +563,27 @@ function csvEscape(str) {
  * @param {string} filename
  */
 export async function exportTableToXlsx(columns, rows, filename = 'table-export.xlsx') {
-  try {
-    const XLSX = await import('xlsx');
-    const visibleCols = columns.filter(c => c.visible);
-    const header = visibleCols.map(c => c.label);
-    const data = rows.map(row => {
-      return visibleCols.map(col => {
-        const val = getByDotPath(row, col.path);
-        if (val === null || val === undefined) return '';
-        if (typeof val === 'object') return JSON.stringify(val);
-        return val;
-      });
-    });
-    const wsData = [header, ...data];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-    XLSX.writeFile(wb, filename);
-  } catch (e) {
-    // fallback to CSV
-    exportTableToCsv(columns, rows, filename.replace('.xlsx', '.csv'));
-  }
+	try {
+		const XLSX = await import('xlsx');
+		const visibleCols = columns.filter(c => c.visible);
+		const header = visibleCols.map(c => c.label);
+		const data = rows.map(row => {
+			return visibleCols.map(col => {
+				const val = getByDotPath(row, col.path);
+				if (val === null || val === undefined) return '';
+				if (typeof val === 'object') return JSON.stringify(val);
+				return val;
+			});
+		});
+		const wsData = [header, ...data];
+		const ws = XLSX.utils.aoa_to_sheet(wsData);
+		const wb = XLSX.utils.book_new();
+		XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+		XLSX.writeFile(wb, filename);
+	} catch (e) {
+		// fallback to CSV
+		exportTableToCsv(columns, rows, filename.replace('.xlsx', '.csv'));
+	}
 }
 
 // =============================================
@@ -597,35 +597,35 @@ export async function exportTableToXlsx(columns, rows, filename = 'table-export.
  * @returns {string}
  */
 export function buildCsvString(columns, rows) {
-  const visibleCols = columns.filter(c => c.visible);
-  const header = visibleCols.map(c => csvEscape(c.label)).join(',');
-  const lines = rows.map(row => {
-    return visibleCols.map(col => {
-      const val = getByDotPath(row, col.path);
-      if (val === null || val === undefined) return '';
-      if (typeof val === 'object') return csvEscape(JSON.stringify(val));
-      return csvEscape(String(val));
-    }).join(',');
-  });
-  return [header, ...lines].join('\n');
+	const visibleCols = columns.filter(c => c.visible);
+	const header = visibleCols.map(c => csvEscape(c.label)).join(',');
+	const lines = rows.map(row => {
+		return visibleCols.map(col => {
+			const val = getByDotPath(row, col.path);
+			if (val === null || val === undefined) return '';
+			if (typeof val === 'object') return csvEscape(JSON.stringify(val));
+			return csvEscape(String(val));
+		}).join(',');
+	});
+	return [header, ...lines].join('\n');
 }
 
 function downloadFile(content, filename, mimeType) {
-  try {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 100);
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error('[tableView] downloadFile failed', e);
-  }
+	try {
+		const blob = new Blob([content], { type: mimeType });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		a.style.display = 'none';
+		document.body.appendChild(a);
+		a.click();
+		setTimeout(() => {
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		}, 100);
+	} catch (e) {
+
+		console.error('[tableView] downloadFile failed', e);
+	}
 }

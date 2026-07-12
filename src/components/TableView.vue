@@ -1,20 +1,20 @@
 <script setup>
-  import { computed, ref } from 'vue';
-  import notify from '../services/notify.js';
-  import {
-    applyEditsToJson,
-    exportTableToCsv,
-    exportTableToXlsx,
-    extractTableFromJson,
-    filterAndSortRows
-  } from '../services/tableView.js';
+import { computed, ref } from 'vue';
+import notify from '../services/notify.js';
+import {
+	applyEditsToJson,
+	exportTableToCsv,
+	exportTableToXlsx,
+	extractTableFromJson,
+	filterAndSortRows
+} from '../services/tableView.js';
 
 // =============================================
 // Props & Emits
 // =============================================
 const props = defineProps({
-  jsonContent: { type: String, default: '{}' },
-  arrayPath: { type: String, default: null }
+	jsonContent: { type: String, default: '{}' },
+	arrayPath: { type: String, default: null }
 });
 
 const emit = defineEmits(['apply', 'close']);
@@ -24,7 +24,7 @@ const emit = defineEmits(['apply', 'close']);
 // =============================================
 const loading = ref(false);
 const error = ref('');
-  const pathSuggestions = ref([]);
+const pathSuggestions = ref([]);
 
 // 原始数据
 const allRows = ref([]);
@@ -54,42 +54,42 @@ const arrayPathInput = ref(props.arrayPath || '');
 // 初始化：解析 JSON
 // =============================================
 function loadTable() {
-  loading.value = true;
-  error.value = '';
-  pathSuggestions.value = [];
-  edits.value = {};
-  globalSearch.value = '';
-  columnFilters.value = {};
-  sortColumn.value = null;
-  sortDir.value = 'asc';
-  currentPage.value = 1;
+	loading.value = true;
+	error.value = '';
+	pathSuggestions.value = [];
+	edits.value = {};
+	globalSearch.value = '';
+	columnFilters.value = {};
+	sortColumn.value = null;
+	sortDir.value = 'asc';
+	currentPage.value = 1;
 
-  try {
-    const result = extractTableFromJson(props.jsonContent, {
-      arrayPath: arrayPathInput.value || null
-    });
-    if (!result.success) {
-      error.value = result.error || '解析失败';
-      pathSuggestions.value = Array.isArray(result.suggestions) ? result.suggestions : [];
-      allRows.value = [];
-      columns.value = [];
-      totalRows.value = 0;
-    } else {
-      allRows.value = result.rows;
-      columns.value = result.columns;
-      totalRows.value = result.totalRows;
-    }
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    loading.value = false;
-  }
+	try {
+		const result = extractTableFromJson(props.jsonContent, {
+			arrayPath: arrayPathInput.value || null
+		});
+		if (!result.success) {
+			error.value = result.error || '解析失败';
+			pathSuggestions.value = Array.isArray(result.suggestions) ? result.suggestions : [];
+			allRows.value = [];
+			columns.value = [];
+			totalRows.value = 0;
+		} else {
+			allRows.value = result.rows;
+			columns.value = result.columns;
+			totalRows.value = result.totalRows;
+		}
+	} catch (e) {
+		error.value = e.message;
+	} finally {
+		loading.value = false;
+	}
 }
 
-  function loadSuggestedPath(path) {
-    arrayPathInput.value = path;
-    loadTable();
-  }
+function loadSuggestedPath(path) {
+	arrayPathInput.value = path;
+	loadTable();
+}
 
 // 初始加载
 loadTable();
@@ -98,30 +98,30 @@ loadTable();
 // 过滤 + 排序后的行
 // =============================================
 const filteredRows = computed(() => {
-  const rows = allRows.value.map(row => {
-    // 将本地编辑叠加到行数据上（用于展示）
-    const patched = { ...row };
-    for (const [key, val] of Object.entries(edits.value)) {
-      const [ri, cp] = key.split('::');
-      if (Number(ri) === row._rowIndex) {
-        patched[cp] = val;
-      }
-    }
-    return patched;
-  });
+	const rows = allRows.value.map(row => {
+		// 将本地编辑叠加到行数据上（用于展示）
+		const patched = { ...row };
+		for (const [key, val] of Object.entries(edits.value)) {
+			const [ri, cp] = key.split('::');
+			if (Number(ri) === row._rowIndex) {
+				patched[cp] = val;
+			}
+		}
+		return patched;
+	});
 
-  return filterAndSortRows(rows, {
-    globalSearch: globalSearch.value,
-    columnFilters: columnFilters.value,
-    sortColumn: sortColumn.value,
-    sortDir: sortDir.value
-  });
+	return filterAndSortRows(rows, {
+		globalSearch: globalSearch.value,
+		columnFilters: columnFilters.value,
+		sortColumn: sortColumn.value,
+		sortDir: sortDir.value
+	});
 });
 
 // 当前页行数
 const pagedRows = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  return filteredRows.value.slice(start, start + pageSize.value);
+	const start = (currentPage.value - 1) * pageSize.value;
+	return filteredRows.value.slice(start, start + pageSize.value);
 });
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
@@ -136,162 +136,162 @@ const editingCell = ref(null); // { rowIndex, columnPath }
 const editingValue = ref('');
 
 function startEdit(row, col) {
-  if (!col.editable) return;
-  editingCell.value = { rowIndex: row._rowIndex, columnPath: col.path };
-  const editKey = `${row._rowIndex}::${col.path}`;
-  editingValue.value = editKey in edits.value
-    ? String(edits.value[editKey] ?? '')
-    : String(getCellValue(row, col) ?? '');
+	if (!col.editable) return;
+	editingCell.value = { rowIndex: row._rowIndex, columnPath: col.path };
+	const editKey = `${row._rowIndex}::${col.path}`;
+	editingValue.value = editKey in edits.value
+		? String(edits.value[editKey] ?? '')
+		: String(getCellValue(row, col) ?? '');
 }
 
 function commitEdit() {
-  if (!editingCell.value) return;
-  const { rowIndex, columnPath } = editingCell.value;
-  const col = columns.value.find(c => c.path === columnPath);
-  let parsed = editingValue.value;
-  // 类型转换
-  if (col) {
-    if (col.type === 'number') {
-      const n = Number(editingValue.value);
-      parsed = isNaN(n) ? editingValue.value : n;
-    } else if (col.type === 'boolean') {
-      parsed = editingValue.value === 'true' || editingValue.value === '1';
-    }
-  }
-  edits.value[`${rowIndex}::${columnPath}`] = parsed;
-  editingCell.value = null;
-  editingValue.value = '';
+	if (!editingCell.value) return;
+	const { rowIndex, columnPath } = editingCell.value;
+	const col = columns.value.find(c => c.path === columnPath);
+	let parsed = editingValue.value;
+	// 类型转换
+	if (col) {
+		if (col.type === 'number') {
+			const n = Number(editingValue.value);
+			parsed = isNaN(n) ? editingValue.value : n;
+		} else if (col.type === 'boolean') {
+			parsed = editingValue.value === 'true' || editingValue.value === '1';
+		}
+	}
+	edits.value[`${rowIndex}::${columnPath}`] = parsed;
+	editingCell.value = null;
+	editingValue.value = '';
 }
 
 function cancelEdit() {
-  editingCell.value = null;
-  editingValue.value = '';
+	editingCell.value = null;
+	editingValue.value = '';
 }
 
 function handleCellKeydown(e) {
-  if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
-  if (e.key === 'Escape') cancelEdit();
+	if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+	if (e.key === 'Escape') cancelEdit();
 }
 
 function getCellValue(row, col) {
-  const editKey = `${row._rowIndex}::${col.path}`;
-  if (editKey in edits.value) return edits.value[editKey];
-  // 对于嵌套路径直接从原始行中取（行对象是 flat 的）
-  const val = row[col.path];
-  if (val !== undefined) return val;
-  // 回退到点路径
-  const parts = col.path.split('.');
-  let cur = row;
-  for (const p of parts) {
-    if (cur == null || typeof cur !== 'object') return undefined;
-    cur = cur[p];
-  }
-  return cur;
+	const editKey = `${row._rowIndex}::${col.path}`;
+	if (editKey in edits.value) return edits.value[editKey];
+	// 对于嵌套路径直接从原始行中取（行对象是 flat 的）
+	const val = row[col.path];
+	if (val !== undefined) return val;
+	// 回退到点路径
+	const parts = col.path.split('.');
+	let cur = row;
+	for (const p of parts) {
+		if (cur == null || typeof cur !== 'object') return undefined;
+		cur = cur[p];
+	}
+	return cur;
 }
 
 function formatCellDisplay(row, col) {
-  const val = getCellValue(row, col);
-  if (val === null || val === undefined) return '';
-  if (typeof val === 'object') return JSON.stringify(val);
-  return String(val);
+	const val = getCellValue(row, col);
+	if (val === null || val === undefined) return '';
+	if (typeof val === 'object') return JSON.stringify(val);
+	return String(val);
 }
 
 // =============================================
 // 排序
 // =============================================
 function toggleSort(colPath) {
-  if (sortColumn.value === colPath) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
-  } else {
-    sortColumn.value = colPath;
-    sortDir.value = 'asc';
-  }
-  currentPage.value = 1;
+	if (sortColumn.value === colPath) {
+		sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+	} else {
+		sortColumn.value = colPath;
+		sortDir.value = 'asc';
+	}
+	currentPage.value = 1;
 }
 
 function getSortIcon(colPath) {
-  if (sortColumn.value !== colPath) return '↕';
-  return sortDir.value === 'asc' ? '↑' : '↓';
+	if (sortColumn.value !== colPath) return '↕';
+	return sortDir.value === 'asc' ? '↑' : '↓';
 }
 
 // =============================================
 // 列筛选
 // =============================================
 function updateColumnFilter(path, val) {
-  columnFilters.value = { ...columnFilters.value, [path]: val };
-  currentPage.value = 1;
+	columnFilters.value = { ...columnFilters.value, [path]: val };
+	currentPage.value = 1;
 }
 
 // =============================================
 // 应用修改
 // =============================================
 function handleApply() {
-  const editList = Object.entries(edits.value).map(([key, newValue]) => {
-    const [rowIndex, columnPath] = key.split('::');
-    const row = allRows.value.find(r => r._rowIndex === Number(rowIndex));
-    const oldValue = row ? row[columnPath] : undefined;
-    return { rowIndex: Number(rowIndex), columnPath, oldValue, newValue };
-  });
+	const editList = Object.entries(edits.value).map(([key, newValue]) => {
+		const [rowIndex, columnPath] = key.split('::');
+		const row = allRows.value.find(r => r._rowIndex === Number(rowIndex));
+		const oldValue = row ? row[columnPath] : undefined;
+		return { rowIndex: Number(rowIndex), columnPath, oldValue, newValue };
+	});
 
-  if (editList.length === 0) {
-    notify.warn('没有待应用的修改');
-    return;
-  }
+	if (editList.length === 0) {
+		notify.warn('没有待应用的修改');
+		return;
+	}
 
-  const result = applyEditsToJson(props.jsonContent, {
-    arrayPath: arrayPathInput.value || null,
-    edits: editList
-  });
+	const result = applyEditsToJson(props.jsonContent, {
+		arrayPath: arrayPathInput.value || null,
+		edits: editList
+	});
 
-  if (!result.success) {
-    notify.error('应用失败: ' + result.error);
-    return;
-  }
+	if (!result.success) {
+		notify.error('应用失败: ' + result.error);
+		return;
+	}
 
-  notify.success(`已应用 ${editList.length} 处修改`);
-  emit('apply', result.jsonString);
-  edits.value = {};
+	notify.success(`已应用 ${editList.length} 处修改`);
+	emit('apply', result.jsonString);
+	edits.value = {};
 }
 
 // =============================================
 // 重置
 // =============================================
 function handleReset() {
-  edits.value = {};
-  globalSearch.value = '';
-  columnFilters.value = {};
-  sortColumn.value = null;
-  sortDir.value = 'asc';
-  currentPage.value = 1;
+	edits.value = {};
+	globalSearch.value = '';
+	columnFilters.value = {};
+	sortColumn.value = null;
+	sortDir.value = 'asc';
+	currentPage.value = 1;
 }
 
 // =============================================
 // 导出
 // =============================================
 function handleExportCsv() {
-  exportTableToCsv(visibleColumns.value, filteredRows.value);
+	exportTableToCsv(visibleColumns.value, filteredRows.value);
 }
 
 async function handleExportXlsx() {
-  await exportTableToXlsx(visibleColumns.value, filteredRows.value);
+	await exportTableToXlsx(visibleColumns.value, filteredRows.value);
 }
 
 // =============================================
 // 分页
 // =============================================
 function goToPage(p) {
-  currentPage.value = Math.max(1, Math.min(p, totalPages.value));
+	currentPage.value = Math.max(1, Math.min(p, totalPages.value));
 }
 
 // =============================================
 // 列显示切换 & 重命名
 // =============================================
 function toggleColumnVisible(col) {
-  col.visible = !col.visible;
+	col.visible = !col.visible;
 }
 
 function handleLabelInput(col, e) {
-  col.label = e.target.value;
+	col.label = e.target.value;
 }
 
 // =============================================
@@ -300,279 +300,319 @@ function handleLabelInput(col, e) {
 const dragSrcIndex = ref(-1);
 
 function handleDragStart(index, e) {
-  dragSrcIndex.value = index;
-  e.dataTransfer.effectAllowed = 'move';
-  // 用透明图片替换默认拖拽预览，避免整行出现在光标旁
-  const img = new Image();
-  img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-  e.dataTransfer.setDragImage(img, 0, 0);
+	dragSrcIndex.value = index;
+	e.dataTransfer.effectAllowed = 'move';
+	// 用透明图片替换默认拖拽预览，避免整行出现在光标旁
+	const img = new Image();
+	img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+	e.dataTransfer.setDragImage(img, 0, 0);
 }
 
 function handleDragOver(index, e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  const src = dragSrcIndex.value;
-  if (src === -1 || src === index) return;
-  // 实时重排：把 src 位置的列移到 index 位置
-  const cols = columns.value.slice();
-  const [moved] = cols.splice(src, 1);
-  cols.splice(index, 0, moved);
-  columns.value = cols;
-  dragSrcIndex.value = index;
+	e.preventDefault();
+	e.dataTransfer.dropEffect = 'move';
+	const src = dragSrcIndex.value;
+	if (src === -1 || src === index) return;
+	// 实时重排：把 src 位置的列移到 index 位置
+	const cols = columns.value.slice();
+	const [moved] = cols.splice(src, 1);
+	cols.splice(index, 0, moved);
+	columns.value = cols;
+	dragSrcIndex.value = index;
 }
 
 function handleDragEnd() {
-  dragSrcIndex.value = -1;
+	dragSrcIndex.value = -1;
 }
 
 // =============================================
 // ESC 关闭
 // =============================================
 function handleKeydown(e) {
-  if (e.key === 'Escape') emit('close');
+	if (e.key === 'Escape') emit('close');
 }
 </script>
 
 <template>
-  <div class="tv-overlay" @keydown="handleKeydown" tabindex="-1">
-    <div class="tv-panel">
-      <!-- 顶部工具栏 -->
-      <div class="tv-toolbar">
-        <div class="tv-toolbar-left">
-          <button class="tv-btn tv-btn-icon" @click="emit('close')" title="关闭">✕</button>
-          <span class="tv-title">📊 表格视图</span>
-          <span class="tv-count" v-if="!error">
-            共 {{ totalRows }} 条 · 过滤后 {{ filteredRows.length }} 条
-            <span v-if="Object.keys(edits).length > 0" class="tv-edit-badge">
-              {{ Object.keys(edits).length }} 处修改
-            </span>
-          </span>
-        </div>
+	<div class="tv-overlay" tabindex="-1" @keydown="handleKeydown">
+		<div class="tv-panel">
+			<!-- 顶部工具栏 -->
+			<div class="tv-toolbar">
+				<div class="tv-toolbar-left">
+					<button class="tv-btn tv-btn-icon" title="关闭" @click="emit('close')">
+						✕
+					</button>
+					<span class="tv-title">📊 表格视图</span>
+					<span v-if="!error" class="tv-count">
+						共 {{ totalRows }} 条 · 过滤后 {{ filteredRows.length }} 条
+						<span v-if="Object.keys(edits).length > 0" class="tv-edit-badge">
+							{{ Object.keys(edits).length }} 处修改
+						</span>
+					</span>
+				</div>
 
-        <!-- 路径输入 -->
-        <div class="tv-path-row">
-          <label class="tv-path-label" for="table-array-path">数组路径</label>
-          <input
-id="table-array-path"
-            v-model="arrayPathInput"
-            class="tv-path-input"
-            placeholder="留空=根数组，支持: items / $.store.books / .items"
-            @keydown.enter="loadTable"
-          />
-          <button class="tv-btn tv-btn-sm" @click="loadTable">加载</button>
-        </div>
+				<!-- 路径输入 -->
+				<div class="tv-path-row">
+					<label class="tv-path-label" for="table-array-path">数组路径</label>
+					<input
+						id="table-array-path"
+						v-model="arrayPathInput"
+						class="tv-path-input"
+						placeholder="留空=根数组，支持: items / $.store.books / .items"
+						@keydown.enter="loadTable"
+					>
+					<button class="tv-btn tv-btn-sm" @click="loadTable">
+						加载
+					</button>
+				</div>
 
-        <div class="tv-toolbar-right">
-          <!-- 全局搜索 -->
-          <input
-id="table-global-search"
-            v-model="globalSearch"
-            class="tv-search"
-aria-label="表格全局搜索"
-            placeholder="🔍 全局搜索..."
-            @input="currentPage = 1"
-          />
+				<div class="tv-toolbar-right">
+					<!-- 全局搜索 -->
+					<input
+						id="table-global-search"
+						v-model="globalSearch"
+						class="tv-search"
+						aria-label="表格全局搜索"
+						placeholder="🔍 全局搜索..."
+						@input="currentPage = 1"
+					>
 
-          <button class="tv-btn tv-btn-sm" @click="showColumnPanel = !showColumnPanel" title="列设置">
-            ⚙️ 列
-          </button>
-          <button class="tv-btn tv-btn-sm" @click="handleReset" title="重置过滤/排序">
-            🔄 重置
-          </button>
-          <button class="tv-btn tv-btn-sm" @click="handleExportCsv" title="导出 CSV">
-            📥 CSV
-          </button>
-          <button class="tv-btn tv-btn-sm" @click="handleExportXlsx" title="导出 XLSX">
-            📥 XLSX
-          </button>
-          <button
-            class="tv-btn tv-btn-primary"
-            :disabled="Object.keys(edits).length === 0"
-            @click="handleApply"
-            title="将修改写回 JSON"
-          >
-            ✅ 应用修改
-          </button>
-        </div>
-      </div>
+					<button class="tv-btn tv-btn-sm" title="列设置" @click="showColumnPanel = !showColumnPanel">
+						⚙️ 列
+					</button>
+					<button class="tv-btn tv-btn-sm" title="重置过滤/排序" @click="handleReset">
+						🔄 重置
+					</button>
+					<button class="tv-btn tv-btn-sm" title="导出 CSV" @click="handleExportCsv">
+						📥 CSV
+					</button>
+					<button class="tv-btn tv-btn-sm" title="导出 XLSX" @click="handleExportXlsx">
+						📥 XLSX
+					</button>
+					<button
+						class="tv-btn tv-btn-primary"
+						:disabled="Object.keys(edits).length === 0"
+						title="将修改写回 JSON"
+						@click="handleApply"
+					>
+						✅ 应用修改
+					</button>
+				</div>
+			</div>
 
-      <!-- 列配置面板 -->
-      <div v-if="showColumnPanel" class="tv-col-panel">
-        <div class="tv-col-panel-header">列设置（拖动可调整顺序）</div>
-        <div class="tv-col-list">
-          <div
-            v-for="(col, colIdx) in columns"
-            :key="col.id"
-            class="tv-col-item"
-            :class="{ 'tv-col-item-dragging': dragSrcIndex === colIdx }"
-            draggable="true"
-            @dragstart="handleDragStart(colIdx, $event)"
-            @dragover="handleDragOver(colIdx, $event)"
-            @dragend="handleDragEnd"
-          >
-            <span class="tv-col-drag-handle" title="拖动调整顺序">⠿</span>
-            <input
-:id="`table-column-visible-${col.id}`"
-              type="checkbox"
-              :checked="col.visible"
-              :aria-label="`显示列 ${col.label}`"
-              @change="toggleColumnVisible(col)"
-            />
-            <input
-:id="`table-column-label-${col.id}`"
-              class="tv-col-label-input"
-              :value="col.label"
-              :aria-label="`列 ${col.label} 显示名称`"
-              @input="handleLabelInput(col, $event)"
-              :title="`路径: ${col.path} | 类型: ${col.type}`"
-            />
-            <span class="tv-col-type">{{ col.type }}</span>
-          </div>
-        </div>
-      </div>
+			<!-- 列配置面板 -->
+			<div v-if="showColumnPanel" class="tv-col-panel">
+				<div class="tv-col-panel-header">
+					列设置（拖动可调整顺序）
+				</div>
+				<div class="tv-col-list">
+					<div
+						v-for="(col, colIdx) in columns"
+						:key="col.id"
+						class="tv-col-item"
+						:class="{ 'tv-col-item-dragging': dragSrcIndex === colIdx }"
+						draggable="true"
+						@dragstart="handleDragStart(colIdx, $event)"
+						@dragover="handleDragOver(colIdx, $event)"
+						@dragend="handleDragEnd"
+					>
+						<span class="tv-col-drag-handle" title="拖动调整顺序">⠿</span>
+						<input
+							:id="`table-column-visible-${col.id}`"
+							type="checkbox"
+							:checked="col.visible"
+							:aria-label="`显示列 ${col.label}`"
+							@change="toggleColumnVisible(col)"
+						>
+						<input
+							:id="`table-column-label-${col.id}`"
+							class="tv-col-label-input"
+							:value="col.label"
+							:aria-label="`列 ${col.label} 显示名称`"
+							:title="`路径: ${col.path} | 类型: ${col.type}`"
+							@input="handleLabelInput(col, $event)"
+						>
+						<span class="tv-col-type">{{ col.type }}</span>
+					</div>
+				</div>
+			</div>
 
-      <!-- 错误提示 -->
-      <div v-if="error" class="tv-error">
-        <span>⚠️ {{ error }}</span>
-        <div class="tv-error-hint">
-          若 JSON 根节点不是数组，请在上方输入目标数组的点路径后点击"加载"。
-        </div>
-        <div v-if="pathSuggestions.length" class="tv-path-suggestions" aria-label="可用数组路径建议">
-          <span class="tv-path-suggestions__label">可用数组路径：</span>
-          <button v-for="path in pathSuggestions" :key="path" type="button" class="tv-path-chip"
-            @click="loadSuggestedPath(path)">
-            {{ path }}
-          </button>
-        </div>
-      </div>
+			<!-- 错误提示 -->
+			<div v-if="error" class="tv-error">
+				<span>⚠️ {{ error }}</span>
+				<div class="tv-error-hint">
+					若 JSON 根节点不是数组，请在上方输入目标数组的点路径后点击"加载"。
+				</div>
+				<div v-if="pathSuggestions.length" class="tv-path-suggestions" aria-label="可用数组路径建议">
+					<span class="tv-path-suggestions__label">可用数组路径：</span>
+					<button
+						v-for="path in pathSuggestions"
+						:key="path"
+						type="button"
+						class="tv-path-chip"
+						@click="loadSuggestedPath(path)"
+					>
+						{{ path }}
+					</button>
+				</div>
+			</div>
 
-      <!-- 加载中 -->
-      <div v-else-if="loading" class="tv-loading">正在解析...</div>
+			<!-- 加载中 -->
+			<div v-else-if="loading" class="tv-loading">
+				正在解析...
+			</div>
 
-      <!-- 空数据 -->
-      <div v-else-if="allRows.length === 0" class="tv-empty">数组为空，无数据可展示</div>
+			<!-- 空数据 -->
+			<div v-else-if="allRows.length === 0" class="tv-empty">
+				数组为空，无数据可展示
+			</div>
 
-      <!-- 表格主体 -->
-      <div v-else class="tv-table-wrap">
-        <table class="tv-table">
-          <thead>
-            <!-- 列标题行 -->
-            <tr class="tv-thead-row">
-              <th class="tv-th tv-th-seq">#</th>
-              <th
-                v-for="col in visibleColumns"
-                :key="col.id"
-                class="tv-th"
-                @click="toggleSort(col.path)"
-                :title="col.path"
-              >
-                <span class="tv-th-label">{{ col.label }}</span>
-                <span class="tv-sort-icon">{{ getSortIcon(col.path) }}</span>
-              </th>
-            </tr>
-            <!-- 列过滤行 -->
-            <tr class="tv-filter-row">
-              <th class="tv-th tv-th-seq"></th>
-              <th v-for="col in visibleColumns" :key="'f' + col.id" class="tv-th tv-th-filter">
-                <input
-:id="`table-filter-${col.id}`"
-                  class="tv-filter-input"
-                  :value="columnFilters[col.path] || ''"
-                  :aria-label="`过滤 ${col.label}`"
-                  :placeholder="'过滤 ' + col.label"
-                  @input="updateColumnFilter(col.path, $event.target.value)"
-                />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(row, idx) in pagedRows"
-              :key="row._rowIndex"
-              class="tv-row"
-              :class="{ 'tv-row-edited': Object.keys(edits).some(k => k.startsWith(row._rowIndex + '::')) }"
-            >
-              <!-- 序号 -->
-              <td class="tv-td tv-td-seq">{{ (currentPage - 1) * pageSize + idx + 1 }}</td>
-              <!-- 数据单元格 -->
-              <td
-                v-for="col in visibleColumns"
-                :key="col.id"
-                class="tv-td"
-                :class="{
-                  'tv-td-editable': col.editable,
-                  'tv-td-editing': editingCell?.rowIndex === row._rowIndex && editingCell?.columnPath === col.path,
-                  'tv-td-modified': (`${row._rowIndex}::${col.path}`) in edits
-                }"
-                @dblclick="startEdit(row, col)"
-                :title="col.editable ? '双击编辑' : ''"
-              >
-                <!-- 编辑状态 -->
-                <template v-if="editingCell?.rowIndex === row._rowIndex && editingCell?.columnPath === col.path">
-                  <input
-                    v-if="col.type === 'boolean'"
-:id="`table-cell-${row._rowIndex}-${col.id}`"
-                    class="tv-cell-input"
-                    :value="editingValue"
-:aria-label="`编辑 ${col.label}`"
-                    @input="editingValue = $event.target.value"
-                    @keydown="handleCellKeydown"
-                    @blur="commitEdit"
-                    placeholder="true / false"
-                    autofocus
-                  />
-                  <input
-                    v-else
-:id="`table-cell-${row._rowIndex}-${col.id}`"
-                    class="tv-cell-input"
-                    v-model="editingValue"
-:aria-label="`编辑 ${col.label}`"
-                    @keydown="handleCellKeydown"
-                    @blur="commitEdit"
-                    autofocus
-                  />
-                </template>
-                <!-- 展示状态 -->
-                <template v-else>
-                  <span
-                    class="tv-cell-text"
-                    :class="{
-                      'tv-cell-null': getCellValue(row, col) == null,
-                      'tv-cell-bool': col.type === 'boolean',
-                      'tv-cell-num': col.type === 'number',
-                      'tv-cell-obj': col.type === 'object' || col.type === 'array'
-                    }"
-                  >{{ formatCellDisplay(row, col) }}</span>
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+			<!-- 表格主体 -->
+			<div v-else class="tv-table-wrap">
+				<table class="tv-table">
+					<thead>
+						<!-- 列标题行 -->
+						<tr class="tv-thead-row">
+							<th class="tv-th tv-th-seq">
+								#
+							</th>
+							<th
+								v-for="col in visibleColumns"
+								:key="col.id"
+								class="tv-th"
+								:title="col.path"
+								@click="toggleSort(col.path)"
+							>
+								<span class="tv-th-label">{{ col.label }}</span>
+								<span class="tv-sort-icon">{{ getSortIcon(col.path) }}</span>
+							</th>
+						</tr>
+						<!-- 列过滤行 -->
+						<tr class="tv-filter-row">
+							<th class="tv-th tv-th-seq" />
+							<th v-for="col in visibleColumns" :key="'f' + col.id" class="tv-th tv-th-filter">
+								<input
+									:id="`table-filter-${col.id}`"
+									class="tv-filter-input"
+									:value="columnFilters[col.path] || ''"
+									:aria-label="`过滤 ${col.label}`"
+									:placeholder="'过滤 ' + col.label"
+									@input="updateColumnFilter(col.path, $event.target.value)"
+								>
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr
+							v-for="(row, idx) in pagedRows"
+							:key="row._rowIndex"
+							class="tv-row"
+							:class="{ 'tv-row-edited': Object.keys(edits).some(k => k.startsWith(row._rowIndex + '::')) }"
+						>
+							<!-- 序号 -->
+							<td class="tv-td tv-td-seq">
+								{{ (currentPage - 1) * pageSize + idx + 1 }}
+							</td>
+							<!-- 数据单元格 -->
+							<td
+								v-for="col in visibleColumns"
+								:key="col.id"
+								class="tv-td"
+								:class="{
+									'tv-td-editable': col.editable,
+									'tv-td-editing': editingCell?.rowIndex === row._rowIndex && editingCell?.columnPath === col.path,
+									'tv-td-modified': (`${row._rowIndex}::${col.path}`) in edits
+								}"
+								:title="col.editable ? '双击编辑' : ''"
+								@dblclick="startEdit(row, col)"
+							>
+								<!-- 编辑状态 -->
+								<template v-if="editingCell?.rowIndex === row._rowIndex && editingCell?.columnPath === col.path">
+									<input
+										v-if="col.type === 'boolean'"
+										:id="`table-cell-${row._rowIndex}-${col.id}`"
+										class="tv-cell-input"
+										:value="editingValue"
+										:aria-label="`编辑 ${col.label}`"
+										placeholder="true / false"
+										autofocus
+										@input="editingValue = $event.target.value"
+										@keydown="handleCellKeydown"
+										@blur="commitEdit"
+									>
+									<input
+										v-else
+										:id="`table-cell-${row._rowIndex}-${col.id}`"
+										v-model="editingValue"
+										class="tv-cell-input"
+										:aria-label="`编辑 ${col.label}`"
+										autofocus
+										@keydown="handleCellKeydown"
+										@blur="commitEdit"
+									>
+								</template>
+								<!-- 展示状态 -->
+								<template v-else>
+									<span
+										class="tv-cell-text"
+										:class="{
+											'tv-cell-null': getCellValue(row, col) == null,
+											'tv-cell-bool': col.type === 'boolean',
+											'tv-cell-num': col.type === 'number',
+											'tv-cell-obj': col.type === 'object' || col.type === 'array'
+										}"
+									>{{ formatCellDisplay(row, col) }}</span>
+								</template>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
 
-      <!-- 底部分页栏 -->
-      <div class="tv-pagination" v-if="!error && !loading && allRows.length > 0">
-        <div class="tv-page-info">
-          第 {{ currentPage }} / {{ totalPages }} 页，每页
-          <select id="table-page-size" v-model.number="pageSize" class="tv-page-size-sel" aria-label="每页条数"
-            @change="currentPage = 1">
-            <option :value="20">20</option>
-            <option :value="50">50</option>
-            <option :value="100">100</option>
-            <option :value="200">200</option>
-          </select>
-          条
-        </div>
-        <div class="tv-page-btns">
-          <button class="tv-btn tv-btn-sm" :disabled="currentPage <= 1" @click="goToPage(1)">«</button>
-          <button class="tv-btn tv-btn-sm" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">‹</button>
-          <span class="tv-page-num">{{ currentPage }}</span>
-          <button class="tv-btn tv-btn-sm" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">›</button>
-          <button class="tv-btn tv-btn-sm" :disabled="currentPage >= totalPages" @click="goToPage(totalPages)">»</button>
-        </div>
-      </div>
-    </div>
-  </div>
+			<!-- 底部分页栏 -->
+			<div v-if="!error && !loading && allRows.length > 0" class="tv-pagination">
+				<div class="tv-page-info">
+					第 {{ currentPage }} / {{ totalPages }} 页，每页
+					<select
+						id="table-page-size"
+						v-model.number="pageSize"
+						class="tv-page-size-sel"
+						aria-label="每页条数"
+						@change="currentPage = 1"
+					>
+						<option :value="20">
+							20
+						</option>
+						<option :value="50">
+							50
+						</option>
+						<option :value="100">
+							100
+						</option>
+						<option :value="200">
+							200
+						</option>
+					</select>
+					条
+				</div>
+				<div class="tv-page-btns">
+					<button class="tv-btn tv-btn-sm" :disabled="currentPage <= 1" @click="goToPage(1)">
+						«
+					</button>
+					<button class="tv-btn tv-btn-sm" :disabled="currentPage <= 1" @click="goToPage(currentPage - 1)">
+						‹
+					</button>
+					<span class="tv-page-num">{{ currentPage }}</span>
+					<button class="tv-btn tv-btn-sm" :disabled="currentPage >= totalPages" @click="goToPage(currentPage + 1)">
+						›
+					</button>
+					<button class="tv-btn tv-btn-sm" :disabled="currentPage >= totalPages" @click="goToPage(totalPages)">
+						»
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
 </template>
 
 <style scoped>

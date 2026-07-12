@@ -1,12 +1,12 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import {
-    buildLineDiffs,
-    buildLineDiffsAsync,
-    extractOnlyDifferences,
-    generateDiffSummary,
-    getDifferences,
-    getValueAtPath
+	buildLineDiffs,
+	buildLineDiffsAsync,
+	extractOnlyDifferences,
+	generateDiffSummary,
+	getDifferences,
+	getValueAtPath
 } from '../services/diffEngine.js';
 import { WORKER_OFFLOAD_CHARS } from '../services/editorFormatting.js';
 import notify from '../services/notify.js';
@@ -14,12 +14,12 @@ import { getStringifyIndent } from '../utils/indent.js';
 import DiffTextView from './DiffTextView.vue';
 
 const props = defineProps({
-  leftContent: String,
-  rightContent: String,
-  singleColumn: {
-    type: Boolean,
-    default: false
-  }
+	leftContent: String,
+	rightContent: String,
+	singleColumn: {
+		type: Boolean,
+		default: false
+	}
 });
 
 const differences = ref([]);
@@ -30,179 +30,185 @@ const onlyDiffs = ref(false);
 const lineDiffs = ref([]);
 
 const diffCounts = computed(() => {
-  const counts = { added: 0, removed: 0, changed: 0, unchanged: 0 };
-  (lineDiffs.value || []).forEach((diff) => {
-    if (!diff || !diff.type) return;
-    if (diff.type === 'added') counts.added += 1;
-    else if (diff.type === 'removed') counts.removed += 1;
-    else if (diff.type === 'unchanged') counts.unchanged += 1;
-    else counts.changed += 1;
-  });
-  return counts;
+	const counts = { added: 0, removed: 0, changed: 0, unchanged: 0 };
+	(lineDiffs.value || []).forEach((diff) => {
+		if (!diff || !diff.type) return;
+		if (diff.type === 'added') counts.added += 1;
+		else if (diff.type === 'removed') counts.removed += 1;
+		else if (diff.type === 'unchanged') counts.unchanged += 1;
+		else counts.changed += 1;
+	});
+	return counts;
 });
 
 const compactSummary = computed(() => {
-  const total = summary.value?.total ?? (diffCounts.value.added + diffCounts.value.removed + diffCounts.value.changed);
-  const added = summary.value?.keyAdded ?? diffCounts.value.added;
-  const removed = summary.value?.keyRemoved ?? diffCounts.value.removed;
-  const typeChanges = summary.value?.typeChanges ?? 0;
-  const valueChanges = summary.value?.valueChanges ?? diffCounts.value.changed;
-  const unchanged = diffCounts.value.unchanged;
+	const total = summary.value?.total ?? (diffCounts.value.added + diffCounts.value.removed + diffCounts.value.changed);
+	const added = summary.value?.keyAdded ?? diffCounts.value.added;
+	const removed = summary.value?.keyRemoved ?? diffCounts.value.removed;
+	const typeChanges = summary.value?.typeChanges ?? 0;
+	const valueChanges = summary.value?.valueChanges ?? diffCounts.value.changed;
+	const unchanged = diffCounts.value.unchanged;
 
-  return `总计差异 ${total} · 新增 ${added} · 删除 ${removed} · 类型 ${typeChanges} · 值 ${valueChanges} · 相同 ${unchanged}`;
+	return `总计差异 ${total} · 新增 ${added} · 删除 ${removed} · 类型 ${typeChanges} · 值 ${valueChanges} · 相同 ${unchanged}`;
 });
 
 const displayedLeft = computed(() => {
-  try {
-    if (onlyDiffs.value) {
-      const result = extractOnlyDifferences(props.leftContent, props.rightContent);
-      if (result && result.success) {
-        const left = result.left;
-        if (!selectedPath.value) return pretty(left);
-        const value = getValueAtPath(left, selectedPath.value);
-        return pretty(value === undefined ? '' : value);
-      }
-    }
-    return getSubContent(selectedPath.value, props.leftContent);
-  } catch (e) {
-    return getSubContent(selectedPath.value, props.leftContent);
-  }
+	try {
+		if (onlyDiffs.value) {
+			const result = extractOnlyDifferences(props.leftContent, props.rightContent);
+			if (result && result.success) {
+				const left = result.left;
+				if (!selectedPath.value) return pretty(left);
+				const value = getValueAtPath(left, selectedPath.value);
+				return pretty(value === undefined ? '' : value);
+			}
+		}
+		return getSubContent(selectedPath.value, props.leftContent);
+	} catch (e) {
+		return getSubContent(selectedPath.value, props.leftContent);
+	}
 });
 
 const displayedRight = computed(() => {
-  try {
-    if (onlyDiffs.value) {
-      const result = extractOnlyDifferences(props.leftContent, props.rightContent);
-      if (result && result.success) {
-        const right = result.right;
-        if (!selectedPath.value) return pretty(right);
-        const value = getValueAtPath(right, selectedPath.value);
-        return pretty(value === undefined ? '' : value);
-      }
-    }
-    return getSubContent(selectedPath.value, props.rightContent);
-  } catch (e) {
-    return getSubContent(selectedPath.value, props.rightContent);
-  }
+	try {
+		if (onlyDiffs.value) {
+			const result = extractOnlyDifferences(props.leftContent, props.rightContent);
+			if (result && result.success) {
+				const right = result.right;
+				if (!selectedPath.value) return pretty(right);
+				const value = getValueAtPath(right, selectedPath.value);
+				return pretty(value === undefined ? '' : value);
+			}
+		}
+		return getSubContent(selectedPath.value, props.rightContent);
+	} catch (e) {
+		return getSubContent(selectedPath.value, props.rightContent);
+	}
 });
 
 const displayedLeftString = computed(() => String(displayedLeft.value || ''));
 const displayedRightString = computed(() => String(displayedRight.value || ''));
 
 function pretty(content) {
-  try {
-    const value = typeof content === 'string' ? JSON.parse(content) : content;
-    return JSON.stringify(value, null, getStringifyIndent());
-  } catch (e) {
-    return content || '';
-  }
+	try {
+		const value = typeof content === 'string' ? JSON.parse(content) : content;
+		return JSON.stringify(value, null, getStringifyIndent());
+	} catch (e) {
+		return content || '';
+	}
 }
 
 function getSubContent(path, content) {
-  try {
-    if (!path) return pretty(content);
-    const obj = typeof content === 'string' ? JSON.parse(content) : content;
-    const value = getValueAtPath(obj, path);
-    return pretty(value === undefined ? '' : value);
-  } catch (e) {
-    return pretty(content);
-  }
+	try {
+		if (!path) return pretty(content);
+		const obj = typeof content === 'string' ? JSON.parse(content) : content;
+		const value = getValueAtPath(obj, path);
+		return pretty(value === undefined ? '' : value);
+	} catch (e) {
+		return pretty(content);
+	}
 }
 
 async function compareDiffs() {
-  if (!props.leftContent || !props.rightContent) {
-    notify.warn('请输入两个 JSON');
-    return;
-  }
+	if (!props.leftContent || !props.rightContent) {
+		notify.warn('请输入两个 JSON');
+		return;
+	}
 
-  try {
-    const result = getDifferences(props.leftContent, props.rightContent);
-    if (result.success) {
-      differences.value = result.differences;
-      summary.value = generateDiffSummary(result.differences);
-    }
+	try {
+		const result = getDifferences(props.leftContent, props.rightContent);
+		if (result.success) {
+			differences.value = result.differences;
+			summary.value = generateDiffSummary(result.differences);
+		}
 
-    try {
-      const leftText = String(displayedLeftString.value || '').split(/\r?\n/);
-      const rightText = String(displayedRightString.value || '').split(/\r?\n/);
-      const leftStr = leftText.join('\n');
-      const rightStr = rightText.join('\n');
-      const useWorker = leftStr.length > (WORKER_OFFLOAD_CHARS || 0) || rightStr.length > (WORKER_OFFLOAD_CHARS || 0);
+		try {
+			const leftText = String(displayedLeftString.value || '').split(/\r?\n/);
+			const rightText = String(displayedRightString.value || '').split(/\r?\n/);
+			const leftStr = leftText.join('\n');
+			const rightStr = rightText.join('\n');
+			const useWorker = leftStr.length > (WORKER_OFFLOAD_CHARS || 0) || rightStr.length > (WORKER_OFFLOAD_CHARS || 0);
 
-      let lineDiffResult;
-      if (useWorker && typeof buildLineDiffsAsync === 'function') {
-        try {
-          lineDiffResult = await buildLineDiffsAsync(leftStr, rightStr);
-        } catch (e) {
-          lineDiffResult = buildLineDiffs(leftText, rightText);
-        }
-      } else {
-        lineDiffResult = buildLineDiffs(leftText, rightText);
-      }
-      lineDiffs.value = lineDiffResult;
+			let lineDiffResult;
+			if (useWorker && typeof buildLineDiffsAsync === 'function') {
+				try {
+					lineDiffResult = await buildLineDiffsAsync(leftStr, rightStr);
+				} catch (e) {
+					lineDiffResult = buildLineDiffs(leftText, rightText);
+				}
+			} else {
+				lineDiffResult = buildLineDiffs(leftText, rightText);
+			}
+			lineDiffs.value = lineDiffResult;
 
-      await nextTick();
-    } catch (e) {
-      // ignore line diff errors
-    }
-  } catch (e) {
-    notify.error('对比失败: ' + e.message);
-  }
+			await nextTick();
+		} catch (e) {
+			// ignore line diff errors
+		}
+	} catch (e) {
+		notify.error('对比失败: ' + e.message);
+	}
 }
 
 onMounted(() => {
-  try {
-    compareDiffs();
-  } catch (e) {
-    // ignore
-  }
+	try {
+		compareDiffs();
+	} catch (e) {
+		// ignore
+	}
 });
 
 watch(() => [props.leftContent, props.rightContent], () => {
-  try {
-    compareDiffs();
-  } catch (e) {
-    // ignore
-  }
+	try {
+		compareDiffs();
+	} catch (e) {
+		// ignore
+	}
 });
 
 </script>
 
 <template>
-  <div class="diff-view">
-    <div class="toolbar">
-      <div class="toolbar-title">行级对比</div>
-      <div class="toolbar-actions">
-        <button class="diff-btn diff-btn--ghost" @click="compareDiffs">刷新</button>
-        <label class="toolbar-toggle">
-          <input id="diff-only-diffs" type="checkbox" v-model="onlyDiffs" />
-          <span>只显示差异</span>
-        </label>
-      </div>
-    </div>
+	<div class="diff-view">
+		<div class="toolbar">
+			<div class="toolbar-title">
+				行级对比
+			</div>
+			<div class="toolbar-actions">
+				<button class="diff-btn diff-btn--ghost" @click="compareDiffs">
+					刷新
+				</button>
+				<label class="toolbar-toggle">
+					<input id="diff-only-diffs" v-model="onlyDiffs" type="checkbox">
+					<span>只显示差异</span>
+				</label>
+			</div>
+		</div>
 
-    <div class="summary-strip">
-      <div class="summary-text">{{ compactSummary }}</div>
-      <div class="summary-pills" aria-label="差异统计">
-        <span class="pill added">新增 <b>{{ diffCounts.added }}</b></span>
-        <span class="pill removed">删除 <b>{{ diffCounts.removed }}</b></span>
-        <span class="pill changed">变化 <b>{{ diffCounts.changed }}</b></span>
-        <span class="pill unchanged">相同 <b>{{ diffCounts.unchanged }}</b></span>
-      </div>
-    </div>
+		<div class="summary-strip">
+			<div class="summary-text">
+				{{ compactSummary }}
+			</div>
+			<div class="summary-pills" aria-label="差异统计">
+				<span class="pill added">新增 <b>{{ diffCounts.added }}</b></span>
+				<span class="pill removed">删除 <b>{{ diffCounts.removed }}</b></span>
+				<span class="pill changed">变化 <b>{{ diffCounts.changed }}</b></span>
+				<span class="pill unchanged">相同 <b>{{ diffCounts.unchanged }}</b></span>
+			</div>
+		</div>
 
-    <div class="line-body">
-      <div class="text-area">
-        <DiffTextView
-          ref="diffTextRef"
-          :left="displayedLeftString"
-          :right="displayedRightString"
-          :singleColumn="singleColumn"
-          language="json"
-        />
-      </div>
-    </div>
-  </div>
+		<div class="line-body">
+			<div class="text-area">
+				<DiffTextView
+					ref="diffTextRef"
+					:left="displayedLeftString"
+					:right="displayedRightString"
+					:single-column="singleColumn"
+					language="json"
+				/>
+			</div>
+		</div>
+	</div>
 </template>
 
 <style scoped>

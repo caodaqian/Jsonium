@@ -1,1532 +1,1542 @@
 <script setup>
-  let monaco = null;
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-  // Ensure Monaco find/replace contributions are bundled (side-effect imports)
-  import 'monaco-editor/esm/vs/editor/contrib/find/browser/findController.js';
-  import 'monaco-editor/esm/vs/editor/contrib/find/browser/findWidget.js';
-  import { copyText } from '../services/clipboard.js';
+let monaco = null;
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+// Ensure Monaco find/replace contributions are bundled (side-effect imports)
+import 'monaco-editor/esm/vs/editor/contrib/find/browser/findController.js';
+import 'monaco-editor/esm/vs/editor/contrib/find/browser/findWidget.js';
+import { copyText } from '../services/clipboard.js';
 import {
-    cancelScheduledAutoFormat,
-    computeMinimalEdits,
-    computeMinimalEditsAsync,
-    formatJsonString,
-    registerJsonFormattingProvider,
-    runEditorFormat,
-    scheduleAutoFormat,
-    WORKER_OFFLOAD_CHARS
+	cancelScheduledAutoFormat,
+	computeMinimalEdits,
+	computeMinimalEditsAsync,
+	formatJsonString,
+	registerJsonFormattingProvider,
+	runEditorFormat,
+	scheduleAutoFormat,
+	WORKER_OFFLOAD_CHARS
 } from '../services/editorFormatting.js';
-  import { installMonacoEnvironment } from '../services/monacoEnvironment.js';
-  import { configureJsonDiagnostics, ensureJsonLanguage, loadMonacoEditor } from '../services/monacoLoader.js';
-  import { defineAndSetMonacoTheme, getJsoniumThemeVars, scheduleThemeRefresh } from '../services/monacoTheme.js';
+import { installMonacoEnvironment } from '../services/monacoEnvironment.js';
+import { configureJsonDiagnostics, ensureJsonLanguage, loadMonacoEditor } from '../services/monacoLoader.js';
+import { defineAndSetMonacoTheme, getJsoniumThemeVars, scheduleThemeRefresh } from '../services/monacoTheme.js';
 import { extractPathFromText } from '../services/pathExtraction.js';
 import { useJsonStore } from '../store/index.js';
-  import { getStringifyIndent } from '../utils/indent.js';
+import { getStringifyIndent } from '../utils/indent.js';
 
-  const props = defineProps({
-    content: {
-      type: String,
-      default: '{}'
-    },
-    autoFormat: {
-      type: Boolean,
-      default: false
-    },
-    debounceMs: {
-      type: Number,
-      default: 300
-    },
-    autoFormatOnIdle: {
-      type: Boolean,
-      default: true
-    },
-    autoFormatOnPaste: {
-      type: Boolean,
-      default: true
-    }
-  });
+const props = defineProps({
+	content: {
+		type: String,
+		default: '{}'
+	},
+	autoFormat: {
+		type: Boolean,
+		default: false
+	},
+	debounceMs: {
+		type: Number,
+		default: 300
+	},
+	autoFormatOnIdle: {
+		type: Boolean,
+		default: true
+	},
+	autoFormatOnPaste: {
+		type: Boolean,
+		default: true
+	}
+});
 
-  const emit = defineEmits(['change']);
+const emit = defineEmits(['change']);
 
-  const store = useJsonStore();
-  const editorContainer = ref(null);
-  const editorContextMenuRef = ref(null);
-  const editorContextMenuPosition = ref({ top: 0, left: 0, adjustedTop: undefined, adjustedLeft: undefined });
-  const showEditorContextMenu = ref(false);
-  let editor = null;
-  let __applyingEdit = false;
-  let domKeydownHandler = null;
-  let modifierState = { shift: false, alt: false, ctrl: false, meta: false };
-  let lastCopyTs = 0; // short guard to avoid duplicate rapid copy invocations
-  let copyingLock = false; // prevent overlapping copy ops
-  let resizeObserver = null;
-  let domPasteHandler = null;
-  let fallbackResizeListenerAdded = false;
-  let adjustWrap = null;
-  let themeAppliedHandler = null;
-  let themeRefreshRaf = null;
-  let markerChangeDisposable = null;
-  const jsonErrors = ref([]);
-  const jsonValidationReady = ref(false);
+const store = useJsonStore();
+const editorContainer = ref(null);
+const editorContextMenuRef = ref(null);
+const editorContextMenuPosition = ref({ top: 0, left: 0, adjustedTop: undefined, adjustedLeft: undefined });
+const showEditorContextMenu = ref(false);
+let editor = null;
+let __applyingEdit = false;
+let domKeydownHandler = null;
+let modifierState = { shift: false, alt: false, ctrl: false, meta: false };
+let lastCopyTs = 0; // short guard to avoid duplicate rapid copy invocations
+let copyingLock = false; // prevent overlapping copy ops
+let resizeObserver = null;
+let domPasteHandler = null;
+let fallbackResizeListenerAdded = false;
+let adjustWrap = null;
+let themeAppliedHandler = null;
+let themeRefreshRaf = null;
+let markerChangeDisposable = null;
+const jsonErrors = ref([]);
+const jsonValidationReady = ref(false);
 
-  // --- 使用 Monaco 原生查找/替换 控件 ---
-  function getFindWidgetRoot() {
-    try {
-      return editor?.getDomNode?.()?.querySelector('.editor-widget.find-widget')
+// --- 使用 Monaco 原生查找/替换 控件 ---
+function getFindWidgetRoot() {
+	try {
+		return editor?.getDomNode?.()?.querySelector('.editor-widget.find-widget')
         || editorContainer.value?.querySelector('.editor-widget.find-widget')
         || document.querySelector('.monaco-editor .find-widget');
-    } catch (_) {
-      return null;
-    }
-  }
+	} catch (_) {
+		return null;
+	}
+}
 
-  function focusMonacoFindInput() {
-    try {
-      const findWidgetRoot = getFindWidgetRoot();
-      if (!findWidgetRoot) return false;
-      const findInput = findWidgetRoot.querySelector('.find-part .monaco-findInput:not(.disabled) textarea')
+function focusMonacoFindInput() {
+	try {
+		const findWidgetRoot = getFindWidgetRoot();
+		if (!findWidgetRoot) return false;
+		const findInput = findWidgetRoot.querySelector('.find-part .monaco-findInput:not(.disabled) textarea')
         || findWidgetRoot.querySelector('.find-part textarea')
         || findWidgetRoot.querySelector('.find-part input[type="text"]')
         || findWidgetRoot.querySelector('textarea')
         || findWidgetRoot.querySelector('input[type="text"]');
-      if (!findInput) return false;
-      findInput.focus();
-      try {
-        const len = findInput.value?.length || 0;
-        findInput.setSelectionRange(len, len);
-      } catch (_) { }
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
+		if (!findInput) return false;
+		findInput.focus();
+		try {
+			const len = findInput.value?.length || 0;
+			findInput.setSelectionRange(len, len);
+		} catch (_) { }
+		return true;
+	} catch (_) {
+		return false;
+	}
+}
 
-  function openMonacoFind() {
-    try {
-      if (!editor) return;
-      // 先聚焦编辑器，确保 Monaco 能接收命令
-      try { if (typeof editor.focus === 'function') editor.focus(); } catch (_) { }
+function openMonacoFind() {
+	try {
+		if (!editor) return;
+		// 先聚焦编辑器，确保 Monaco 能接收命令
+		try { if (typeof editor.focus === 'function') editor.focus(); } catch (_) { }
 
-      // 触发 Monaco 原生 find action
-      try {
-        const a = editor.getAction && editor.getAction('actions.find');
-        if (a && typeof a.run === 'function') { a.run(); }
-      } catch (_) { }
-      try { editor.trigger('keyboard', 'actions.find', null); } catch (_) { }
+		// 触发 Monaco 原生 find action
+		try {
+			const a = editor.getAction && editor.getAction('actions.find');
+			if (a && typeof a.run === 'function') { a.run(); }
+		} catch (_) { }
+		try { editor.trigger('keyboard', 'actions.find', null); } catch (_) { }
 
-      // 使用重试机制确保搜索框获得焦点
-      // Monaco find widget 首次渲染时存在竞态条件：widget DOM 异步创建，input 可能未就绪
-      let retryCount = 0;
-      const maxRetries = 8;
+		// 使用重试机制确保搜索框获得焦点
+		// Monaco find widget 首次渲染时存在竞态条件：widget DOM 异步创建，input 可能未就绪
+		let retryCount = 0;
+		const maxRetries = 8;
 
-      const attemptFocus = () => {
-        if (focusMonacoFindInput()) return; // 成功聚焦，退出重试
-        retryCount++;
-        if (retryCount <= maxRetries) {
-          setTimeout(attemptFocus, 80);
-        }
-      };
+		const attemptFocus = () => {
+			if (focusMonacoFindInput()) return; // 成功聚焦，退出重试
+			retryCount++;
+			if (retryCount <= maxRetries) {
+				setTimeout(attemptFocus, 80);
+			}
+		};
 
-      // 延迟启动焦点重试，给 Monaco widget 异步创建留出时间
-      setTimeout(attemptFocus, 60);
-    } catch (_) { }
-  }
+		// 延迟启动焦点重试，给 Monaco widget 异步创建留出时间
+		setTimeout(attemptFocus, 60);
+	} catch (_) { }
+}
 
-  function scheduleFindInputFocus() {
-    let retryCount = 0;
-    const maxRetries = 8;
-    const attemptFocus = () => {
-      if (focusMonacoFindInput()) return;
-      retryCount++;
-      if (retryCount <= maxRetries) {
-        setTimeout(attemptFocus, 80);
-      }
-    };
-    setTimeout(attemptFocus, 60);
-  }
+function scheduleFindInputFocus() {
+	let retryCount = 0;
+	const maxRetries = 8;
+	const attemptFocus = () => {
+		if (focusMonacoFindInput()) return;
+		retryCount++;
+		if (retryCount <= maxRetries) {
+			setTimeout(attemptFocus, 80);
+		}
+	};
+	setTimeout(attemptFocus, 60);
+}
 
-  function openMonacoReplace() {
-    try {
-      if (!editor) return;
-      // open find+replace widget
-      try {
-        editor.trigger('keyboard', 'editor.action.startFindReplaceAction', null);
-        scheduleFindInputFocus();
-        // After opening find-replace widget, compensate for layout shift
-        setTimeout(() => {
-          try {
-            if (editor && typeof editor.layout === 'function') {
-              editor.layout();
-            }
-          } catch (_) { }
-        }, 50);
-        return;
-      } catch (_) { }
-      try {
-        const a = editor.getAction && editor.getAction('editor.action.startFindReplaceAction');
-        if (a && typeof a.run === 'function') a.run();
-        scheduleFindInputFocus();
-        // After opening find-replace widget, compensate for layout shift
-        setTimeout(() => {
-          try {
-            if (editor && typeof editor.layout === 'function') {
-              editor.layout();
-            }
-          } catch (_) { }
-        }, 50);
-      } catch (_) { }
-    } catch (_) { }
-  }
+function openMonacoReplace() {
+	try {
+		if (!editor) return;
+		// open find+replace widget
+		try {
+			editor.trigger('keyboard', 'editor.action.startFindReplaceAction', null);
+			scheduleFindInputFocus();
+			// After opening find-replace widget, compensate for layout shift
+			setTimeout(() => {
+				try {
+					if (editor && typeof editor.layout === 'function') {
+						editor.layout();
+					}
+				} catch (_) { }
+			}, 50);
+			return;
+		} catch (_) { }
+		try {
+			const a = editor.getAction && editor.getAction('editor.action.startFindReplaceAction');
+			if (a && typeof a.run === 'function') a.run();
+			scheduleFindInputFocus();
+			// After opening find-replace widget, compensate for layout shift
+			setTimeout(() => {
+				try {
+					if (editor && typeof editor.layout === 'function') {
+						editor.layout();
+					}
+				} catch (_) { }
+			}, 50);
+		} catch (_) { }
+	} catch (_) { }
+}
 
-  function monacoFindNext() {
-    try { if (!editor) return; editor.trigger('keyboard', 'editor.action.nextMatchFindAction', null); } catch (_) { }
-  }
+function monacoFindNext() {
+	try { if (!editor) return; editor.trigger('keyboard', 'editor.action.nextMatchFindAction', null); } catch (_) { }
+}
 
-  function monacoFindPrev() {
-    try { if (!editor) return; editor.trigger('keyboard', 'editor.action.previousMatchFindAction', null); } catch (_) { }
-  }
+function monacoFindPrev() {
+	try { if (!editor) return; editor.trigger('keyboard', 'editor.action.previousMatchFindAction', null); } catch (_) { }
+}
 
-  const firstJsonError = computed(() => jsonErrors.value[0] || null);
-  const hasJsonError = computed(() => jsonErrors.value.length > 0);
+const firstJsonError = computed(() => jsonErrors.value[0] || null);
+const hasJsonError = computed(() => jsonErrors.value.length > 0);
 
-  // modifierHandler keeps track of modifier keys across separate key events (helps when Alt/Shift are pressed in sequence)
-  const modifierHandler = (e) => {
-    try {
-      const isDown = e.type === 'keydown';
-      const k = e.key;
-      if (k === 'Shift') modifierState.shift = isDown;
-      else if (k === 'Alt') modifierState.alt = isDown;
-      else if (k === 'AltGraph') modifierState.alt = isDown;
-      else if (k === 'Control' || k === 'Ctrl') modifierState.ctrl = isDown;
-      else if (k === 'Meta') modifierState.meta = isDown;
-    } catch (err) {
-      // ignore
-    }
-  };
+// modifierHandler keeps track of modifier keys across separate key events (helps when Alt/Shift are pressed in sequence)
+const modifierHandler = (e) => {
+	try {
+		const isDown = e.type === 'keydown';
+		const k = e.key;
+		if (k === 'Shift') modifierState.shift = isDown;
+		else if (k === 'Alt') modifierState.alt = isDown;
+		else if (k === 'AltGraph') modifierState.alt = isDown;
+		else if (k === 'Control' || k === 'Ctrl') modifierState.ctrl = isDown;
+		else if (k === 'Meta') modifierState.meta = isDown;
+	} catch (err) {
+		// ignore
+	}
+};
 
-  const scheduleState = { timer: null, lastReason: null };
-  let lastEnterTs = 0;
+const scheduleState = { timer: null, lastReason: null };
+let lastEnterTs = 0;
 
-  const editorContextMenuStyles = computed(() => {
-    const top = editorContextMenuPosition.value.adjustedTop !== undefined && editorContextMenuPosition.value.adjustedTop !== null
-      ? editorContextMenuPosition.value.adjustedTop
-      : editorContextMenuPosition.value.top;
-    const left = editorContextMenuPosition.value.adjustedLeft !== undefined && editorContextMenuPosition.value.adjustedLeft !== null
-      ? editorContextMenuPosition.value.adjustedLeft
-      : editorContextMenuPosition.value.left;
-    return {
-      top: `${top}px`,
-      left: `${left}px`
-    };
-  });
+const editorContextMenuStyles = computed(() => {
+	const top = editorContextMenuPosition.value.adjustedTop !== undefined && editorContextMenuPosition.value.adjustedTop !== null
+		? editorContextMenuPosition.value.adjustedTop
+		: editorContextMenuPosition.value.top;
+	const left = editorContextMenuPosition.value.adjustedLeft !== undefined && editorContextMenuPosition.value.adjustedLeft !== null
+		? editorContextMenuPosition.value.adjustedLeft
+		: editorContextMenuPosition.value.left;
+	return {
+		top: `${top}px`,
+		left: `${left}px`
+	};
+});
 
-  const hideEditorContextMenu = () => {
-    showEditorContextMenu.value = false;
-  };
+const hideEditorContextMenu = () => {
+	showEditorContextMenu.value = false;
+};
 
-  const positionEditorContextMenu = () => {
-    const menuEl = editorContextMenuRef.value;
-    if (!menuEl) return;
+const positionEditorContextMenu = () => {
+	const menuEl = editorContextMenuRef.value;
+	if (!menuEl) return;
 
-    const margin = 8;
-    const menuW = menuEl.offsetWidth;
-    const menuH = menuEl.offsetHeight;
-    let left = editorContextMenuPosition.value.left;
-    let top = editorContextMenuPosition.value.top;
+	const margin = 8;
+	const menuW = menuEl.offsetWidth;
+	const menuH = menuEl.offsetHeight;
+	let left = editorContextMenuPosition.value.left;
+	let top = editorContextMenuPosition.value.top;
 
-    if (left + menuW > window.innerWidth - margin) {
-      left = Math.max(margin, window.innerWidth - menuW - margin);
-    }
-    if (top + menuH > window.innerHeight - margin) {
-      top = Math.max(margin, window.innerHeight - menuH - margin);
-    }
+	if (left + menuW > window.innerWidth - margin) {
+		left = Math.max(margin, window.innerWidth - menuW - margin);
+	}
+	if (top + menuH > window.innerHeight - margin) {
+		top = Math.max(margin, window.innerHeight - menuH - margin);
+	}
 
-    editorContextMenuPosition.value.adjustedLeft = left;
-    editorContextMenuPosition.value.adjustedTop = top;
-  };
+	editorContextMenuPosition.value.adjustedLeft = left;
+	editorContextMenuPosition.value.adjustedTop = top;
+};
 
-  const handleEditorContextMenu = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    editorContextMenuPosition.value = {
-      top: event.clientY,
-      left: event.clientX,
-      adjustedTop: undefined,
-      adjustedLeft: undefined
-    };
-    showEditorContextMenu.value = true;
-    nextTick(() => {
-      positionEditorContextMenu();
-    });
-  };
+const handleEditorContextMenu = (event) => {
+	event.preventDefault();
+	event.stopPropagation();
+	editorContextMenuPosition.value = {
+		top: event.clientY,
+		left: event.clientX,
+		adjustedTop: undefined,
+		adjustedLeft: undefined
+	};
+	showEditorContextMenu.value = true;
+	nextTick(() => {
+		positionEditorContextMenu();
+	});
+};
 
-  const handleEditorContextMenuClick = (event) => {
-    if (!showEditorContextMenu.value) return;
-    const target = event.target;
-    if (editorContextMenuRef.value?.contains(target)) return;
-    hideEditorContextMenu();
-  };
+const handleEditorContextMenuClick = (event) => {
+	if (!showEditorContextMenu.value) return;
+	const target = event.target;
+	if (editorContextMenuRef.value?.contains(target)) return;
+	hideEditorContextMenu();
+};
 
-  const handleEditorContextMenuAction = async (actionId) => {
-    hideEditorContextMenu();
-    switch (actionId) {
-      case 'format':
-        await formatJson('manual');
-        break;
-      case 'escape':
-        await escapeCurrentDocument();
-        break;
-      case 'unescape':
-        await unescapeCurrentDocument();
-        break;
-      case 'copy-json':
-        await copyCurrentJson();
-        break;
-      case 'jsonpath':
-        await copyCurrentPath('jsonpath');
-        break;
-      case 'jq':
-        await copyCurrentPath('jq');
-        break;
-      default:
-        break;
-    }
-  };
+const handleEditorContextMenuAction = async (actionId) => {
+	hideEditorContextMenu();
+	switch (actionId) {
+		case 'format':
+			await formatJson('manual');
+			break;
+		case 'escape':
+			await escapeCurrentDocument();
+			break;
+		case 'unescape':
+			await unescapeCurrentDocument();
+			break;
+		case 'copy-json':
+			await copyCurrentJson();
+			break;
+		case 'jsonpath':
+			await copyCurrentPath('jsonpath');
+			break;
+		case 'jq':
+			await copyCurrentPath('jq');
+			break;
+		default:
+			break;
+	}
+};
 
-  onMounted(async () => {
-    installMonacoEnvironment('Editor', 'editor');
-    monaco = await loadMonacoEditor();
+onMounted(async () => {
+	installMonacoEnvironment('Editor', 'editor');
+	monaco = await loadMonacoEditor();
 
-    // Register the JSON formatting provider once (idempotent)
-    try { registerJsonFormattingProvider(monaco); } catch (_) { }
+	// Register the JSON formatting provider once (idempotent)
+	try { registerJsonFormattingProvider(monaco); } catch (_) { }
 
-    // 尝试加载 JSON 语言贡献并开启诊断（以启用高亮与错误提示）
-    try {
-      await ensureJsonLanguage(monaco);
+	// 尝试加载 JSON 语言贡献并开启诊断（以启用高亮与错误提示）
+	try {
+		await ensureJsonLanguage(monaco);
 
-      // 配置 JSON 诊断/校验选项（若可用）
-      configureJsonDiagnostics(monaco);
-    } catch (_) { /* ignore */ }
+		// 配置 JSON 诊断/校验选项（若可用）
+		configureJsonDiagnostics(monaco);
+	} catch (_) { /* ignore */ }
 
-    // Ensure find/replace contributions are loaded so commands like actions.find exist
-    try {
-      try {
-        const base = 'monaco-editor/esm/vs/editor/contrib/find/browser/';
-        await import(base + 'findController');
-      } catch (_) { /* ignore */ }
-      try {
-        const base2 = 'monaco-editor/esm/vs/editor/contrib/find/browser/';
-        await import(base2 + 'findWidget');
-      } catch (_) { /* ignore */ }
-    } catch (_) { /* ignore */ }
+	// Ensure find/replace contributions are loaded so commands like actions.find exist
+	try {
+		try {
+			const base = 'monaco-editor/esm/vs/editor/contrib/find/browser/';
+			await import(base + 'findController');
+		} catch (_) { /* ignore */ }
+		try {
+			const base2 = 'monaco-editor/esm/vs/editor/contrib/find/browser/';
+			await import(base2 + 'findWidget');
+		} catch (_) { /* ignore */ }
+	} catch (_) { /* ignore */ }
 
-    initEditor();
-  });
+	initEditor();
+});
 
-  watch(showEditorContextMenu, (visible) => {
-    if (visible) {
-      document.addEventListener('click', handleEditorContextMenuClick, true);
-      window.addEventListener('resize', positionEditorContextMenu);
-      window.addEventListener('scroll', positionEditorContextMenu, { capture: true, passive: true });
-    } else {
-      document.removeEventListener('click', handleEditorContextMenuClick, true);
-      window.removeEventListener('resize', positionEditorContextMenu);
-      window.removeEventListener('scroll', positionEditorContextMenu, { capture: true, passive: true });
-    }
-  });
+watch(showEditorContextMenu, (visible) => {
+	if (visible) {
+		document.addEventListener('click', handleEditorContextMenuClick, true);
+		window.addEventListener('resize', positionEditorContextMenu);
+		window.addEventListener('scroll', positionEditorContextMenu, { capture: true, passive: true });
+	} else {
+		document.removeEventListener('click', handleEditorContextMenuClick, true);
+		window.removeEventListener('resize', positionEditorContextMenu);
+		window.removeEventListener('scroll', positionEditorContextMenu, { capture: true, passive: true });
+	}
+});
 
-  onBeforeUnmount(() => {
-    cancelScheduledAutoFormat(scheduleState);
-    hideEditorContextMenu();
-    try {
-      try {
-        if (markerChangeDisposable && typeof markerChangeDisposable.dispose === 'function') {
-          markerChangeDisposable.dispose();
-        }
-      } catch (_) { }
-      markerChangeDisposable = null;
-      try {
-        if (themeAppliedHandler && typeof window !== 'undefined') {
-          window.removeEventListener('jsonium-theme-applied', themeAppliedHandler);
-        }
-        if (themeRefreshRaf) {
-          if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
-            window.cancelAnimationFrame(themeRefreshRaf);
-          } else {
-            clearTimeout(themeRefreshRaf);
-          }
-        }
-      } catch (_) {}
-      themeAppliedHandler = null;
-      themeRefreshRaf = null;
-      // remove modifier listeners
-      try { window.removeEventListener('keydown', modifierHandler); } catch (e) { }
-      try { window.removeEventListener('keyup', modifierHandler); } catch (e) { }
-      if (editor) {
-        // remove both window listener (added as fallback) and any dom listener if present
-        try { window.removeEventListener('keydown', domKeydownHandler); } catch (e) { }
-        try {
-          const domNode = editor && editor.getDomNode && editor.getDomNode();
-          if (domNode && domKeydownHandler) {
-            try { domNode.removeEventListener('keydown', domKeydownHandler, true); } catch (e) { }
-            try { domNode.removeEventListener('keydown', domKeydownHandler); } catch (e) { }
-            try { domNode.removeEventListener('contextmenu', handleEditorContextMenu, true); } catch (e) { }
-          }
-          if (domNode && domPasteHandler) {
-            try { domNode.removeEventListener('paste', domPasteHandler); } catch (e) { }
-            domPasteHandler = null;
-          }
-        } catch (e) { }
-        domKeydownHandler = null;
-        try { editor && editor.dispose && editor.dispose(); } catch (e) { }
+onBeforeUnmount(() => {
+	cancelScheduledAutoFormat(scheduleState);
+	hideEditorContextMenu();
+	try {
+		try {
+			if (markerChangeDisposable && typeof markerChangeDisposable.dispose === 'function') {
+				markerChangeDisposable.dispose();
+			}
+		} catch (_) { }
+		markerChangeDisposable = null;
+		try {
+			if (themeAppliedHandler && typeof window !== 'undefined') {
+				window.removeEventListener('jsonium-theme-applied', themeAppliedHandler);
+			}
+			if (themeRefreshRaf) {
+				if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+					window.cancelAnimationFrame(themeRefreshRaf);
+				} else {
+					clearTimeout(themeRefreshRaf);
+				}
+			}
+		} catch (_) {}
+		themeAppliedHandler = null;
+		themeRefreshRaf = null;
+		// remove modifier listeners
+		try { window.removeEventListener('keydown', modifierHandler); } catch (e) { }
+		try { window.removeEventListener('keyup', modifierHandler); } catch (e) { }
+		if (editor) {
+			// remove both window listener (added as fallback) and any dom listener if present
+			try { window.removeEventListener('keydown', domKeydownHandler); } catch (e) { }
+			try {
+				const domNode = editor && editor.getDomNode && editor.getDomNode();
+				if (domNode && domKeydownHandler) {
+					try { domNode.removeEventListener('keydown', domKeydownHandler, true); } catch (e) { }
+					try { domNode.removeEventListener('keydown', domKeydownHandler); } catch (e) { }
+					try { domNode.removeEventListener('contextmenu', handleEditorContextMenu, true); } catch (e) { }
+				}
+				if (domNode && domPasteHandler) {
+					try { domNode.removeEventListener('paste', domPasteHandler); } catch (e) { }
+					domPasteHandler = null;
+				}
+			} catch (e) { }
+			domKeydownHandler = null;
+			try { editor && editor.dispose && editor.dispose(); } catch (e) { }
 
-        // disconnect ResizeObserver if present
-        try {
-          if (resizeObserver && typeof resizeObserver.disconnect === 'function') {
-            try { resizeObserver.disconnect(); } catch (e) { }
-            resizeObserver = null;
-          }
-        } catch (e) { }
+			// disconnect ResizeObserver if present
+			try {
+				if (resizeObserver && typeof resizeObserver.disconnect === 'function') {
+					try { resizeObserver.disconnect(); } catch (e) { }
+					resizeObserver = null;
+				}
+			} catch (e) { }
 
-        // remove fallback window resize listener if it was added
-        try {
-          if (fallbackResizeListenerAdded) {
-            try { window.removeEventListener('resize', adjustWrap); } catch (e) { }
-            fallbackResizeListenerAdded = false;
-          }
-        } catch (e) { }
-      }
-    } catch (e) { }
-  });
+			// remove fallback window resize listener if it was added
+			try {
+				if (fallbackResizeListenerAdded) {
+					try { window.removeEventListener('resize', adjustWrap); } catch (e) { }
+					fallbackResizeListenerAdded = false;
+				}
+			} catch (e) { }
+		}
+	} catch (e) { }
+});
 
-  // watch external content and sync if differs
-  watch(() => props.content, (newContent) => {
-    if (editor && newContent !== editor.getValue()) {
-      // mark as external-sync to avoid scheduling auto-format on this sync
-      cancelScheduledAutoFormat(scheduleState);
-      applyEdit(newContent);
-    }
-  });
+// watch external content and sync if differs
+watch(() => props.content, (newContent) => {
+	if (editor && newContent !== editor.getValue()) {
+		// mark as external-sync to avoid scheduling auto-format on this sync
+		cancelScheduledAutoFormat(scheduleState);
+		applyEdit(newContent);
+	}
+});
 
-  /**
+/**
    * applyEdit: apply new content using minimal incremental edits to preserve cursor position.
    * Uses computeMinimalEdits to generate the smallest set of edits, then applies via
    * pushEditOperations so Monaco can automatically maintain cursor/selection positions.
    */
-  function applyEdit(newContent) {
-    if (!editor) return;
-    const model = editor.getModel();
-    if (!model) return;
+function applyEdit(newContent) {
+	if (!editor) return;
+	const model = editor.getModel();
+	if (!model) return;
 
-    const oldContent = model.getValue();
-    if (oldContent === newContent) return;
+	const oldContent = model.getValue();
+	if (oldContent === newContent) return;
 
-    __applyingEdit = true;
-    try {
-      let usedAsync = false;
-      const useWorker = (oldContent && oldContent.length > (WORKER_OFFLOAD_CHARS || 0)) || (newContent && newContent.length > (WORKER_OFFLOAD_CHARS || 0));
-      if (useWorker && typeof computeMinimalEditsAsync === 'function') {
-        usedAsync = true;
-        // Offload expensive diff computation to a worker; apply edits when ready.
-        computeMinimalEditsAsync(oldContent, newContent, monaco).then((edits) => {
-          try {
-            if (!edits || edits.length === 0) return;
-            const selections = editor.getSelections() || [];
-            model.pushEditOperations(selections, edits, () => null);
-          } catch (e) {
-            // fallback to synchronous path if applying edits failed
-            try {
-              const fallbackEdits = computeMinimalEdits(oldContent, newContent, monaco);
-              if (fallbackEdits && fallbackEdits.length) {
-                const selections = editor.getSelections() || [];
-                model.pushEditOperations(selections, fallbackEdits, () => null);
-              }
-            } catch (_) {}
-          }
-        }).finally(() => {
-          // allow change handlers after microtask
-          setTimeout(() => { __applyingEdit = false; }, 0);
-        });
-        if (usedAsync) return;
-      }
+	__applyingEdit = true;
+	try {
+		let usedAsync = false;
+		const useWorker = (oldContent && oldContent.length > (WORKER_OFFLOAD_CHARS || 0)) || (newContent && newContent.length > (WORKER_OFFLOAD_CHARS || 0));
+		if (useWorker && typeof computeMinimalEditsAsync === 'function') {
+			usedAsync = true;
+			// Offload expensive diff computation to a worker; apply edits when ready.
+			computeMinimalEditsAsync(oldContent, newContent, monaco).then((edits) => {
+				try {
+					if (!edits || edits.length === 0) return;
+					const selections = editor.getSelections() || [];
+					model.pushEditOperations(selections, edits, () => null);
+				} catch (e) {
+					// fallback to synchronous path if applying edits failed
+					try {
+						const fallbackEdits = computeMinimalEdits(oldContent, newContent, monaco);
+						if (fallbackEdits && fallbackEdits.length) {
+							const selections = editor.getSelections() || [];
+							model.pushEditOperations(selections, fallbackEdits, () => null);
+						}
+					} catch (_) {}
+				}
+			}).finally(() => {
+				// allow change handlers after microtask
+				setTimeout(() => { __applyingEdit = false; }, 0);
+			});
+			if (usedAsync) return;
+		}
 
-      // synchronous small-doc path
-      const edits = computeMinimalEdits(oldContent, newContent, monaco);
-      if (edits.length === 0) return;
+		// synchronous small-doc path
+		const edits = computeMinimalEdits(oldContent, newContent, monaco);
+		if (edits.length === 0) return;
 
-      const selections = editor.getSelections() || [];
-      model.pushEditOperations(
-        selections,
-        edits,
-        () => null // let Monaco compute cursor positions from the edits
-      );
-    } finally {
-      // if we used async worker path, the worker promise finalizer clears __applyingEdit;
-      // otherwise clear for the synchronous path.
-      if (typeof usedAsync !== 'undefined' && usedAsync) {
-        // do not clear here; the async path clears it in its own finally
-      } else {
-        setTimeout(() => { __applyingEdit = false; }, 0);
-      }
-    }
-  }
+		const selections = editor.getSelections() || [];
+		model.pushEditOperations(
+			selections,
+			edits,
+			() => null // let Monaco compute cursor positions from the edits
+		);
+	} finally {
+		// if we used async worker path, the worker promise finalizer clears __applyingEdit;
+		// otherwise clear for the synchronous path.
+		if (typeof usedAsync !== 'undefined' && usedAsync) {
+			// do not clear here; the async path clears it in its own finally
+		} else {
+			setTimeout(() => { __applyingEdit = false; }, 0);
+		}
+	}
+}
 
 function getCurrentThemeMode() {
-  // 返回 light/dark
-  const eff = store.getEffectiveTheme();
-  return eff?.mode === 'dark' ? 'dark' : 'light';
+	// 返回 light/dark
+	const eff = store.getEffectiveTheme();
+	return eff?.mode === 'dark' ? 'dark' : 'light';
 }
 
 function applyCurrentTheme() {
-  if (!monaco) return;
-  const mode = getCurrentThemeMode();
-  const { bg } = getJsoniumThemeVars(mode);
-  try {
-    if (editorContainer.value) {
-      editorContainer.value.style.background = bg;
-    }
-    const editorNode = editor && typeof editor.getDomNode === 'function' ? editor.getDomNode() : null;
-    if (editorNode && editorNode.style) {
-      editorNode.style.background = bg;
-    }
-  } catch (_) {}
-  defineAndSetMonacoTheme(monaco, mode, { editorHighlights: true });
-  try {
-    if (editor && typeof editor.layout === 'function') {
-      editor.layout();
-    }
-  } catch (_) {}
+	if (!monaco) return;
+	const mode = getCurrentThemeMode();
+	const { bg } = getJsoniumThemeVars(mode);
+	try {
+		if (editorContainer.value) {
+			editorContainer.value.style.background = bg;
+		}
+		const editorNode = editor && typeof editor.getDomNode === 'function' ? editor.getDomNode() : null;
+		if (editorNode && editorNode.style) {
+			editorNode.style.background = bg;
+		}
+	} catch (_) {}
+	defineAndSetMonacoTheme(monaco, mode, { editorHighlights: true });
+	try {
+		if (editor && typeof editor.layout === 'function') {
+			editor.layout();
+		}
+	} catch (_) {}
 }
 
 function installThemeRefreshListener() {
-  if (themeAppliedHandler || typeof window === 'undefined') return;
-  themeAppliedHandler = () => {
-    themeRefreshRaf = scheduleThemeRefresh(themeRefreshRaf, () => {
-      themeRefreshRaf = null;
-      applyCurrentTheme();
-    });
-  };
-  try {
-    window.addEventListener('jsonium-theme-applied', themeAppliedHandler);
-  } catch (_) {}
+	if (themeAppliedHandler || typeof window === 'undefined') return;
+	themeAppliedHandler = () => {
+		themeRefreshRaf = scheduleThemeRefresh(themeRefreshRaf, () => {
+			themeRefreshRaf = null;
+			applyCurrentTheme();
+		});
+	};
+	try {
+		window.addEventListener('jsonium-theme-applied', themeAppliedHandler);
+	} catch (_) {}
 }
 
 function initEditor() {
-    if (!editorContainer.value) return;
-    if (!monaco) return; // monaco not available (tests or unsupported env)
+	if (!editorContainer.value) return;
+	if (!monaco) return; // monaco not available (tests or unsupported env)
 
-    // ---------- 新增：注册主题 ----------
-  const mode = getCurrentThemeMode();
-    applyCurrentTheme();
-    // -----------------------------------
+	// ---------- 新增：注册主题 ----------
+	const mode = getCurrentThemeMode();
+	applyCurrentTheme();
+	// -----------------------------------
 
-    const settings = store.getEditorSettings();
+	const settings = store.getEditorSettings();
 
-    // compute initial wrap options based on settings and container width
-    const containerWidth = (editorContainer.value && editorContainer.value.clientWidth) || 0;
-    let initialWordWrap = settings.wordWrap || 'off';
-    let initialWordWrapColumn = settings.wrapColumn || 120;
+	// compute initial wrap options based on settings and container width
+	const containerWidth = (editorContainer.value && editorContainer.value.clientWidth) || 0;
+	let initialWordWrap = settings.wordWrap || 'off';
+	let initialWordWrapColumn = settings.wrapColumn || 120;
 
-    if (settings.wrapEnabled && settings.wrapByWidth) {
-      try {
-        const width = containerWidth || (window.innerWidth || 1200);
-        // simple threshold-based decision
-        if (typeof settings.wrapThresholdPx === 'number' && width <= settings.wrapThresholdPx) {
-          initialWordWrap = 'on';
-        } else {
-          initialWordWrap = 'off';
-        }
-        // estimate column based on font size (approx avg char width ~ 0.6 * fontSize)
-        const avgCharPx = (settings.fontSize || 14) * 0.6;
-        if (avgCharPx > 0) {
-          initialWordWrapColumn = Math.max(40, Math.floor(width / avgCharPx));
-        }
-      } catch (_) { /* ignore and fall back */ }
-    } else if (settings.wrapEnabled && !settings.wrapByWidth) {
-      // fixed-column wrap mode: enable bounded wrap with explicit column
-      initialWordWrap = 'bounded';
-      initialWordWrapColumn = settings.wrapColumn || 120;
-    }
+	if (settings.wrapEnabled && settings.wrapByWidth) {
+		try {
+			const width = containerWidth || (window.innerWidth || 1200);
+			// simple threshold-based decision
+			if (typeof settings.wrapThresholdPx === 'number' && width <= settings.wrapThresholdPx) {
+				initialWordWrap = 'on';
+			} else {
+				initialWordWrap = 'off';
+			}
+			// estimate column based on font size (approx avg char width ~ 0.6 * fontSize)
+			const avgCharPx = (settings.fontSize || 14) * 0.6;
+			if (avgCharPx > 0) {
+				initialWordWrapColumn = Math.max(40, Math.floor(width / avgCharPx));
+			}
+		} catch (_) { /* ignore and fall back */ }
+	} else if (settings.wrapEnabled && !settings.wrapByWidth) {
+		// fixed-column wrap mode: enable bounded wrap with explicit column
+		initialWordWrap = 'bounded';
+		initialWordWrapColumn = settings.wrapColumn || 120;
+	}
 
-    editor = monaco.editor.create(editorContainer.value, {
-      value: props.content,
-      language: 'json',
-      theme: mode === 'dark' ? 'jsonium-dark' : 'jsonium-light', // 启动使用自定义主题
-      fontSize: settings.fontSize || 14,
-      fontFamily: settings.fontFamily || undefined,
-      minimap: { enabled: settings.minimap !== false },
-      folding: settings.folding !== false,
-      foldingStrategy: 'auto',
-      showFoldingControls: 'always',
-      lineNumbers: settings.lineNumbers !== false ? 'on' : 'off',
-      stickyScroll: {
-        enabled: !!settings.stickyEnabled,
-        maxLineCount: 8,
-        defaultModel: 'foldingProviderModel'
-      },
-      wordWrap: initialWordWrap,
-      wordWrapColumn: initialWordWrapColumn,
-      automaticLayout: true,
-      tabSize: (typeof settings.tabSize === 'number' ? settings.tabSize : 2),
-      insertSpaces: !settings.useTab,
-      formatOnPaste: true,
-      scrollBeyondLastLine: false,
-      'bracketPairColorization.enabled': true
-    });
+	editor = monaco.editor.create(editorContainer.value, {
+		value: props.content,
+		language: 'json',
+		theme: mode === 'dark' ? 'jsonium-dark' : 'jsonium-light', // 启动使用自定义主题
+		fontSize: settings.fontSize || 14,
+		fontFamily: settings.fontFamily || undefined,
+		minimap: { enabled: settings.minimap !== false },
+		folding: settings.folding !== false,
+		foldingStrategy: 'auto',
+		showFoldingControls: 'always',
+		lineNumbers: settings.lineNumbers !== false ? 'on' : 'off',
+		stickyScroll: {
+			enabled: !!settings.stickyEnabled,
+			maxLineCount: 8,
+			defaultModel: 'foldingProviderModel'
+		},
+		wordWrap: initialWordWrap,
+		wordWrapColumn: initialWordWrapColumn,
+		automaticLayout: true,
+		tabSize: (typeof settings.tabSize === 'number' ? settings.tabSize : 2),
+		insertSpaces: !settings.useTab,
+		formatOnPaste: true,
+		scrollBeyondLastLine: false,
+		'bracketPairColorization.enabled': true
+	});
 
-  const refreshJsonErrors = () => {
-    try {
-      if (!monaco || !editor || !editor.getModel) return;
-      const model = editor.getModel();
-      if (!model || !model.uri || !monaco.editor || typeof monaco.editor.getModelMarkers !== 'function') return;
-      const markers = monaco.editor.getModelMarkers({ resource: model.uri }) || [];
-      const onlyErrors = markers.filter((m) => m && m.severity === monaco.MarkerSeverity.Error);
-      jsonErrors.value = onlyErrors;
-      jsonValidationReady.value = true;
-    } catch (_) {
-      jsonErrors.value = [];
-      jsonValidationReady.value = true;
-    }
-  };
+	const refreshJsonErrors = () => {
+		try {
+			if (!monaco || !editor || !editor.getModel) return;
+			const model = editor.getModel();
+			if (!model || !model.uri || !monaco.editor || typeof monaco.editor.getModelMarkers !== 'function') return;
+			const markers = monaco.editor.getModelMarkers({ resource: model.uri }) || [];
+			const onlyErrors = markers.filter((m) => m && m.severity === monaco.MarkerSeverity.Error);
+			jsonErrors.value = onlyErrors;
+			jsonValidationReady.value = true;
+		} catch (_) {
+			jsonErrors.value = [];
+			jsonValidationReady.value = true;
+		}
+	};
 
-  try {
-    if (markerChangeDisposable && typeof markerChangeDisposable.dispose === 'function') {
-      markerChangeDisposable.dispose();
-    }
-    markerChangeDisposable = monaco.editor.onDidChangeMarkers((resources) => {
-      try {
-        const model = editor && editor.getModel ? editor.getModel() : null;
-        if (!model || !model.uri || !Array.isArray(resources)) return;
-        const hit = resources.some((u) => String(u) === String(model.uri));
-        if (hit) refreshJsonErrors();
-      } catch (_) { }
-    });
-  } catch (_) { }
+	try {
+		if (markerChangeDisposable && typeof markerChangeDisposable.dispose === 'function') {
+			markerChangeDisposable.dispose();
+		}
+		markerChangeDisposable = monaco.editor.onDidChangeMarkers((resources) => {
+			try {
+				const model = editor && editor.getModel ? editor.getModel() : null;
+				if (!model || !model.uri || !Array.isArray(resources)) return;
+				const hit = resources.some((u) => String(u) === String(model.uri));
+				if (hit) refreshJsonErrors();
+			} catch (_) { }
+		});
+	} catch (_) { }
 
-  try { setTimeout(refreshJsonErrors, 0); } catch (_) { }
+	try { setTimeout(refreshJsonErrors, 0); } catch (_) { }
 
-    // Ensure initial wrap reflects current settings immediately
-    try { adjustWrap && adjustWrap(); } catch (_) {}
+	// Ensure initial wrap reflects current settings immediately
+	try { adjustWrap && adjustWrap(); } catch (_) {}
 
-    // helper to adjust wrap on resize
-    adjustWrap = () => {
-      try {
-        if (!editor) return;
-        const s = store.getEditorSettings();
-        if (!s.wrapEnabled) {
-          editor.updateOptions({ wordWrap: 'off' });
-          return;
-        }
-        const width = (editorContainer.value && editorContainer.value.clientWidth) || (window.innerWidth || 1200);
-        if (s.wrapByWidth) {
-          const shouldWrap = (typeof s.wrapThresholdPx === 'number') ? (width <= s.wrapThresholdPx) : (width <= 900);
-          if (shouldWrap) {
-            // compute approximate column
-            const avgCharPx = (s.fontSize || 14) * 0.6;
-            const col = Math.max(40, Math.floor(width / (avgCharPx || 8)));
-            editor.updateOptions({ wordWrap: 'bounded', wordWrapColumn: col });
-          } else {
-            editor.updateOptions({ wordWrap: 'off' });
-          }
-        } else {
-          // use explicit column setting
-          const col = s.wrapColumn || 120;
-          editor.updateOptions({ wordWrap: 'bounded', wordWrapColumn: col });
-        }
-      } catch (_) { /* ignore */ }
-    };
+	// helper to adjust wrap on resize
+	adjustWrap = () => {
+		try {
+			if (!editor) return;
+			const s = store.getEditorSettings();
+			if (!s.wrapEnabled) {
+				editor.updateOptions({ wordWrap: 'off' });
+				return;
+			}
+			const width = (editorContainer.value && editorContainer.value.clientWidth) || (window.innerWidth || 1200);
+			if (s.wrapByWidth) {
+				const shouldWrap = (typeof s.wrapThresholdPx === 'number') ? (width <= s.wrapThresholdPx) : (width <= 900);
+				if (shouldWrap) {
+					// compute approximate column
+					const avgCharPx = (s.fontSize || 14) * 0.6;
+					const col = Math.max(40, Math.floor(width / (avgCharPx || 8)));
+					editor.updateOptions({ wordWrap: 'bounded', wordWrapColumn: col });
+				} else {
+					editor.updateOptions({ wordWrap: 'off' });
+				}
+			} else {
+				// use explicit column setting
+				const col = s.wrapColumn || 120;
+				editor.updateOptions({ wordWrap: 'bounded', wordWrapColumn: col });
+			}
+		} catch (_) { /* ignore */ }
+	};
 
-    // install ResizeObserver to adjust wrap dynamically
-    try {
-      if (typeof ResizeObserver !== 'undefined' && editorContainer.value) {
-        resizeObserver = new ResizeObserver(() => {
-          adjustWrap();
-        });
+	// install ResizeObserver to adjust wrap dynamically
+	try {
+		if (typeof ResizeObserver !== 'undefined' && editorContainer.value) {
+			resizeObserver = new ResizeObserver(() => {
+				adjustWrap();
+			});
 
-  try {
-    watch(
-      () => store.themePreference,
-      () => {
-        applyCurrentTheme();
-      },
-      { deep: true }
-    );
-  } catch (_) {}
-        installThemeRefreshListener();
-        // 监听粘性节点设置变更，动态更新编辑器选项
-        try {
-          watch(() => store.editorSettings.stickyEnabled, (nv) => {
-            try {
-              if (editor && typeof editor.updateOptions === 'function') {
-                editor.updateOptions({ stickyScroll: { enabled: !!nv } });
-              }
-            } catch (_) { }
-          });
-        } catch (_) { }
-        resizeObserver.observe(editorContainer.value);
-      } else {
-        // fallback to window resize
-        window.addEventListener('resize', adjustWrap);
-      }
-    } catch (_) { /* ignore */ }
+			try {
+				watch(
+					() => store.themePreference,
+					() => {
+						applyCurrentTheme();
+					},
+					{ deep: true }
+				);
+			} catch (_) {}
+			installThemeRefreshListener();
+			// 监听粘性节点设置变更，动态更新编辑器选项
+			try {
+				watch(() => store.editorSettings.stickyEnabled, (nv) => {
+					try {
+						if (editor && typeof editor.updateOptions === 'function') {
+							editor.updateOptions({ stickyScroll: { enabled: !!nv } });
+						}
+					} catch (_) { }
+				});
+			} catch (_) { }
+			resizeObserver.observe(editorContainer.value);
+		} else {
+			// fallback to window resize
+			window.addEventListener('resize', adjustWrap);
+		}
+	} catch (_) { /* ignore */ }
 
-    // watch editor settings to apply changes immediately (e.g., toggling wrap)
-    try {
-      try {
-        watch(() => store.editorSettings.wrapEnabled, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
-        watch(() => store.editorSettings.wrapByWidth, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
-        watch(() => store.editorSettings.wrapThresholdPx, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
-        watch(() => store.editorSettings.wrapColumn, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
-        // watch font size / family and apply to editor options
-        watch(() => store.editorSettings.fontSize, (n) => { try { if (editor) editor.updateOptions({ fontSize: n || 14 }); } catch (_) {} });
-        watch(() => store.editorSettings.fontFamily, (f) => { try { if (editor) editor.updateOptions({ fontFamily: f || undefined }); } catch (_) {} });
-        // watch tab size and tab style (useTab) and apply to editor
-        try {
-          watch(() => store.editorSettings.tabSize, (n) => { try { if (editor) editor.updateOptions({ tabSize: n || 2 }); } catch (_) { } });
-          watch(() => store.editorSettings.useTab, (v) => { try { if (editor) editor.updateOptions({ insertSpaces: !v }); } catch (_) { } });
-        } catch (_) { }
-      } catch (_) {}
-    } catch (_) {}
+	// watch editor settings to apply changes immediately (e.g., toggling wrap)
+	try {
+		try {
+			watch(() => store.editorSettings.wrapEnabled, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+			watch(() => store.editorSettings.wrapByWidth, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+			watch(() => store.editorSettings.wrapThresholdPx, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+			watch(() => store.editorSettings.wrapColumn, () => { try { adjustWrap && adjustWrap(); } catch (_) {} });
+			// watch font size / family and apply to editor options
+			watch(() => store.editorSettings.fontSize, (n) => { try { if (editor) editor.updateOptions({ fontSize: n || 14 }); } catch (_) {} });
+			watch(() => store.editorSettings.fontFamily, (f) => { try { if (editor) editor.updateOptions({ fontFamily: f || undefined }); } catch (_) {} });
+			// watch tab size and tab style (useTab) and apply to editor
+			try {
+				watch(() => store.editorSettings.tabSize, (n) => { try { if (editor) editor.updateOptions({ tabSize: n || 2 }); } catch (_) { } });
+				watch(() => store.editorSettings.useTab, (v) => { try { if (editor) editor.updateOptions({ insertSpaces: !v }); } catch (_) { } });
+			} catch (_) { }
+		} catch (_) {}
+	} catch (_) {}
 
-    // track Enter key timestamp to implement an "enter guard" protecting immediate formatting
-    editor.onKeyDown((e) => {
-      try {
-        if (e && e.keyCode === monaco.KeyCode.Enter) {
-          lastEnterTs = Date.now();
-        }
-      } catch (err) {
-        // ignore
-      }
-    });
+	// track Enter key timestamp to implement an "enter guard" protecting immediate formatting
+	editor.onKeyDown((e) => {
+		try {
+			if (e && e.keyCode === monaco.KeyCode.Enter) {
+				lastEnterTs = Date.now();
+			}
+		} catch (err) {
+			// ignore
+		}
+	});
 
-    // report changes upward; auto-format scheduling handled separately
-    editor.onDidChangeModelContent(() => {
-      if (__applyingEdit) return;
-      const content = editor.getValue();
-      emit('change', content);
-      try { refreshJsonErrors(); } catch (_) { }
+	// report changes upward; auto-format scheduling handled separately
+	editor.onDidChangeModelContent(() => {
+		if (__applyingEdit) return;
+		const content = editor.getValue();
+		emit('change', content);
+		try { refreshJsonErrors(); } catch (_) { }
 
-      if (!props.autoFormat) return;
+		if (!props.autoFormat) return;
 
-      // determine idle delay and enter guard from settings (fallback to existing debounceMs)
-      const s = store.getEditorSettings();
-      const idle = s.idleDelayMs || s.debounceMs || 300;
-      const enterGuard = s.enterGuardMs || 0;
-      const autoFormatOnEnter = !!s.autoFormatOnEnter;
+		// determine idle delay and enter guard from settings (fallback to existing debounceMs)
+		const s = store.getEditorSettings();
+		const idle = s.idleDelayMs || s.debounceMs || 300;
+		const enterGuard = s.enterGuardMs || 0;
+		const autoFormatOnEnter = !!s.autoFormatOnEnter;
 
-      if (props.autoFormatOnIdle) {
-        const now = Date.now();
-        const elapsedSinceEnter = lastEnterTs ? (now - lastEnterTs) : Number.POSITIVE_INFINITY;
+		if (props.autoFormatOnIdle) {
+			const now = Date.now();
+			const elapsedSinceEnter = lastEnterTs ? (now - lastEnterTs) : Number.POSITIVE_INFINITY;
 
-        if (!autoFormatOnEnter && lastEnterTs && elapsedSinceEnter < enterGuard) {
-          // within enter guard window: schedule after remaining guard + idle to avoid immediate formatting
-          const remaining = enterGuard - elapsedSinceEnter;
-          const delay = Math.max(remaining + idle, idle);
-          scheduleAutoFormat(scheduleState, 'idle', delay, () => {
-            formatJson('idle');
-          });
-        } else {
-          // normal idle scheduling
-          scheduleAutoFormat(scheduleState, 'idle', idle, () => {
-            formatJson('idle');
-          });
-        }
-      }
-    });
+			if (!autoFormatOnEnter && lastEnterTs && elapsedSinceEnter < enterGuard) {
+				// within enter guard window: schedule after remaining guard + idle to avoid immediate formatting
+				const remaining = enterGuard - elapsedSinceEnter;
+				const delay = Math.max(remaining + idle, idle);
+				scheduleAutoFormat(scheduleState, 'idle', delay, () => {
+					formatJson('idle');
+				});
+			} else {
+				// normal idle scheduling
+				scheduleAutoFormat(scheduleState, 'idle', idle, () => {
+					formatJson('idle');
+				});
+			}
+		}
+	});
 
-    // paste handling: run immediate format (after paste applied)
-    if (typeof editor.onDidPaste === 'function') {
-      editor.onDidPaste(() => {
-        if (!props.autoFormat || !props.autoFormatOnPaste) return;
-        // run async to allow paste to finish
-        setTimeout(() => formatJson('paste'), 0);
-      });
-    } else {
-      // best-effort: listen to DOM paste event as fallback
-      const domNode = editor.getDomNode && editor.getDomNode();
-      if (domNode) {
-        domPasteHandler = () => {
-          if (!props.autoFormat || !props.autoFormatOnPaste) return;
-          setTimeout(() => formatJson('paste'), 0);
-        };
-        try { domNode.addEventListener('paste', domPasteHandler); } catch (e) { }
-      }
-    }
+	// paste handling: run immediate format (after paste applied)
+	if (typeof editor.onDidPaste === 'function') {
+		editor.onDidPaste(() => {
+			if (!props.autoFormat || !props.autoFormatOnPaste) return;
+			// run async to allow paste to finish
+			setTimeout(() => formatJson('paste'), 0);
+		});
+	} else {
+		// best-effort: listen to DOM paste event as fallback
+		const domNode = editor.getDomNode && editor.getDomNode();
+		if (domNode) {
+			domPasteHandler = () => {
+				if (!props.autoFormat || !props.autoFormatOnPaste) return;
+				setTimeout(() => formatJson('paste'), 0);
+			};
+			try { domNode.addEventListener('paste', domPasteHandler); } catch (e) { }
+		}
+	}
 
-    // formatting shortcut
-    editor.addCommand(
-      monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
-      () => {
-        formatJson('manual');
-      }
-    );
+	// formatting shortcut
+	editor.addCommand(
+		monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+		() => {
+			formatJson('manual');
+		}
+	);
 
-    try {
-      editor.addCommand(
-        monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF,
-        () => { try { formatJson('manual'); } catch (e) { /* ignore */ } }
-      );
-    } catch (e) { }
+	try {
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF,
+			() => { try { formatJson('manual'); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-  // Cmd/Ctrl+H: open find+replace widget (common shortcut fallback)
-  try {
-    editor.addAction({
-      id: 'open-find-replace',
-      label: '查找并替换',
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 1.6,
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH],
-      run: () => { try { openMonacoReplace(); } catch (e) { /* ignore */ } }
-    });
-  } catch (e) { }
+	// Cmd/Ctrl+H: open find+replace widget (common shortcut fallback)
+	try {
+		editor.addAction({
+			id: 'open-find-replace',
+			label: '查找并替换',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 1.6,
+			keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH],
+			run: () => { try { openMonacoReplace(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-  try {
-    editor.addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH,
-      () => { try { openMonacoReplace(); } catch (e) { /* ignore */ } }
-    );
-  } catch (e) { }
+	try {
+		editor.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH,
+			() => { try { openMonacoReplace(); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-    try {
-      editor.addAction({
-        id: 'json-copy-current',
-        label: '复制当前 JSON',
-        contextMenuGroupId: 'navigation',
-        contextMenuOrder: 3.5,
-        keybindings: [
-          monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyJ,
-          monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ
-        ],
-        run: () => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	try {
+		editor.addAction({
+			id: 'json-copy-current',
+			label: '复制当前 JSON',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 3.5,
+			keybindings: [
+				monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyJ,
+				monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ
+			],
+			run: () => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    try {
-      editor.addCommand(
-        monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyJ,
-        () => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
-      );
-    } catch (e) { }
+	try {
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyJ,
+			() => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-    try {
-      editor.addCommand(
-        monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ,
-        () => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
-      );
-    } catch (e) { }
+	try {
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyJ,
+			() => { try { copyCurrentJson(); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-    // editor context menu actions: keep high-frequency operations near the content area
-    try {
-      editor.addAction({
-        id: 'json-format',
-        label: '格式化 JSON',
-        contextMenuGroupId: 'navigation',
-        contextMenuOrder: 1,
-        keybindings: [
-          monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
-          monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF
-        ],
-        run: () => { try { formatJson('manual'); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	// editor context menu actions: keep high-frequency operations near the content area
+	try {
+		editor.addAction({
+			id: 'json-format',
+			label: '格式化 JSON',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 1,
+			keybindings: [
+				monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+				monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF
+			],
+			run: () => { try { formatJson('manual'); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    try {
-      editor.addAction({
-        id: 'json-escape',
-        label: '转义 JSON 字符串',
-        contextMenuGroupId: 'navigation',
-        contextMenuOrder: 2,
-        run: () => { try { escapeCurrentDocument(); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	try {
+		editor.addAction({
+			id: 'json-escape',
+			label: '转义 JSON 字符串',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 2,
+			run: () => { try { escapeCurrentDocument(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    try {
-      editor.addAction({
-        id: 'json-unescape',
-        label: '反转义 JSON 字符串',
-        contextMenuGroupId: 'navigation',
-        contextMenuOrder: 3,
-        run: () => { try { unescapeCurrentDocument(); } catch (e) { /* ignore */ } }
-      });
-  } catch (e) { }
+	try {
+		editor.addAction({
+			id: 'json-unescape',
+			label: '反转义 JSON 字符串',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 3,
+			run: () => { try { unescapeCurrentDocument(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-  try {
-    editor.addAction({
-      id: 'copy-jsonpath',
-      label: '复制当前 JSONPath',
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 4.5,
-      run: () => { try { copyCurrentPath('jsonpath'); } catch (e) { /* ignore */ } }
-    });
-  } catch (e) { }
+	try {
+		editor.addAction({
+			id: 'copy-jsonpath',
+			label: '复制当前 JSONPath',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 4.5,
+			run: () => { try { copyCurrentPath('jsonpath'); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-  try {
-    editor.addAction({
-      id: 'copy-jqpath',
-      label: '复制当前 jq',
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 4.6,
-      run: () => { try { copyCurrentPath('jq'); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	try {
+		editor.addAction({
+			id: 'copy-jqpath',
+			label: '复制当前 jq',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 4.6,
+			run: () => { try { copyCurrentPath('jq'); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    // copy actions: prefer addAction with keybindings (more reliable)
-    try {
-      editor.addAction({
-        id: 'copy-singleline',
-        label: '复制为单行',
-        contextMenuGroupId: 'navigation',
-        contextMenuOrder: 4,
-        keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyC],
-        run: () => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	// copy actions: prefer addAction with keybindings (more reliable)
+	try {
+		editor.addAction({
+			id: 'copy-singleline',
+			label: '复制为单行',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 4,
+			keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyC],
+			run: () => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    try {
-      editor.addAction({
-        id: 'copy-escaped',
-        label: '复制为转义字符串',
-        contextMenuGroupId: 'navigation',
-        contextMenuOrder: 5,
-        keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.Backslash],
-        run: () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	try {
+		editor.addAction({
+			id: 'copy-escaped',
+			label: '复制为转义字符串',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 5,
+			keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.Backslash],
+			run: () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    // also register alternative bindings for platforms where Alt+Shift isn't delivered reliably
-    try {
-      editor.addAction({
-        id: 'copy-singleline-cmd',
-        label: 'Copy as single line (Cmd/Ctrl fallback)',
-        keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC],
-        run: () => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	// also register alternative bindings for platforms where Alt+Shift isn't delivered reliably
+	try {
+		editor.addAction({
+			id: 'copy-singleline-cmd',
+			label: 'Copy as single line (Cmd/Ctrl fallback)',
+			keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC],
+			run: () => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    try {
-      editor.addAction({
-        id: 'copy-escaped-cmd',
-        label: 'Copy as escaped string (Cmd/Ctrl fallback)',
-        keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash],
-        run: () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
-      });
-    } catch (e) { }
+	try {
+		editor.addAction({
+			id: 'copy-escaped-cmd',
+			label: 'Copy as escaped string (Cmd/Ctrl fallback)',
+			keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash],
+			run: () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
+		});
+	} catch (e) { }
 
-    // also register Monaco commands as fallback (some environments handle addCommand better)
-    try {
-      editor.addCommand(
-        monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyC,
-        () => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
-      );
-    } catch (e) { }
+	// also register Monaco commands as fallback (some environments handle addCommand better)
+	try {
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyC,
+			() => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-    try {
-      editor.addCommand(
-        monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.Backslash,
-        () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
-      );
-    } catch (e) { }
+	try {
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.Backslash,
+			() => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-    // register Cmd/Ctrl+Shift fallbacks too
-    try {
-      editor.addCommand(
-        monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC,
-        () => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
-      );
-    } catch (e) { }
+	// register Cmd/Ctrl+Shift fallbacks too
+	try {
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC,
+			() => { try { copyAsSingleLine(); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-    try {
-      editor.addCommand(
-        monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash,
-        () => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
-      );
-    } catch (e) { }
+	try {
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash,
+			() => { try { copyAsEscapedString(); } catch (e) { /* ignore */ } }
+		);
+	} catch (e) { }
 
-    // fallback keydown listener: attach on editor DOM (capture) and window as fallback
-    domKeydownHandler = (e) => {
-      try {
-        // close context menu or find bar with Escape
-        if (showEditorContextMenu.value && e.key === 'Escape') {
-          hideEditorContextMenu();
-          return;
-        }
-        // For Cmd/Ctrl+F: intercept to explicitly open find and focus input
-        // Monaco's native handler may not reliably focus the input in uTools/Electron
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.code === 'KeyF')) {
-          e.preventDefault();
-          e.stopPropagation();
-          openMonacoFind();
-          return;
-        }
+	// fallback keydown listener: attach on editor DOM (capture) and window as fallback
+	domKeydownHandler = (e) => {
+		try {
+			// close context menu or find bar with Escape
+			if (showEditorContextMenu.value && e.key === 'Escape') {
+				hideEditorContextMenu();
+				return;
+			}
+			// For Cmd/Ctrl+F: intercept to explicitly open find and focus input
+			// Monaco's native handler may not reliably focus the input in uTools/Electron
+			if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.code === 'KeyF')) {
+				e.preventDefault();
+				e.stopPropagation();
+				openMonacoFind();
+				return;
+			}
 
-        const domNode = editor && editor.getDomNode && editor.getDomNode();
-        // allow if event originates inside editor DOM (cover nested nodes) OR editor has focus
-        const originatedInEditor = domNode && e.target && domNode.contains(e.target);
-        const editorFocused = editor && typeof editor.hasTextFocus === 'function' && editor.hasTextFocus();
-        // also consider document.activeElement residing inside editor DOM (covers some focus edge-cases)
-        let activeInEditor = false;
-        try {
-          const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
-          activeInEditor = !!(activeEl && domNode && domNode.contains(activeEl));
-        } catch (_) { }
-        if (!originatedInEditor && !editorFocused && !activeInEditor) return;
+			const domNode = editor && editor.getDomNode && editor.getDomNode();
+			// allow if event originates inside editor DOM (cover nested nodes) OR editor has focus
+			const originatedInEditor = domNode && e.target && domNode.contains(e.target);
+			const editorFocused = editor && typeof editor.hasTextFocus === 'function' && editor.hasTextFocus();
+			// also consider document.activeElement residing inside editor DOM (covers some focus edge-cases)
+			let activeInEditor = false;
+			try {
+				const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+				activeInEditor = !!(activeEl && domNode && domNode.contains(activeEl));
+			} catch (_) { }
+			if (!originatedInEditor && !editorFocused && !activeInEditor) return;
 
-        const isShift = !!e.shiftKey;
-        let isAlt = !!e.altKey;
-        try {
-          if (!isAlt && e.getModifierState) {
-            isAlt = !!(e.getModifierState('Alt') || e.getModifierState('AltGraph'));
-          }
-        } catch (_) { }
-        // debug log to help diagnose missing single-line shortcut
-        if (isShift && (isAlt || e.metaKey || e.ctrlKey || modifierState.alt || modifierState.meta || modifierState.ctrl)) {
-          const code = e.code || '';
-          const key = e.key || '';
-          // allow either Alt+Shift or Cmd/Ctrl+Shift as trigger (fallback)
-          if (!e.ctrlKey && !e.metaKey && !modifierState.ctrl && !modifierState.meta) {
-            // Alt+Shift path
-            if (code === 'KeyF' || key === 'f' || key === 'F') {
-              e.preventDefault();
-              try { formatJson('manual'); } catch (_) { /* ignore */ }
-            } else if (code === 'KeyJ' || key === 'j' || key === 'J') {
-              e.preventDefault();
-              try { copyCurrentJson(); } catch (_) { /* ignore */ }
-            } else if (code === 'KeyC' || key === 'c' || key === 'C') {
-              e.preventDefault();
-              try { copyAsSingleLine(); } catch (_) { /* ignore */ }
-            } else if (code === 'Backslash' || key === '\\' || key === 'IntlBackslash') {
-              e.preventDefault();
-              try { copyAsEscapedString(); } catch (_) { /* ignore */ }
-            }
-          } else {
-            // Cmd/Ctrl+Shift fallback
-            if (code === 'KeyF' || key === 'f' || key === 'F') {
-              e.preventDefault();
-              try { formatJson('manual'); } catch (_) { /* ignore */ }
-            } else if (code === 'KeyJ' || key === 'j' || key === 'J') {
-              e.preventDefault();
-              try { copyCurrentJson(); } catch (_) { /* ignore */ }
-            } else if (code === 'KeyC' || key === 'c' || key === 'C') {
-              e.preventDefault();
-              try { copyAsSingleLine(); } catch (_) { /* ignore */ }
-            } else if (code === 'Backslash' || key === '\\' || key === 'IntlBackslash') {
-              e.preventDefault();
-              try { copyAsEscapedString(); } catch (_) { /* ignore */ }
-            }
-          }
-        }
-      } catch (err) {
-        // ignore
-      }
-    };
-    // prefer attaching on editor DOM with capture to intercept before Monaco stops propagation
-    try {
-      const root = editor && editor.getDomNode && editor.getDomNode();
-      if (root && root.addEventListener) {
-        try { root.addEventListener('keydown', domKeydownHandler, true); } catch (e) { }
-        try { root.addEventListener('contextmenu', handleEditorContextMenu, true); } catch (e) { }
-      }
-    } catch (e) { }
-    // keep a window fallback as well
-    try { window.addEventListener('keydown', domKeydownHandler); } catch (e) { }
-    // register modifier handlers to track Alt/Shift pressed state across separate events
-    try { window.addEventListener('keydown', modifierHandler); } catch (e) { }
-    try { window.addEventListener('keyup', modifierHandler); } catch (e) { }
-  }
+			const isShift = !!e.shiftKey;
+			let isAlt = !!e.altKey;
+			try {
+				if (!isAlt && e.getModifierState) {
+					isAlt = !!(e.getModifierState('Alt') || e.getModifierState('AltGraph'));
+				}
+			} catch (_) { }
+			// debug log to help diagnose missing single-line shortcut
+			if (isShift && (isAlt || e.metaKey || e.ctrlKey || modifierState.alt || modifierState.meta || modifierState.ctrl)) {
+				const code = e.code || '';
+				const key = e.key || '';
+				// allow either Alt+Shift or Cmd/Ctrl+Shift as trigger (fallback)
+				if (!e.ctrlKey && !e.metaKey && !modifierState.ctrl && !modifierState.meta) {
+					// Alt+Shift path
+					if (code === 'KeyF' || key === 'f' || key === 'F') {
+						e.preventDefault();
+						try { formatJson('manual'); } catch (_) { /* ignore */ }
+					} else if (code === 'KeyJ' || key === 'j' || key === 'J') {
+						e.preventDefault();
+						try { copyCurrentJson(); } catch (_) { /* ignore */ }
+					} else if (code === 'KeyC' || key === 'c' || key === 'C') {
+						e.preventDefault();
+						try { copyAsSingleLine(); } catch (_) { /* ignore */ }
+					} else if (code === 'Backslash' || key === '\\' || key === 'IntlBackslash') {
+						e.preventDefault();
+						try { copyAsEscapedString(); } catch (_) { /* ignore */ }
+					}
+				} else {
+					// Cmd/Ctrl+Shift fallback
+					if (code === 'KeyF' || key === 'f' || key === 'F') {
+						e.preventDefault();
+						try { formatJson('manual'); } catch (_) { /* ignore */ }
+					} else if (code === 'KeyJ' || key === 'j' || key === 'J') {
+						e.preventDefault();
+						try { copyCurrentJson(); } catch (_) { /* ignore */ }
+					} else if (code === 'KeyC' || key === 'c' || key === 'C') {
+						e.preventDefault();
+						try { copyAsSingleLine(); } catch (_) { /* ignore */ }
+					} else if (code === 'Backslash' || key === '\\' || key === 'IntlBackslash') {
+						e.preventDefault();
+						try { copyAsEscapedString(); } catch (_) { /* ignore */ }
+					}
+				}
+			}
+		} catch (err) {
+			// ignore
+		}
+	};
+	// prefer attaching on editor DOM with capture to intercept before Monaco stops propagation
+	try {
+		const root = editor && editor.getDomNode && editor.getDomNode();
+		if (root && root.addEventListener) {
+			try { root.addEventListener('keydown', domKeydownHandler, true); } catch (e) { }
+			try { root.addEventListener('contextmenu', handleEditorContextMenu, true); } catch (e) { }
+		}
+	} catch (e) { }
+	// keep a window fallback as well
+	try { window.addEventListener('keydown', domKeydownHandler); } catch (e) { }
+	// register modifier handlers to track Alt/Shift pressed state across separate events
+	try { window.addEventListener('keydown', modifierHandler); } catch (e) { }
+	try { window.addEventListener('keyup', modifierHandler); } catch (e) { }
+}
 
-  function focusFirstJsonError() {
-    try {
-      if (!editor || !firstJsonError.value) return;
-      const marker = firstJsonError.value;
-      const lineNumber = marker.startLineNumber || 1;
-      const column = marker.startColumn || 1;
-      if (typeof editor.revealPositionInCenter === 'function') {
-        editor.revealPositionInCenter({ lineNumber, column });
-      }
-      if (typeof editor.setPosition === 'function') {
-        editor.setPosition({ lineNumber, column });
-      }
-      if (typeof editor.focus === 'function') {
-        editor.focus();
-      }
-    } catch (_) { }
-  }
+function focusFirstJsonError() {
+	try {
+		if (!editor || !firstJsonError.value) return;
+		const marker = firstJsonError.value;
+		const lineNumber = marker.startLineNumber || 1;
+		const column = marker.startColumn || 1;
+		if (typeof editor.revealPositionInCenter === 'function') {
+			editor.revealPositionInCenter({ lineNumber, column });
+		}
+		if (typeof editor.setPosition === 'function') {
+			editor.setPosition({ lineNumber, column });
+		}
+		if (typeof editor.focus === 'function') {
+			editor.focus();
+		}
+	} catch (_) { }
+}
 
-  /**
+/**
    * formatJson: unified formatting entry.
    * Delegates to runEditorFormat which uses the registered formatting provider (incremental edits)
    * or falls back to computing minimal edits manually.
    * reason: 'manual' | 'idle' | 'paste' | 'external-sync'
    */
-  async function formatJson(reason = 'manual') {
-    if (!editor) return;
-    // prevent scheduling conflicts when user explicitly requests format
-    cancelScheduledAutoFormat(scheduleState);
+async function formatJson(reason = 'manual') {
+	if (!editor) return;
+	// prevent scheduling conflicts when user explicitly requests format
+	cancelScheduledAutoFormat(scheduleState);
 
-    try {
-      const result = await runEditorFormat(editor, {
-        fallbackFormatter: formatJsonString,
-        reason,
-        allowFallback: true,
-        monacoInstance: monaco
-      });
+	try {
+		const result = await runEditorFormat(editor, {
+			fallbackFormatter: formatJsonString,
+			reason,
+			allowFallback: true,
+			monacoInstance: monaco
+		});
 
-      // Only trigger layout if formatting actually applied or noop
-      if (result && (result.status === 'applied' || result.status === 'no-op')) {
-        // Recalculate editor layout and scrollbar after formatting
-        // This is especially important when a long single-line JSON is formatted into multiple lines
+		// Only trigger layout if formatting actually applied or noop
+		if (result && (result.status === 'applied' || result.status === 'no-op')) {
+			// Recalculate editor layout and scrollbar after formatting
+			// This is especially important when a long single-line JSON is formatted into multiple lines
 
-        if (editor && typeof editor.layout === 'function') {
-          // Immediate layout call
-          editor.layout();
+			if (editor && typeof editor.layout === 'function') {
+				// Immediate layout call
+				editor.layout();
 
-          // Force viewport width recalculation by temporarily modifying container
-          await new Promise(resolve => {
-            requestAnimationFrame(() => {
-              const container = editor.getContainerDomNode();
-              if (container) {
-                const originalWidth = container.style.width;
-                container.style.width = (container.offsetWidth - 1) + 'px';
-                editor.layout();
-                container.style.width = originalWidth;
-                editor.layout();
-              }
-              resolve();
-            });
-          });
+				// Force viewport width recalculation by temporarily modifying container
+				await new Promise(resolve => {
+					requestAnimationFrame(() => {
+						const container = editor.getContainerDomNode();
+						if (container) {
+							const originalWidth = container.style.width;
+							container.style.width = (container.offsetWidth - 1) + 'px';
+							editor.layout();
+							container.style.width = originalWidth;
+							editor.layout();
+						}
+						resolve();
+					});
+				});
 
-          // Final RAF cycle to stabilize
-          await new Promise(resolve => {
-            requestAnimationFrame(() => {
-              editor.layout();
-              resolve();
-            });
-          });
-        }
-      }
-    } catch (e) {
-      // swallow formatting errors to avoid interrupting user input
-      // eslint-disable-next-line no-console
-      console.warn('formatJson failed quietly', e);
-    }
-  }
+				// Final RAF cycle to stabilize
+				await new Promise(resolve => {
+					requestAnimationFrame(() => {
+						editor.layout();
+						resolve();
+					});
+				});
+			}
+		}
+	} catch (e) {
+		// swallow formatting errors to avoid interrupting user input
 
-  function getSelectionOrFull() {
-    if (!editor) return '';
-    try {
-      const sel = editor.getSelection && editor.getSelection();
-      if (sel && typeof sel.isEmpty === 'function' && !sel.isEmpty()) {
-        const model = editor.getModel && editor.getModel();
-        if (model && typeof model.getValueInRange === 'function') {
-          return model.getValueInRange(sel);
-        }
-      }
+		console.warn('formatJson failed quietly', e);
+	}
+}
 
-      // Fallback: try DOM selection inside the editor DOM (handles some platforms/bindings)
-      try {
-        const domNode = editor.getDomNode && editor.getDomNode();
-        const domSel = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
-        if (domSel && domSel.rangeCount > 0 && domNode && domNode.contains(domSel.anchorNode)) {
-          const s = domSel.toString();
-          if (s && s.length > 0) return s;
-        }
-      } catch (_) { }
+function getSelectionOrFull() {
+	if (!editor) return '';
+	try {
+		const sel = editor.getSelection && editor.getSelection();
+		if (sel && typeof sel.isEmpty === 'function' && !sel.isEmpty()) {
+			const model = editor.getModel && editor.getModel();
+			if (model && typeof model.getValueInRange === 'function') {
+				return model.getValueInRange(sel);
+			}
+		}
 
-      // final fallback: full editor content
-      return editor.getValue();
-    } catch (e) {
-      return editor.getValue ? editor.getValue() : '';
-    }
-  }
+		// Fallback: try DOM selection inside the editor DOM (handles some platforms/bindings)
+		try {
+			const domNode = editor.getDomNode && editor.getDomNode();
+			const domSel = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
+			if (domSel && domSel.rangeCount > 0 && domNode && domNode.contains(domSel.anchorNode)) {
+				const s = domSel.toString();
+				if (s && s.length > 0) return s;
+			}
+		} catch (_) { }
 
-    async function copyToClipboard(text) {
-    if (text === null || text === undefined) return false;
+		// final fallback: full editor content
+		return editor.getValue();
+	} catch (e) {
+		return editor.getValue ? editor.getValue() : '';
+	}
+}
 
-    const preserve = store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy;
-      const ok = await copyText(text, { preserveWhitespace: !!preserve });
-      if (!ok) emitCopyError('clipboard-failed');
-      return ok;
-  }
+async function copyToClipboard(text) {
+	if (text === null || text === undefined) return false;
 
-  async function copyRawTextToClipboard(text) {
-    if (text === null || text === undefined) return false;
+	const preserve = store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy;
+	const ok = await copyText(text, { preserveWhitespace: !!preserve });
+	if (!ok) emitCopyError('clipboard-failed');
+	return ok;
+}
 
-    const ok = await copyText(text, { preserveWhitespace: true });
-    if (!ok) emitCopyError('clipboard-failed');
-    return ok;
-  }
+async function copyRawTextToClipboard(text) {
+	if (text === null || text === undefined) return false;
 
-  function emitCopyError(reason) {
-    try { emit('copy-error', { reason }); } catch (_) { }
-    try { window.dispatchEvent(new CustomEvent('editor-copy-error', { detail: { reason } })); } catch (_) { }
-  }
+	const ok = await copyText(text, { preserveWhitespace: true });
+	if (!ok) emitCopyError('clipboard-failed');
+	return ok;
+}
 
-  function getFullEditorText() {
-    try {
-      const model = editor && editor.getModel && editor.getModel();
-      if (model && typeof model.getValue === 'function') {
-        return model.getValue();
-      }
-    } catch (_) { }
+function emitCopyError(reason) {
+	try { emit('copy-error', { reason }); } catch (_) { }
+	try { window.dispatchEvent(new CustomEvent('editor-copy-error', { detail: { reason } })); } catch (_) { }
+}
 
-    try {
-      return editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
-    } catch (_) {
-      return '';
-    }
-  }
+function getFullEditorText() {
+	try {
+		const model = editor && editor.getModel && editor.getModel();
+		if (model && typeof model.getValue === 'function') {
+			return model.getValue();
+		}
+	} catch (_) { }
 
-  function escapeWholeDocument(text) {
-    const parsed = JSON.parse(String(text));
-    return JSON.stringify(JSON.stringify(parsed));
-  }
+	try {
+		return editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
+	} catch (_) {
+		return '';
+	}
+}
 
-  function unescapeWholeDocument(text) {
-    const parsed = JSON.parse(String(text));
-    const source = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
-    const unescaped = JSON.parse(source);
-    return JSON.stringify(unescaped, null, getStringifyIndent());
-  }
+function escapeWholeDocument(text) {
+	const parsed = JSON.parse(String(text));
+	return JSON.stringify(JSON.stringify(parsed));
+}
 
-  async function escapeCurrentDocument() {
-    if (!editor) return;
-    try {
-      const source = getFullEditorText();
-      if (!source || !String(source).trim()) {
-        notify.warn('请输入 JSON 内容');
-        return;
-      }
-      const escaped = escapeWholeDocument(source);
-      applyEdit(escaped);
-    } catch (e) {
-      notify.error('转义失败: ' + (e && e.message ? e.message : String(e)));
-    }
-  }
+function unescapeWholeDocument(text) {
+	const parsed = JSON.parse(String(text));
+	const source = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+	const unescaped = JSON.parse(source);
+	return JSON.stringify(unescaped, null, getStringifyIndent());
+}
 
-  async function unescapeCurrentDocument() {
-    if (!editor) return;
-    try {
-      const source = getFullEditorText();
-      if (!source || !String(source).trim()) {
-        notify.warn('请输入 JSON 内容');
-        return;
-      }
+async function escapeCurrentDocument() {
+	if (!editor) return;
+	try {
+		const source = getFullEditorText();
+		if (!source || !String(source).trim()) {
+			notify.warn('请输入 JSON 内容');
+			return;
+		}
+		const escaped = escapeWholeDocument(source);
+		applyEdit(escaped);
+	} catch (e) {
+		notify.error('转义失败: ' + (e && e.message ? e.message : String(e)));
+	}
+}
 
-      let unescaped;
-      try {
-        unescaped = unescapeWholeDocument(source);
-      } catch (_) {
-        const parsed = JSON.parse(JSON.parse(String(source)));
-        unescaped = JSON.stringify(parsed, null, getStringifyIndent());
-      }
+async function unescapeCurrentDocument() {
+	if (!editor) return;
+	try {
+		const source = getFullEditorText();
+		if (!source || !String(source).trim()) {
+			notify.warn('请输入 JSON 内容');
+			return;
+		}
 
-      applyEdit(unescaped);
-    } catch (e) {
-      notify.error('反转义失败: ' + (e && e.message ? e.message : String(e)));
-    }
-  }
+		let unescaped;
+		try {
+			unescaped = unescapeWholeDocument(source);
+		} catch (_) {
+			const parsed = JSON.parse(JSON.parse(String(source)));
+			unescaped = JSON.stringify(parsed, null, getStringifyIndent());
+		}
 
-  async function copyCurrentPath(kind) {
-    if (!editor) return;
+		applyEdit(unescaped);
+	} catch (e) {
+		notify.error('反转义失败: ' + (e && e.message ? e.message : String(e)));
+	}
+}
 
-    try {
-      const model = editor.getModel && editor.getModel();
-      if (!model || typeof model.getValue !== 'function') {
-        notify.error('无法读取编辑器内容');
-        return;
-      }
+async function copyCurrentPath(kind) {
+	if (!editor) return;
 
-      const text = model.getValue();
-      const selection = editor.getSelection && editor.getSelection();
-      const position = editor.getPosition && editor.getPosition();
-      let result = null;
+	try {
+		const model = editor.getModel && editor.getModel();
+		if (!model || typeof model.getValue !== 'function') {
+			notify.error('无法读取编辑器内容');
+			return;
+		}
 
-      if (selection && typeof selection.isEmpty === 'function' && !selection.isEmpty()) {
-        const selectionStart = typeof model.getOffsetAt === 'function' ? model.getOffsetAt(selection.getStartPosition()) : null;
-        const selectionEnd = typeof model.getOffsetAt === 'function' ? model.getOffsetAt(selection.getEndPosition()) : null;
-        result = extractPathFromText(text, {
-          selectionStart,
-          selectionEnd
-        });
+		const text = model.getValue();
+		const selection = editor.getSelection && editor.getSelection();
+		const position = editor.getPosition && editor.getPosition();
+		let result = null;
 
-        if (result && result.success && result.nodeType === 'document') {
-          const fullSelection = selectionStart === 0 && selectionEnd === text.length;
-          if (!fullSelection) {
-            result = null;
-          }
-        }
-      }
+		if (selection && typeof selection.isEmpty === 'function' && !selection.isEmpty()) {
+			const selectionStart = typeof model.getOffsetAt === 'function' ? model.getOffsetAt(selection.getStartPosition()) : null;
+			const selectionEnd = typeof model.getOffsetAt === 'function' ? model.getOffsetAt(selection.getEndPosition()) : null;
+			result = extractPathFromText(text, {
+				selectionStart,
+				selectionEnd
+			});
 
-      if (!result || !result.success) {
-        result = extractPathFromText(text, {
-          cursorOffset: position && typeof model.getOffsetAt === 'function' ? model.getOffsetAt(position) : null
-        });
-      }
+			if (result && result.success && result.nodeType === 'document') {
+				const fullSelection = selectionStart === 0 && selectionEnd === text.length;
+				if (!fullSelection) {
+					result = null;
+				}
+			}
+		}
 
-      if (!result || !result.success) {
-        notify.error(result?.error || '无法提取路径');
-        return;
-      }
+		if (!result || !result.success) {
+			result = extractPathFromText(text, {
+				cursorOffset: position && typeof model.getOffsetAt === 'function' ? model.getOffsetAt(position) : null
+			});
+		}
 
-      const value = kind === 'jq' ? result.jq : result.jsonpath;
-      const ok = await copyRawTextToClipboard(value);
-      if (!ok) {
-        notify.error('复制路径失败');
-        return;
-      }
+		if (!result || !result.success) {
+			notify.error(result?.error || '无法提取路径');
+			return;
+		}
 
-      notify.success(kind === 'jq' ? '已复制 jq' : '已复制 JSONPath');
-    } catch (e) {
-      notify.error('提取路径失败: ' + (e && e.message ? e.message : String(e)));
-    }
-  }
+		const value = kind === 'jq' ? result.jq : result.jsonpath;
+		const ok = await copyRawTextToClipboard(value);
+		if (!ok) {
+			notify.error('复制路径失败');
+			return;
+		}
 
-  async function copyCurrentJson() {
-    if (!editor) return;
+		notify.success(kind === 'jq' ? '已复制 jq' : '已复制 JSONPath');
+	} catch (e) {
+		notify.error('提取路径失败: ' + (e && e.message ? e.message : String(e)));
+	}
+}
 
-    if (copyingLock) {
-      return;
-    }
-    copyingLock = true;
+async function copyCurrentJson() {
+	if (!editor) return;
 
-    try {
-      try {
-        const now = Date.now();
-        if (now - lastCopyTs < 300) {
-          return;
-        }
-        lastCopyTs = now;
-      } catch (_) { }
+	if (copyingLock) {
+		return;
+	}
+	copyingLock = true;
 
-      const text = getFullEditorText();
-      if (!text) {
-        notify.error('当前内容为空');
-        return;
-      }
+	try {
+		try {
+			const now = Date.now();
+			if (now - lastCopyTs < 300) {
+				return;
+			}
+			lastCopyTs = now;
+		} catch (_) { }
 
-      const formatted = formatJsonString(text);
-      const ok = await copyRawTextToClipboard(formatted);
-      if (!ok) {
-        notify.error('复制当前 JSON 失败');
-        return;
-      }
+		const text = getFullEditorText();
+		if (!text) {
+			notify.error('当前内容为空');
+			return;
+		}
 
-      notify.success('已复制当前 JSON');
-    } catch (e) {
-      notify.error('复制当前 JSON 失败: ' + (e && e.message ? e.message : String(e)));
-    } finally {
-      copyingLock = false;
-    }
-  }
+		const formatted = formatJsonString(text);
+		const ok = await copyRawTextToClipboard(formatted);
+		if (!ok) {
+			notify.error('复制当前 JSON 失败');
+			return;
+		}
 
-  async function copyAsSingleLine() {
-    // prevent overlapping copy operations
-    if (copyingLock) {
-      return;
-    }
-    copyingLock = true;
-    try {
-      // avoid duplicate rapid invocations (monaco action + dom fallback both firing)
-      try {
-        const now = Date.now();
-        if (now - lastCopyTs < 300) {
-          return;
-        }
-        lastCopyTs = now;
-      } catch (_) { }
+		notify.success('已复制当前 JSON');
+	} catch (e) {
+		notify.error('复制当前 JSON 失败: ' + (e && e.message ? e.message : String(e)));
+	} finally {
+		copyingLock = false;
+	}
+}
 
-      // robustly obtain text from Monaco model (prefer selection, fallback to full model value)
-      let txt = '';
-      try {
-        const model = editor && editor.getModel && editor.getModel();
-        const sel = editor && editor.getSelection && editor.getSelection();
-        if (model && sel && typeof sel.isEmpty === 'function' && !sel.isEmpty() && typeof model.getValueInRange === 'function') {
-          txt = model.getValueInRange(sel);
-        } else if (model && typeof model.getValue === 'function') {
-          txt = model.getValue();
-        } else if (editor && typeof editor.getValue === 'function') {
-          txt = editor.getValue();
-        } else {
-          txt = getSelectionOrFull() || '';
-        }
-      } catch (e) {
-        txt = getSelectionOrFull() || '';
-      }
+async function copyAsSingleLine() {
+	// prevent overlapping copy operations
+	if (copyingLock) {
+		return;
+	}
+	copyingLock = true;
+	try {
+		// avoid duplicate rapid invocations (monaco action + dom fallback both firing)
+		try {
+			const now = Date.now();
+			if (now - lastCopyTs < 300) {
+				return;
+			}
+			lastCopyTs = now;
+		} catch (_) { }
 
-      let out = '';
-      try {
-        const parsed = JSON.parse(txt);
-        out = JSON.stringify(parsed);
-      } catch (e) {
-        out = String(txt);
-      }
-      // apply whitespace preservation setting
-      if (!(store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy)) {
-        out = String(out).replace(/\s+/g, '');
-      }
+		// robustly obtain text from Monaco model (prefer selection, fallback to full model value)
+		let txt = '';
+		try {
+			const model = editor && editor.getModel && editor.getModel();
+			const sel = editor && editor.getSelection && editor.getSelection();
+			if (model && sel && typeof sel.isEmpty === 'function' && !sel.isEmpty() && typeof model.getValueInRange === 'function') {
+				txt = model.getValueInRange(sel);
+			} else if (model && typeof model.getValue === 'function') {
+				txt = model.getValue();
+			} else if (editor && typeof editor.getValue === 'function') {
+				txt = editor.getValue();
+			} else {
+				txt = getSelectionOrFull() || '';
+			}
+		} catch (e) {
+			txt = getSelectionOrFull() || '';
+		}
 
-      await copyToClipboard(out);
-    } finally {
-      copyingLock = false;
-    }
-  }
+		let out = '';
+		try {
+			const parsed = JSON.parse(txt);
+			out = JSON.stringify(parsed);
+		} catch (e) {
+			out = String(txt);
+		}
+		// apply whitespace preservation setting
+		if (!(store && store.editorSettings && store.editorSettings.preserveWhitespaceOnCopy)) {
+			out = String(out).replace(/\s+/g, '');
+		}
 
-  async function copyAsEscapedString() {
-    // prevent overlapping copy operations
-    if (copyingLock) {
-      return;
-    }
-    copyingLock = true;
-    try {
-      // avoid duplicate rapid invocations
-      try {
-        const now = Date.now();
-        if (now - lastCopyTs < 300) {
-          return;
-        }
-        lastCopyTs = now;
-      } catch (_) { }
+		await copyToClipboard(out);
+	} finally {
+		copyingLock = false;
+	}
+}
 
-      // robustly obtain text from Monaco model (prefer selection, fallback to full model value)
-      let txt = '';
-      try {
-        const model = editor && editor.getModel && editor.getModel();
-        const sel = editor && editor.getSelection && editor.getSelection();
-        if (model && sel && typeof sel.isEmpty === 'function' && !sel.isEmpty() && typeof model.getValueInRange === 'function') {
-          txt = model.getValueInRange(sel);
-        } else if (model && typeof model.getValue === 'function') {
-          txt = model.getValue();
-        } else if (editor && typeof editor.getValue === 'function') {
-          txt = editor.getValue();
-        } else {
-          txt = getSelectionOrFull() || '';
-        }
-      } catch (e) {
-        txt = getSelectionOrFull() || '';
-      }
+async function copyAsEscapedString() {
+	// prevent overlapping copy operations
+	if (copyingLock) {
+		return;
+	}
+	copyingLock = true;
+	try {
+		// avoid duplicate rapid invocations
+		try {
+			const now = Date.now();
+			if (now - lastCopyTs < 300) {
+				return;
+			}
+			lastCopyTs = now;
+		} catch (_) { }
 
-      let compactJsonText;
-      try {
-        const parsed = JSON.parse(txt);
-        compactJsonText = JSON.stringify(parsed);
-      } catch (e) {
-        compactJsonText = String(txt)
-          .replace(/\r?\n/g, '')
-          .replace(/\t/g, '');
-      }
+		// robustly obtain text from Monaco model (prefer selection, fallback to full model value)
+		let txt = '';
+		try {
+			const model = editor && editor.getModel && editor.getModel();
+			const sel = editor && editor.getSelection && editor.getSelection();
+			if (model && sel && typeof sel.isEmpty === 'function' && !sel.isEmpty() && typeof model.getValueInRange === 'function') {
+				txt = model.getValueInRange(sel);
+			} else if (model && typeof model.getValue === 'function') {
+				txt = model.getValue();
+			} else if (editor && typeof editor.getValue === 'function') {
+				txt = editor.getValue();
+			} else {
+				txt = getSelectionOrFull() || '';
+			}
+		} catch (e) {
+			txt = getSelectionOrFull() || '';
+		}
 
-      let out;
-      try {
-        out = JSON.stringify(compactJsonText);
-      } catch (e) {
-        out = '"' + String(compactJsonText)
-          .replace(/\\/g, '\\\\')
-          .replace(/"/g, '\\"')
-          .replace(/\r/g, '\\r')
-          .replace(/\n/g, '\\n')
-          .replace(/\t/g, '\\t') + '"';
-      }
-      await copyToClipboard(out);
-    } finally {
-      copyingLock = false;
-    }
-  }
+		let compactJsonText;
+		try {
+			const parsed = JSON.parse(txt);
+			compactJsonText = JSON.stringify(parsed);
+		} catch (e) {
+			compactJsonText = String(txt)
+				.replace(/\r?\n/g, '')
+				.replace(/\t/g, '');
+		}
 
-  async function unescapeSelectionOrContent() {
-    if (copyingLock) {
-      return;
-    }
-    copyingLock = true;
-    try {
-      let txt = '';
-      try {
-        const model = editor && editor.getModel && editor.getModel();
-        const sel = editor && editor.getSelection && editor.getSelection();
-        if (model && sel && typeof sel.isEmpty === 'function' && !sel.isEmpty() && typeof model.getValueInRange === 'function') {
-          txt = model.getValueInRange(sel);
-        } else if (model && typeof model.getValue === 'function') {
-          txt = model.getValue();
-        } else if (editor && typeof editor.getValue === 'function') {
-          txt = editor.getValue();
-        } else {
-          txt = getSelectionOrFull() || '';
-        }
-      } catch (e) {
-        txt = getSelectionOrFull() || '';
-      }
+		let out;
+		try {
+			out = JSON.stringify(compactJsonText);
+		} catch (e) {
+			out = '"' + String(compactJsonText)
+				.replace(/\\/g, '\\\\')
+				.replace(/"/g, '\\"')
+				.replace(/\r/g, '\\r')
+				.replace(/\n/g, '\\n')
+				.replace(/\t/g, '\\t') + '"';
+		}
+		await copyToClipboard(out);
+	} finally {
+		copyingLock = false;
+	}
+}
 
-      let out = txt;
-      try {
-        const parsed = JSON.parse(String(txt));
-        out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, getStringifyIndent());
-      } catch (e) {
-        try {
-          const parsed = JSON.parse(JSON.parse(String(txt)));
-          out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, getStringifyIndent());
-        } catch (_) {
-          out = String(txt);
-        }
-      }
+async function unescapeSelectionOrContent() {
+	if (copyingLock) {
+		return;
+	}
+	copyingLock = true;
+	try {
+		let txt = '';
+		try {
+			const model = editor && editor.getModel && editor.getModel();
+			const sel = editor && editor.getSelection && editor.getSelection();
+			if (model && sel && typeof sel.isEmpty === 'function' && !sel.isEmpty() && typeof model.getValueInRange === 'function') {
+				txt = model.getValueInRange(sel);
+			} else if (model && typeof model.getValue === 'function') {
+				txt = model.getValue();
+			} else if (editor && typeof editor.getValue === 'function') {
+				txt = editor.getValue();
+			} else {
+				txt = getSelectionOrFull() || '';
+			}
+		} catch (e) {
+			txt = getSelectionOrFull() || '';
+		}
 
-      await copyToClipboard(out);
-    } finally {
-      copyingLock = false;
-    }
-  }
+		let out = txt;
+		try {
+			const parsed = JSON.parse(String(txt));
+			out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, getStringifyIndent());
+		} catch (e) {
+			try {
+				const parsed = JSON.parse(JSON.parse(String(txt)));
+				out = typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, getStringifyIndent());
+			} catch (_) {
+				out = String(txt);
+			}
+		}
 
-  // expose minimal API to parent components
-  defineExpose({
-    getContent: () => editor?.getValue() || '',
-    setContent: (content) => applyEdit(content),
-    format: formatJson,
-    focus: () => { try { editor && typeof editor.focus === 'function' && editor.focus(); } catch (_) { } },
-    layout: () => { try { editor && typeof editor.layout === 'function' && editor.layout(); } catch (_) { } }
-  });
+		await copyToClipboard(out);
+	} finally {
+		copyingLock = false;
+	}
+}
+
+// expose minimal API to parent components
+defineExpose({
+	getContent: () => editor?.getValue() || '',
+	setContent: (content) => applyEdit(content),
+	format: formatJson,
+	focus: () => { try { editor && typeof editor.focus === 'function' && editor.focus(); } catch (_) { } },
+	layout: () => { try { editor && typeof editor.layout === 'function' && editor.layout(); } catch (_) { } }
+});
 </script>
 
 <template>
-  <div class="editor-wrapper">
-    <div v-if="jsonValidationReady" class="json-validation-bar" :class="hasJsonError ? 'is-error' : 'is-ok'">
-      <div class="json-validation-main">
-        <span class="json-validation-dot"></span>
-        <span v-if="hasJsonError" class="json-validation-text">
-          JSON 无效: 第 {{ firstJsonError.startLineNumber }} 行, 第 {{ firstJsonError.startColumn }} 列 -
-          {{ firstJsonError.message }}
-        </span>
-        <span v-else class="json-validation-text">JSON 有效</span>
-      </div>
-      <button v-if="hasJsonError" type="button" class="json-validation-action" @click="focusFirstJsonError">
-        定位到错误
-      </button>
-    </div>
+	<div class="editor-wrapper">
+		<div v-if="jsonValidationReady" class="json-validation-bar" :class="hasJsonError ? 'is-error' : 'is-ok'">
+			<div class="json-validation-main">
+				<span class="json-validation-dot" />
+				<span v-if="hasJsonError" class="json-validation-text">
+					JSON 无效: 第 {{ firstJsonError.startLineNumber }} 行, 第 {{ firstJsonError.startColumn }} 列 -
+					{{ firstJsonError.message }}
+				</span>
+				<span v-else class="json-validation-text">JSON 有效</span>
+			</div>
+			<button
+				v-if="hasJsonError"
+				type="button"
+				class="json-validation-action"
+				@click="focusFirstJsonError"
+			>
+				定位到错误
+			</button>
+		</div>
 
-    <div ref="editorContainer" class="editor-container"></div>
-  </div>
+		<div ref="editorContainer" class="editor-container" />
+	</div>
 
-  <teleport to="body">
-    <div v-if="showEditorContextMenu" ref="editorContextMenuRef" class="editor-context-menu"
-      :style="editorContextMenuStyles" @click.stop>
-      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('format')">
-        <span class="editor-context-menu__label">格式化 JSON</span>
-        <span class="editor-context-menu__hint">Shift + Alt + F</span>
-      </button>
-      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('escape')">
-        <span class="editor-context-menu__label">转义 JSON 字符串</span>
-      </button>
-      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('unescape')">
-        <span class="editor-context-menu__label">反转义 JSON 字符串</span>
-      </button>
-      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('copy-json')">
-        <span class="editor-context-menu__label">复制当前 JSON</span>
-      </button>
-      <div class="editor-context-menu__divider"></div>
-      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('jsonpath')">
-        <span class="editor-context-menu__label">复制当前 JSONPath</span>
-      </button>
-      <button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('jq')">
-        <span class="editor-context-menu__label">复制当前 jq</span>
-      </button>
-    </div>
-  </teleport>
+	<teleport to="body">
+		<div
+			v-if="showEditorContextMenu"
+			ref="editorContextMenuRef"
+			class="editor-context-menu"
+			:style="editorContextMenuStyles"
+			@click.stop
+		>
+			<button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('format')">
+				<span class="editor-context-menu__label">格式化 JSON</span>
+				<span class="editor-context-menu__hint">Shift + Alt + F</span>
+			</button>
+			<button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('escape')">
+				<span class="editor-context-menu__label">转义 JSON 字符串</span>
+			</button>
+			<button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('unescape')">
+				<span class="editor-context-menu__label">反转义 JSON 字符串</span>
+			</button>
+			<button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('copy-json')">
+				<span class="editor-context-menu__label">复制当前 JSON</span>
+			</button>
+			<div class="editor-context-menu__divider" />
+			<button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('jsonpath')">
+				<span class="editor-context-menu__label">复制当前 JSONPath</span>
+			</button>
+			<button class="editor-context-menu__item" type="button" @click="handleEditorContextMenuAction('jq')">
+				<span class="editor-context-menu__label">复制当前 jq</span>
+			</button>
+		</div>
+	</teleport>
 </template>
 
 <style scoped>

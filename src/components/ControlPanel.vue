@@ -1,390 +1,492 @@
 <script setup>
-  import { computed, ref, watch } from 'vue';
-  import { UTOOLS_WINDOW_SIZE_PRESETS, applyUtoolsWindowSettings } from '../services/windowSettings.js';
+import { computed, ref, watch } from 'vue';
+import { UTOOLS_WINDOW_SIZE_PRESETS, applyUtoolsWindowSettings } from '../services/windowSettings.js';
 import { useJsonStore } from '../store/index.js';
 
-  const props = defineProps({
-    activePanel: {
-      type: String,
-      default: 'editor'
-    }
-  });
+const props = defineProps({
+	activePanel: {
+		type: String,
+		default: 'editor'
+	}
+});
 
-  const emit = defineEmits([
-    'panelChange',
-    'import',
-    'convert',
-    'generateCode',
-    'query',
-    'compare',
-    'copyToClipboard',
-    'download'
-  ]);
+const emit = defineEmits([
+	'panelChange',
+	'import',
+	'convert',
+	'generateCode',
+	'query',
+	'compare',
+	'copyToClipboard',
+	'download'
+]);
 
-  const store = useJsonStore();
+const store = useJsonStore();
 
-  const themeOptions = [
-    { value: 'catppuccin', label: 'Catppuccin（卡布奇诺）', meta: '柔和阅读' },
-    { value: 'vue', label: 'Vue 官方风格', meta: '清爽开发' }
-  ];
+const themeOptions = [
+	{ value: 'catppuccin', label: 'Catppuccin（卡布奇诺）', meta: '柔和阅读' },
+	{ value: 'vue', label: 'Vue 官方风格', meta: '清爽开发' }
+];
 
-  const modeOptions = [
-    { value: 'auto', label: '跟随系统' },
-    { value: 'light', label: '亮色 Light' },
-    { value: 'dark', label: '暗色 Dark' }
-  ];
+const modeOptions = [
+	{ value: 'auto', label: '跟随系统' },
+	{ value: 'light', label: '亮色 Light' },
+	{ value: 'dark', label: '暗色 Dark' }
+];
 
-  const themeValue = ref(store.themePreference.theme);
-  const modeValue = ref(store.themePreference.mode);
+const themeValue = ref(store.themePreference.theme);
+const modeValue = ref(store.themePreference.mode);
 
-  const appearanceSettingsOpen = ref(false);
-  const windowSettingsOpen = ref(false);
-  const editorSettingsOpen = ref(false);
+const appearanceSettingsOpen = ref(false);
+const windowSettingsOpen = ref(false);
+const editorSettingsOpen = ref(false);
 
-  const themeLabelByValue = computed(() => themeOptions.find((option) => option.value === themeValue.value)?.label || '未选择');
-  const modeLabelByValue = computed(() => modeOptions.find((option) => option.value === modeValue.value)?.label || '未选择');
-  const fontLabel = computed(() => {
-    const value = store.editorSettings.fontFamily;
-    if (!value) return '系统默认';
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      return value.slice(1, -1);
-    }
-    return value;
-  });
-  const wrapLabel = computed(() => {
-    if (!store.editorSettings.wrapEnabled) return '关闭';
-    return store.editorSettings.wrapByWidth ? `按宽度 ${store.editorSettings.wrapThresholdPx}px` : `按列 ${store.editorSettings.wrapColumn}`;
-  });
-  const windowSizeOptions = [
-    { value: 'medium', label: UTOOLS_WINDOW_SIZE_PRESETS.medium.label, meta: '日常查看', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.medium.heightPercent },
-    { value: 'large', label: UTOOLS_WINDOW_SIZE_PRESETS.large.label, meta: '推荐', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.large.heightPercent },
-    { value: 'extraLarge', label: UTOOLS_WINDOW_SIZE_PRESETS.extraLarge.label, meta: '长文档', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.extraLarge.heightPercent }
-  ];
-  const windowSettingsSummary = computed(() => {
-    const settings = store.utoolsWindowSettings || {};
-    const option = windowSizeOptions.find((item) => item.value === settings.sizePreset);
-    const label = option ? option.label : '自定义';
-    return `${label} · ${settings.heightPercent || UTOOLS_WINDOW_SIZE_PRESETS.large.heightPercent}%`;
-  });
-  let settingsSaveTimer = null;
+const themeLabelByValue = computed(() => themeOptions.find((option) => option.value === themeValue.value)?.label || '未选择');
+const modeLabelByValue = computed(() => modeOptions.find((option) => option.value === modeValue.value)?.label || '未选择');
+const fontLabel = computed(() => {
+	const value = store.editorSettings.fontFamily;
+	if (!value) return '系统默认';
+	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+		return value.slice(1, -1);
+	}
+	return value;
+});
+const wrapLabel = computed(() => {
+	if (!store.editorSettings.wrapEnabled) return '关闭';
+	return store.editorSettings.wrapByWidth ? `按宽度 ${store.editorSettings.wrapThresholdPx}px` : `按列 ${store.editorSettings.wrapColumn}`;
+});
+const windowSizeOptions = [
+	{ value: 'medium', label: UTOOLS_WINDOW_SIZE_PRESETS.medium.label, meta: '日常查看', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.medium.heightPercent },
+	{ value: 'large', label: UTOOLS_WINDOW_SIZE_PRESETS.large.label, meta: '推荐', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.large.heightPercent },
+	{ value: 'extraLarge', label: UTOOLS_WINDOW_SIZE_PRESETS.extraLarge.label, meta: '长文档', heightPercent: UTOOLS_WINDOW_SIZE_PRESETS.extraLarge.heightPercent }
+];
+const windowSettingsSummary = computed(() => {
+	const settings = store.utoolsWindowSettings || {};
+	const option = windowSizeOptions.find((item) => item.value === settings.sizePreset);
+	const label = option ? option.label : '自定义';
+	return `${label} · ${settings.heightPercent || UTOOLS_WINDOW_SIZE_PRESETS.large.heightPercent}%`;
+});
+let settingsSaveTimer = null;
 
-  function scheduleSettingsSave() {
-    if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
-    settingsSaveTimer = setTimeout(() => {
-      try {
-        if (typeof store.saveSettingsState === 'function') store.saveSettingsState();
-      } catch (error) {
-        console.warn('Failed to save settings state', error);
-      }
-    }, 300);
-  }
+function scheduleSettingsSave() {
+	if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
+	settingsSaveTimer = setTimeout(() => {
+		try {
+			if (typeof store.saveSettingsState === 'function') store.saveSettingsState();
+		} catch (error) {
+			console.warn('Failed to save settings state', error);
+		}
+	}, 300);
+}
 
-  function findWindowPresetByPercent(percent) {
-    return windowSizeOptions.find((item) => item.heightPercent === Number(percent))?.value || 'custom';
-  }
+function findWindowPresetByPercent(percent) {
+	return windowSizeOptions.find((item) => item.heightPercent === Number(percent))?.value || 'custom';
+}
 
-  function applyAndSaveWindowSettings(settings) {
-    const normalized = store.setUtoolsWindowSettings(settings);
-    try {
-      store.saveSettingsState();
-      const result = applyUtoolsWindowSettings(normalized);
-      if (!result.success && result.reason !== 'utools-unavailable') {
-        console.warn('Failed to apply uTools window settings', result.reason);
-      }
-    } catch (error) {
-      console.warn('Failed to save uTools window settings', error);
-    }
-  }
+function applyAndSaveWindowSettings(settings) {
+	const normalized = store.setUtoolsWindowSettings(settings);
+	try {
+		store.saveSettingsState();
+		const result = applyUtoolsWindowSettings(normalized);
+		if (!result.success && result.reason !== 'utools-unavailable') {
+			console.warn('Failed to apply uTools window settings', result.reason);
+		}
+	} catch (error) {
+		console.warn('Failed to save uTools window settings', error);
+	}
+}
 
-  function handleWindowPresetChange(preset) {
-    const option = windowSizeOptions.find((item) => item.value === preset);
-    if (!option) return;
-    applyAndSaveWindowSettings({ sizePreset: option.value, heightPercent: option.heightPercent });
-  }
+function handleWindowPresetChange(preset) {
+	const option = windowSizeOptions.find((item) => item.value === preset);
+	if (!option) return;
+	applyAndSaveWindowSettings({ sizePreset: option.value, heightPercent: option.heightPercent });
+}
 
-  function handleWindowHeightPercentChange(value) {
-    const heightPercent = Number(value);
-    applyAndSaveWindowSettings({
-      sizePreset: findWindowPresetByPercent(heightPercent),
-      heightPercent
-    });
-  }
+function handleWindowHeightPercentChange(value) {
+	const heightPercent = Number(value);
+	applyAndSaveWindowSettings({
+		sizePreset: findWindowPresetByPercent(heightPercent),
+		heightPercent
+	});
+}
 
-  watch(
-    [themeValue, modeValue],
-    ([theme, mode]) => {
-      store.setThemePreference(theme, mode);
-      const appWindow = globalThis.window;
-      appWindow?.applyTheme?.();
-    }
-  );
+watch(
+	[themeValue, modeValue],
+	([theme, mode]) => {
+		store.setThemePreference(theme, mode);
+		const appWindow = globalThis.window;
+		appWindow?.applyTheme?.();
+	}
+);
 
-  watch(
-    () => store.themePreference,
-    (pref) => {
-      if (!pref) return;
-      themeValue.value = pref.theme;
-      modeValue.value = pref.mode;
-    },
-    { deep: true, immediate: true }
-  );
+watch(
+	() => store.themePreference,
+	(pref) => {
+		if (!pref) return;
+		themeValue.value = pref.theme;
+		modeValue.value = pref.mode;
+	},
+	{ deep: true, immediate: true }
+);
 
-  watch(
-    () => store.editorSettings,
-    () => {
-      scheduleSettingsSave();
-    },
-    { deep: true }
-  );
+watch(
+	() => store.editorSettings,
+	() => {
+		scheduleSettingsSave();
+	},
+	{ deep: true }
+);
 
-  function switchPanel(panel) {
-    emit('panelChange', panel);
-  }
+function switchPanel(panel) {
+	emit('panelChange', panel);
+}
 
-  function handleClose() {
-    store.editorSettings.controlPanelVisible = false;
-  }
+function handleClose() {
+	store.editorSettings.controlPanelVisible = false;
+}
 
-  function getTabLabel(tab) {
-    const labels = {
-      editor: '编辑器',
-      convert: '转换',
-      query: '查询',
-      diff: '对比'
-    };
-    return labels[tab] || tab;
-  }
+function getTabLabel(tab) {
+	const labels = {
+		editor: '编辑器',
+		convert: '转换',
+		query: '查询',
+		diff: '对比'
+	};
+	return labels[tab] || tab;
+}
 
-  function formatThemeSummary() {
-    return `${themeLabelByValue.value} · ${modeLabelByValue.value}`;
-  }
+function formatThemeSummary() {
+	return `${themeLabelByValue.value} · ${modeLabelByValue.value}`;
+}
 
-  function getDisclosureLabel(open) {
-    return open ? '收起详情' : '查看详情';
-  }
+function getDisclosureLabel(open) {
+	return open ? '收起详情' : '查看详情';
+}
 </script>
 
 <template>
-  <div class="control-panel">
-    <div class="panel-header">
-      <div class="panel-header__copy">
-        <p class="panel-eyebrow">控制面板</p>
-        <h3 class="panel-title">设置与外观</h3>
-        <p class="panel-description">
-          优先展示高频设置，进阶项折叠收纳，保证文字清晰、层级明确、操作可预测。
-        </p>
-      </div>
+	<div class="control-panel">
+		<div class="panel-header">
+			<div class="panel-header__copy">
+				<p class="panel-eyebrow">
+					控制面板
+				</p>
+				<h3 class="panel-title">
+					设置与外观
+				</h3>
+				<p class="panel-description">
+					优先展示高频设置，进阶项折叠收纳，保证文字清晰、层级明确、操作可预测。
+				</p>
+			</div>
 
-      <button class="panel-close" type="button" @click="handleClose" aria-label="关闭设置" title="关闭设置">
-        ✕
-      </button>
-    </div>
+			<button
+				class="panel-close"
+				type="button"
+				aria-label="关闭设置"
+				title="关闭设置"
+				@click="handleClose"
+			>
+				✕
+			</button>
+		</div>
 
-    <div class="panel-tabs" role="tablist" aria-label="面板切换">
-      <button class="panel-tab" :class="{ active: activePanel === 'editor' }" type="button"
-        @click="switchPanel('editor')">
-        {{ getTabLabel('editor') }}
-      </button>
-    </div>
+		<div class="panel-tabs" role="tablist" aria-label="面板切换">
+			<button
+				class="panel-tab"
+				:class="{ active: activePanel === 'editor' }"
+				type="button"
+				@click="switchPanel('editor')"
+			>
+				{{ getTabLabel('editor') }}
+			</button>
+		</div>
 
-    <div class="panel-content">
-      <section class="settings-section settings-section--appearance">
-        <button class="section-toggle" type="button" :aria-expanded="appearanceSettingsOpen"
-          aria-controls="appearance-settings" @click="appearanceSettingsOpen = !appearanceSettingsOpen">
-          <span>
-            <span class="section-toggle__title">界面外观</span>
-            <span class="section-toggle__desc">当前 {{ formatThemeSummary() }}</span>
-          </span>
-          <span class="section-toggle__state">{{ getDisclosureLabel(appearanceSettingsOpen) }}</span>
-        </button>
+		<div class="panel-content">
+			<section class="settings-section settings-section--appearance">
+				<button
+					class="section-toggle"
+					type="button"
+					:aria-expanded="appearanceSettingsOpen"
+					aria-controls="appearance-settings"
+					@click="appearanceSettingsOpen = !appearanceSettingsOpen"
+				>
+					<span>
+						<span class="section-toggle__title">界面外观</span>
+						<span class="section-toggle__desc">当前 {{ formatThemeSummary() }}</span>
+					</span>
+					<span class="section-toggle__state">{{ getDisclosureLabel(appearanceSettingsOpen) }}</span>
+				</button>
 
-        <div id="appearance-settings" class="section-body" :class="{ 'is-collapsed': !appearanceSettingsOpen }">
-          <div class="appearance-layout">
-            <div class="theme-column">
-              <div class="mini-label">主题风格</div>
-              <div class="theme-grid" aria-label="主题风格">
-                <label v-for="opt in themeOptions" :key="opt.value" class="theme-option"
-                  :class="{ active: themeValue === opt.value }">
-                  <input :id="`theme-style-${opt.value}`" v-model="themeValue" type="radio" name="themeStyle"
-                    :value="opt.value" />
-                  <span class="theme-option__title">{{ opt.label }}</span>
-                  <span class="theme-option__meta">{{ opt.meta }}</span>
-                </label>
-              </div>
-            </div>
+				<div id="appearance-settings" class="section-body" :class="{ 'is-collapsed': !appearanceSettingsOpen }">
+					<div class="appearance-layout">
+						<div class="theme-column">
+							<div class="mini-label">
+								主题风格
+							</div>
+							<div class="theme-grid" aria-label="主题风格">
+								<label
+									v-for="opt in themeOptions"
+									:key="opt.value"
+									class="theme-option"
+									:class="{ active: themeValue === opt.value }"
+								>
+									<input
+										:id="`theme-style-${opt.value}`"
+										v-model="themeValue"
+										type="radio"
+										name="themeStyle"
+										:value="opt.value"
+									>
+									<span class="theme-option__title">{{ opt.label }}</span>
+									<span class="theme-option__meta">{{ opt.meta }}</span>
+								</label>
+							</div>
+						</div>
 
-            <div class="mode-column">
-              <div class="mini-label">配色模式</div>
-              <div class="mode-grid">
-                <label v-for="opt in modeOptions" :key="opt.value" class="mode-option"
-                  :class="{ active: modeValue === opt.value }">
-                  <input :id="`theme-mode-${opt.value}`" v-model="modeValue" type="radio" name="themeMode"
-                    :value="opt.value" />
-                  <span>{{ opt.label }}</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+						<div class="mode-column">
+							<div class="mini-label">
+								配色模式
+							</div>
+							<div class="mode-grid">
+								<label
+									v-for="opt in modeOptions"
+									:key="opt.value"
+									class="mode-option"
+									:class="{ active: modeValue === opt.value }"
+								>
+									<input
+										:id="`theme-mode-${opt.value}`"
+										v-model="modeValue"
+										type="radio"
+										name="themeMode"
+										:value="opt.value"
+									>
+									<span>{{ opt.label }}</span>
+								</label>
+							</div>
+						</div>
+					</div>
+				</div>
+			</section>
 
-      <section class="settings-section">
-        <button class="section-toggle" type="button" :aria-expanded="windowSettingsOpen" aria-controls="window-settings"
-          @click="windowSettingsOpen = !windowSettingsOpen">
-          <span>
-            <span class="section-toggle__title">窗口大小</span>
-            <span class="section-toggle__desc">当前 {{ windowSettingsSummary }}</span>
-          </span>
-          <span class="section-toggle__state">{{ getDisclosureLabel(windowSettingsOpen) }}</span>
-        </button>
+			<section class="settings-section">
+				<button
+					class="section-toggle"
+					type="button"
+					:aria-expanded="windowSettingsOpen"
+					aria-controls="window-settings"
+					@click="windowSettingsOpen = !windowSettingsOpen"
+				>
+					<span>
+						<span class="section-toggle__title">窗口大小</span>
+						<span class="section-toggle__desc">当前 {{ windowSettingsSummary }}</span>
+					</span>
+					<span class="section-toggle__state">{{ getDisclosureLabel(windowSettingsOpen) }}</span>
+				</button>
 
-        <div id="window-settings" class="section-body" :class="{ 'is-collapsed': !windowSettingsOpen }">
-          <div class="window-size-options" role="radiogroup" aria-label="uTools 窗口大小预设">
-            <button v-for="option in windowSizeOptions" :key="option.value" type="button" class="window-size-option"
-              :class="{ active: store.utoolsWindowSettings.sizePreset === option.value }"
-              :aria-pressed="store.utoolsWindowSettings.sizePreset === option.value"
-              @click="handleWindowPresetChange(option.value)">
-              <span class="window-size-option__label">{{ option.label }}</span>
-              <span class="window-size-option__meta">{{ option.meta }} · {{ option.heightPercent }}%</span>
-            </button>
-          </div>
+				<div id="window-settings" class="section-body" :class="{ 'is-collapsed': !windowSettingsOpen }">
+					<div class="window-size-options" role="radiogroup" aria-label="uTools 窗口大小预设">
+						<button
+							v-for="option in windowSizeOptions"
+							:key="option.value"
+							type="button"
+							class="window-size-option"
+							:class="{ active: store.utoolsWindowSettings.sizePreset === option.value }"
+							:aria-pressed="store.utoolsWindowSettings.sizePreset === option.value"
+							@click="handleWindowPresetChange(option.value)"
+						>
+							<span class="window-size-option__label">{{ option.label }}</span>
+							<span class="window-size-option__meta">{{ option.meta }} · {{ option.heightPercent }}%</span>
+						</button>
+					</div>
 
-          <label class="setting-field">
-            <span class="setting-field__label">高度微调</span>
-            <span class="setting-field__help">按当前屏幕可用高度的百分比调整，在 uTools 中立即生效；浏览器预览只会保存设置。</span>
-            <span class="window-height-control">
-              <input id="utools-window-height-percent" type="range" min="50" max="95" step="1"
-                :value="store.utoolsWindowSettings.heightPercent" aria-label="uTools 窗口高度百分比"
-                @input="handleWindowHeightPercentChange($event.target.value)" />
-              <output class="window-height-value" for="utools-window-height-percent">
-                {{ store.utoolsWindowSettings.heightPercent }}%
-              </output>
-            </span>
-          </label>
-        </div>
-      </section>
+					<label class="setting-field">
+						<span class="setting-field__label">高度微调</span>
+						<span class="setting-field__help">按当前屏幕可用高度的百分比调整，在 uTools 中立即生效；浏览器预览只会保存设置。</span>
+						<span class="window-height-control">
+							<input
+								id="utools-window-height-percent"
+								type="range"
+								min="50"
+								max="95"
+								step="1"
+								:value="store.utoolsWindowSettings.heightPercent"
+								aria-label="uTools 窗口高度百分比"
+								@input="handleWindowHeightPercentChange($event.target.value)"
+							>
+							<output class="window-height-value" for="utools-window-height-percent">
+								{{ store.utoolsWindowSettings.heightPercent }}%
+							</output>
+						</span>
+					</label>
+				</div>
+			</section>
 
-      <section class="settings-section">
-        <button class="section-toggle" type="button" :aria-expanded="editorSettingsOpen" aria-controls="editor-settings"
-          @click="editorSettingsOpen = !editorSettingsOpen">
-          <span>
-            <span class="section-toggle__title">编辑器设置</span>
-            <span class="section-toggle__desc">字体 {{ fontLabel }} · 换行 {{ wrapLabel }}</span>
-          </span>
-          <span class="section-toggle__state">{{ getDisclosureLabel(editorSettingsOpen) }}</span>
-        </button>
+			<section class="settings-section">
+				<button
+					class="section-toggle"
+					type="button"
+					:aria-expanded="editorSettingsOpen"
+					aria-controls="editor-settings"
+					@click="editorSettingsOpen = !editorSettingsOpen"
+				>
+					<span>
+						<span class="section-toggle__title">编辑器设置</span>
+						<span class="section-toggle__desc">字体 {{ fontLabel }} · 换行 {{ wrapLabel }}</span>
+					</span>
+					<span class="section-toggle__state">{{ getDisclosureLabel(editorSettingsOpen) }}</span>
+				</button>
 
-        <div id="editor-settings" class="section-body" :class="{ 'is-collapsed': !editorSettingsOpen }">
-          <div class="setting-stack">
-            <label class="setting-row setting-row--toggle">
-              <span class="input-toggle">
-                <input id="editor-sticky-enabled" v-model="store.editorSettings.stickyEnabled" type="checkbox"
-                  aria-label="启用粘性节点" />
-                <span class="slider" aria-hidden="true"></span>
-              </span>
-              <span class="setting-copy">
-                <span class="setting-name">启用粘性节点（Sticky）</span>
-                <span class="setting-help">在编辑器中显示折叠区域的粘性节点，便于定位深层结构。</span>
-              </span>
-            </label>
-            <label class="setting-row setting-row--toggle">
-              <span class="input-toggle">
-                <input id="editor-wrap-enabled" v-model="store.editorSettings.wrapEnabled" type="checkbox"
-                  aria-label="默认按编辑器宽度自动换行" />
-                <span class="slider" aria-hidden="true"></span>
-              </span>
-              <span class="setting-copy">
-                <span class="setting-name">默认按编辑器宽度自动换行</span>
-                <span class="setting-help">长文本浏览时更易阅读。</span>
-              </span>
-            </label>
+				<div id="editor-settings" class="section-body" :class="{ 'is-collapsed': !editorSettingsOpen }">
+					<div class="setting-stack">
+						<label class="setting-row setting-row--toggle">
+							<span class="input-toggle">
+								<input
+									id="editor-sticky-enabled"
+									v-model="store.editorSettings.stickyEnabled"
+									type="checkbox"
+									aria-label="启用粘性节点"
+								>
+								<span class="slider" aria-hidden="true" />
+							</span>
+							<span class="setting-copy">
+								<span class="setting-name">启用粘性节点（Sticky）</span>
+								<span class="setting-help">在编辑器中显示折叠区域的粘性节点，便于定位深层结构。</span>
+							</span>
+						</label>
+						<label class="setting-row setting-row--toggle">
+							<span class="input-toggle">
+								<input
+									id="editor-wrap-enabled"
+									v-model="store.editorSettings.wrapEnabled"
+									type="checkbox"
+									aria-label="默认按编辑器宽度自动换行"
+								>
+								<span class="slider" aria-hidden="true" />
+							</span>
+							<span class="setting-copy">
+								<span class="setting-name">默认按编辑器宽度自动换行</span>
+								<span class="setting-help">长文本浏览时更易阅读。</span>
+							</span>
+						</label>
 
-            <label class="setting-row setting-row--toggle">
-              <span class="input-toggle">
-                <input id="editor-wrap-by-width" v-model="store.editorSettings.wrapByWidth" type="checkbox"
-                  aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）" />
-                <span class="slider" aria-hidden="true"></span>
-              </span>
-              <span class="setting-copy">
-                <span class="setting-name">换行策略：按宽度触发 / 按列数触发</span>
-                <span class="setting-help">开启后会根据视口或固定列数自动换行。</span>
-              </span>
-            </label>
-          </div>
+						<label class="setting-row setting-row--toggle">
+							<span class="input-toggle">
+								<input
+									id="editor-wrap-by-width"
+									v-model="store.editorSettings.wrapByWidth"
+									type="checkbox"
+									aria-label="换行策略：按宽度触发（勾选） / 按列数触发（不勾选）"
+								>
+								<span class="slider" aria-hidden="true" />
+							</span>
+							<span class="setting-copy">
+								<span class="setting-name">换行策略：按宽度触发 / 按列数触发</span>
+								<span class="setting-help">开启后会根据视口或固定列数自动换行。</span>
+							</span>
+						</label>
+					</div>
 
-          <div class="setting-grid">
-            <label class="setting-field">
-              <span class="setting-field__label">换行阈值（px）</span>
-              <span class="setting-field__help">视口小于该值时按宽度换行。</span>
-              <input id="editor-wrap-threshold" v-model.number="store.editorSettings.wrapThresholdPx" type="number"
-                min="200" step="50"
-                class="form-input setting-field__control" />
-            </label>
+					<div class="setting-grid">
+						<label class="setting-field">
+							<span class="setting-field__label">换行阈值（px）</span>
+							<span class="setting-field__help">视口小于该值时按宽度换行。</span>
+							<input
+								id="editor-wrap-threshold"
+								v-model.number="store.editorSettings.wrapThresholdPx"
+								type="number"
+								min="200"
+								step="50"
+								class="form-input setting-field__control"
+							>
+						</label>
 
-            <label class="setting-field">
-              <span class="setting-field__label">固定换行列数</span>
-              <span class="setting-field__help">按列数换行时使用的最大列宽。</span>
-              <input id="editor-wrap-column" v-model.number="store.editorSettings.wrapColumn" type="number" min="40"
-                step="1"
-                class="form-input setting-field__control" />
-            </label>
-          </div>
+						<label class="setting-field">
+							<span class="setting-field__label">固定换行列数</span>
+							<span class="setting-field__help">按列数换行时使用的最大列宽。</span>
+							<input
+								id="editor-wrap-column"
+								v-model.number="store.editorSettings.wrapColumn"
+								type="number"
+								min="40"
+								step="1"
+								class="form-input setting-field__control"
+							>
+						</label>
+					</div>
 
-          <div class="setting-grid">
-            <label class="setting-field">
-              <span class="setting-field__label">字体</span>
-              <span class="setting-field__help">默认使用系统字体，必要时可手动指定等宽字体。</span>
-              <select id="editor-font-family" v-model="store.editorSettings.fontFamily"
-                class="form-select setting-field__control">
-                <option value="">系统默认</option>
-                <option value="'Cascadia Code NF'">Cascadia Code NF</option>
-                <option value="'JetBrains Mono'">JetBrains Mono</option>
-                <option value="'Fira Code Retina'">Fira Code Retina</option>
-                <option value="Consolas">Consolas</option>
-                <option value="'Source Code Pro'">Source Code Pro</option>
-                <option value="Menlo">Menlo</option>
-                <option value="'Courier New'">Courier New</option>
-                <option value="monospace">monospace</option>
-                <option value="'Source Han Sans VF'">Source Han Sans VF</option>
-                <option value="'思源黑体'">思源黑体</option>
-              </select>
-            </label>
+					<div class="setting-grid">
+						<label class="setting-field">
+							<span class="setting-field__label">字体</span>
+							<span class="setting-field__help">默认使用系统字体，必要时可手动指定等宽字体。</span>
+							<select
+								id="editor-font-family"
+								v-model="store.editorSettings.fontFamily"
+								class="form-select setting-field__control"
+							>
+								<option value="">系统默认</option>
+								<option value="'Cascadia Code NF'">Cascadia Code NF</option>
+								<option value="'JetBrains Mono'">JetBrains Mono</option>
+								<option value="'Fira Code Retina'">Fira Code Retina</option>
+								<option value="Consolas">Consolas</option>
+								<option value="'Source Code Pro'">Source Code Pro</option>
+								<option value="Menlo">Menlo</option>
+								<option value="'Courier New'">Courier New</option>
+								<option value="monospace">monospace</option>
+								<option value="'Source Han Sans VF'">Source Han Sans VF</option>
+								<option value="'思源黑体'">思源黑体</option>
+							</select>
+						</label>
 
-            <label class="setting-field">
-              <span class="setting-field__label">字号 (px)</span>
-              <span class="setting-field__help">调整编辑器字体大小</span>
-              <input id="editor-font-size" v-model.number="store.editorSettings.fontSize" type="number" min="8"
-                class="form-input setting-field__control setting-field__control--narrow" />
-            </label>
-          </div>
+						<label class="setting-field">
+							<span class="setting-field__label">字号 (px)</span>
+							<span class="setting-field__help">调整编辑器字体大小</span>
+							<input
+								id="editor-font-size"
+								v-model.number="store.editorSettings.fontSize"
+								type="number"
+								min="8"
+								class="form-input setting-field__control setting-field__control--narrow"
+							>
+						</label>
+					</div>
 
-          <label class="setting-row setting-row--toggle">
-            <span class="input-toggle">
-              <input id="editor-preserve-whitespace-on-copy" v-model="store.editorSettings.preserveWhitespaceOnCopy"
-                type="checkbox"
-                aria-label="保留复制内容中的原始空白（空格/换行）" />
-              <span class="slider" aria-hidden="true"></span>
-            </span>
-            <span class="setting-copy">
-              <span class="setting-name">复制时保留原始空白</span>
-              <span class="setting-help">保留空格与换行，便于二次处理。</span>
-            </span>
-          </label>
+					<label class="setting-row setting-row--toggle">
+						<span class="input-toggle">
+							<input
+								id="editor-preserve-whitespace-on-copy"
+								v-model="store.editorSettings.preserveWhitespaceOnCopy"
+								type="checkbox"
+								aria-label="保留复制内容中的原始空白（空格/换行）"
+							>
+							<span class="slider" aria-hidden="true" />
+						</span>
+						<span class="setting-copy">
+							<span class="setting-name">复制时保留原始空白</span>
+							<span class="setting-help">保留空格与换行，便于二次处理。</span>
+						</span>
+					</label>
 
-          <div class="setting-field setting-field--inline">
-            <span class="setting-field__label">格式检测模式</span>
-            <span class="setting-field__help">严格模式更保守，宽松模式更适合混合文本。</span>
-            <select id="editor-format-detector-mode" v-model="store.editorSettings.formatDetectorMode"
-              class="form-select setting-field__control">
-              <option value="lenient">宽松 (lenient)</option>
-              <option value="strict">严格 (strict)</option>
-            </select>
-          </div>
-        </div>
-      </section>
-
-    </div>
-  </div>
+					<div class="setting-field setting-field--inline">
+						<span class="setting-field__label">格式检测模式</span>
+						<span class="setting-field__help">严格模式更保守，宽松模式更适合混合文本。</span>
+						<select
+							id="editor-format-detector-mode"
+							v-model="store.editorSettings.formatDetectorMode"
+							class="form-select setting-field__control"
+						>
+							<option value="lenient">
+								宽松 (lenient)
+							</option>
+							<option value="strict">
+								严格 (strict)
+							</option>
+						</select>
+					</div>
+				</div>
+			</section>
+		</div>
+	</div>
 </template>
 
 <style scoped>

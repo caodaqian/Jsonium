@@ -12,9 +12,9 @@ const store = useJsonStore();
 const outputTabs = ['jsonpath', 'jq', 'diff'];
 
 const tabLabels = {
-  jsonpath: '🔍 JSONPath',
-  jq: '🌀 jq',
-  diff: '⚖️ 对比'
+	jsonpath: '🔍 JSONPath',
+	jq: '🌀 jq',
+	diff: '⚖️ 对比'
 };
 
 const currentPanel = computed(() => store.outputPanel.content[store.outputPanel.currentTab]);
@@ -26,301 +26,303 @@ let monacoEditor = null;
 let monacoThemeMediaQuery = null;
 
 const formattedContent = computed(() => {
-  const entry = currentPanel.value;
-  if (!entry) return '';
-  if (entry.error) return entry.error;
-  if (entry.value === null || entry.value === undefined) return '';
-  if (typeof entry.value === 'string') {
-    return entry.value;
-  }
-  return JSON.stringify(entry.value, null, getStringifyIndent());
+	const entry = currentPanel.value;
+	if (!entry) return '';
+	if (entry.error) return entry.error;
+	if (entry.value === null || entry.value === undefined) return '';
+	if (typeof entry.value === 'string') {
+		return entry.value;
+	}
+	return JSON.stringify(entry.value, null, getStringifyIndent());
 });
 
 const monacoContent = computed(() => {
-  const entry = currentPanel.value;
-  if (!entry || entry.error || entry.value === null || entry.value === undefined) {
-    return '';
-  }
-  if (typeof entry.value === 'string') {
-    return JSON.stringify(entry.value, null, getStringifyIndent());
-  }
-  return JSON.stringify(entry.value, null, getStringifyIndent());
+	const entry = currentPanel.value;
+	if (!entry || entry.error || entry.value === null || entry.value === undefined) {
+		return '';
+	}
+	if (typeof entry.value === 'string') {
+		return JSON.stringify(entry.value, null, getStringifyIndent());
+	}
+	return JSON.stringify(entry.value, null, getStringifyIndent());
 });
 
 const hasContent = computed(() => {
-  const entry = currentPanel.value;
-  if (!entry) return false;
-  return entry.error !== null || entry.value !== null;
+	const entry = currentPanel.value;
+	if (!entry) return false;
+	return entry.error !== null || entry.value !== null;
 });
 
 const isError = computed(() => {
-  const entry = currentPanel.value;
-  return entry && entry.error !== null && entry.error !== undefined;
+	const entry = currentPanel.value;
+	return entry && entry.error !== null && entry.error !== undefined;
 });
 
 const shouldUseMonaco = computed(() => {
-  return (
-    store.outputPanel.currentTab !== 'diff'
+	return (
+		store.outputPanel.currentTab !== 'diff'
     && hasContent.value
     && !isError.value
     && !monacoLoadFailed.value
-  );
+	);
 });
 
 const getPreferredMonacoTheme = () => {
-  if (typeof document !== 'undefined') {
-    const root = document.documentElement;
-    const mode = root?.dataset?.themeMode;
-    if (mode === 'dark') return 'vs-dark';
-    if (mode === 'light') return 'vs';
-  }
+	if (typeof document !== 'undefined') {
+		const root = document.documentElement;
+		const mode = root?.dataset?.themeMode;
+		if (mode === 'dark') return 'vs-dark';
+		if (mode === 'light') return 'vs';
+	}
 
-  const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
-  if (mediaQuery?.matches) {
-    return 'vs-dark';
-  }
+	const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
+	if (mediaQuery?.matches) {
+		return 'vs-dark';
+	}
 
-  return 'vs';
+	return 'vs';
 };
 
 const applyMonacoTheme = () => {
-  if (!monaco?.editor || typeof monaco.editor.setTheme !== 'function') {
-    return;
-  }
-  monaco.editor.setTheme(getPreferredMonacoTheme());
+	if (!monaco?.editor || typeof monaco.editor.setTheme !== 'function') {
+		return;
+	}
+	monaco.editor.setTheme(getPreferredMonacoTheme());
 };
 
 const disposeMonaco = () => {
-  if (monacoThemeMediaQuery && typeof monacoThemeMediaQuery.removeEventListener === 'function') {
-    monacoThemeMediaQuery.removeEventListener('change', applyMonacoTheme);
-  }
-  monacoThemeMediaQuery = null;
-  if (monacoEditor && typeof monacoEditor.dispose === 'function') {
-    monacoEditor.dispose();
-  }
-  monacoEditor = null;
+	if (monacoThemeMediaQuery && typeof monacoThemeMediaQuery.removeEventListener === 'function') {
+		monacoThemeMediaQuery.removeEventListener('change', applyMonacoTheme);
+	}
+	monacoThemeMediaQuery = null;
+	if (monacoEditor && typeof monacoEditor.dispose === 'function') {
+		monacoEditor.dispose();
+	}
+	monacoEditor = null;
 };
 
 const loadMonaco = async () => {
-  if (monaco?.editor) {
-    return monaco;
-  }
+	if (monaco?.editor) {
+		return monaco;
+	}
 
-  monaco = monacoModule?.default?.editor ? monacoModule.default : monacoModule;
-  if (!monaco?.editor) {
-    monacoLoadFailed.value = true;
-    return null;
-  }
+	monaco = monacoModule?.default?.editor ? monacoModule.default : monacoModule;
+	if (!monaco?.editor) {
+		monacoLoadFailed.value = true;
+		return null;
+	}
 
-  return monaco;
+	return monaco;
 };
 
 const createMonacoViewer = (monacoInstance, value) => {
-  applyMonacoTheme();
-  monacoEditor = monacoInstance.editor.create(monacoContainer.value, {
-    value,
-    language: 'json',
-    readOnly: true,
-    domReadOnly: true,
-    automaticLayout: true,
-    minimap: { enabled: false },
-    glyphMargin: false,
-    folding: true,
-    lineNumbers: 'on',
-    scrollBeyondLastLine: false,
-    renderLineHighlight: 'none',
-    overviewRulerBorder: false,
-    wordWrap: 'on'
-  });
+	applyMonacoTheme();
+	monacoEditor = monacoInstance.editor.create(monacoContainer.value, {
+		value,
+		language: 'json',
+		readOnly: true,
+		domReadOnly: true,
+		automaticLayout: true,
+		minimap: { enabled: false },
+		glyphMargin: false,
+		folding: true,
+		lineNumbers: 'on',
+		scrollBeyondLastLine: false,
+		renderLineHighlight: 'none',
+		overviewRulerBorder: false,
+		wordWrap: 'on'
+	});
 
-  const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
-  if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
-    monacoThemeMediaQuery = mediaQuery;
-    monacoThemeMediaQuery.addEventListener('change', applyMonacoTheme);
-  }
+	const mediaQuery = globalThis.window?.matchMedia?.('(prefers-color-scheme: dark)');
+	if (mediaQuery && typeof mediaQuery.addEventListener === 'function') {
+		monacoThemeMediaQuery = mediaQuery;
+		monacoThemeMediaQuery.addEventListener('change', applyMonacoTheme);
+	}
 };
 
 const updateMonacoViewerValue = (value) => {
-  const model = typeof monacoEditor?.getModel === 'function' ? monacoEditor.getModel() : null;
-  if (model && typeof model.setValue === 'function') {
-    if (typeof model.getValue !== 'function' || model.getValue() !== value) {
-      model.setValue(value);
-    }
-  } else if (typeof monacoEditor?.setValue === 'function') {
-    monacoEditor.setValue(value);
-  }
+	const model = typeof monacoEditor?.getModel === 'function' ? monacoEditor.getModel() : null;
+	if (model && typeof model.setValue === 'function') {
+		if (typeof model.getValue !== 'function' || model.getValue() !== value) {
+			model.setValue(value);
+		}
+	} else if (typeof monacoEditor?.setValue === 'function') {
+		monacoEditor.setValue(value);
+	}
 
-  if (typeof monacoEditor?.layout === 'function') {
-    monacoEditor.layout();
-  }
+	if (typeof monacoEditor?.layout === 'function') {
+		monacoEditor.layout();
+	}
 };
 
 const ensureMonacoViewer = async () => {
-  if (!shouldUseMonaco.value) {
-    disposeMonaco();
-    return;
-  }
+	if (!shouldUseMonaco.value) {
+		disposeMonaco();
+		return;
+	}
 
-  await nextTick();
-  if (!monacoContainer.value) {
-    return;
-  }
+	await nextTick();
+	if (!monacoContainer.value) {
+		return;
+	}
 
-  const monacoInstance = await loadMonaco();
-  if (!monacoInstance?.editor) {
-    return;
-  }
+	const monacoInstance = await loadMonaco();
+	if (!monacoInstance?.editor) {
+		return;
+	}
 
-  const nextValue = monacoContent.value;
+	const nextValue = monacoContent.value;
 
-  if (!monacoEditor) {
-    createMonacoViewer(monacoInstance, nextValue);
-    return;
-  }
+	if (!monacoEditor) {
+		createMonacoViewer(monacoInstance, nextValue);
+		return;
+	}
 
-  updateMonacoViewerValue(nextValue);
+	updateMonacoViewerValue(nextValue);
 };
 
 const handleCopyOutput = async () => {
-  if (!hasContent.value) return;
+	if (!hasContent.value) return;
 
-  try {
-    if (globalThis.window && globalThis.window.utools) {
-      globalThis.window.utools.copyText(formattedContent.value);
-    } else {
-      await navigator.clipboard.writeText(formattedContent.value);
-    }
-    notify.success('已复制输出内容');
-  } catch (e) {
-    notify.error('复制失败: ' + e.message);
-  }
+	try {
+		if (globalThis.window && globalThis.window.utools) {
+			globalThis.window.utools.copyText(formattedContent.value);
+		} else {
+			await navigator.clipboard.writeText(formattedContent.value);
+		}
+		notify.success('已复制输出内容');
+	} catch (e) {
+		notify.error('复制失败: ' + e.message);
+	}
 };
 
 const handleInsertToEditor = async () => {
-  if (!hasContent.value) return;
-  const entry = currentPanel.value;
-  if (!entry) return;
-  if (entry.error) {
-    notify.warn('无法插入：输出为错误信息');
-    return;
-  }
-  try {
-    let contentToWrite = '';
-    if (typeof entry.value === 'string') {
-      const detected = await detectAndConvert(entry.value);
-      if (detected.success) {
-        contentToWrite = detected.data;
-      } else {
-        contentToWrite = entry.value;
-      }
-    } else {
-      contentToWrite = JSON.stringify(entry.value, null, getStringifyIndent());
-    }
-    const active = store.getActiveTab();
-    if (!active) {
-      notify.warn('没有打开的主编辑标签');
-      return;
-    }
-    store.updateTabContent(active.id, contentToWrite);
-    notify.success('已替换主编辑区内容');
-  } catch (e) {
-    notify.error('插入失败: ' + e.message);
-  }
+	if (!hasContent.value) return;
+	const entry = currentPanel.value;
+	if (!entry) return;
+	if (entry.error) {
+		notify.warn('无法插入：输出为错误信息');
+		return;
+	}
+	try {
+		let contentToWrite = '';
+		if (typeof entry.value === 'string') {
+			const detected = await detectAndConvert(entry.value);
+			if (detected.success) {
+				contentToWrite = detected.data;
+			} else {
+				contentToWrite = entry.value;
+			}
+		} else {
+			contentToWrite = JSON.stringify(entry.value, null, getStringifyIndent());
+		}
+		const active = store.getActiveTab();
+		if (!active) {
+			notify.warn('没有打开的主编辑标签');
+			return;
+		}
+		store.updateTabContent(active.id, contentToWrite);
+		notify.success('已替换主编辑区内容');
+	} catch (e) {
+		notify.error('插入失败: ' + e.message);
+	}
 };
 
 const handleClose = () => {
-  store.hideOutputPanel();
+	store.hideOutputPanel();
 };
 
 const switchTab = (tab) => {
-  store.switchOutputTab(tab);
+	store.switchOutputTab(tab);
 };
 
 const diffLeft = computed(() => {
-  try {
-    return store.diffSidebar.leftContent || store.diffSidebar.leftInput || (store.getActiveTab ? (store.getActiveTab().content || '') : '');
-  } catch (e) {
-    return store.diffSidebar.leftContent || store.diffSidebar.leftInput || '';
-  }
+	try {
+		return store.diffSidebar.leftContent || store.diffSidebar.leftInput || (store.getActiveTab ? (store.getActiveTab().content || '') : '');
+	} catch (e) {
+		return store.diffSidebar.leftContent || store.diffSidebar.leftInput || '';
+	}
 });
 
 const diffRight = computed(() => {
-  try {
-    return store.diffSidebar.rightContent || (store.getActiveTab ? (store.getActiveTab().content || '') : '');
-  } catch (e) {
-    return store.diffSidebar.rightContent || '';
-  }
+	try {
+		return store.diffSidebar.rightContent || (store.getActiveTab ? (store.getActiveTab().content || '') : '');
+	} catch (e) {
+		return store.diffSidebar.rightContent || '';
+	}
 });
 
 watch(shouldUseMonaco, () => {
-  void ensureMonacoViewer();
+	void ensureMonacoViewer();
 });
 
 watch(monacoContent, () => {
-  void ensureMonacoViewer();
+	void ensureMonacoViewer();
 });
 
 watch(() => store.outputPanel.currentTab, () => {
-  void ensureMonacoViewer();
+	void ensureMonacoViewer();
 });
 
 onMounted(() => {
-  void ensureMonacoViewer();
+	void ensureMonacoViewer();
 });
 
 onBeforeUnmount(() => {
-  disposeMonaco();
+	disposeMonaco();
 });
 
 </script>
 
 <template>
-  <div class="output-panel card card-blur" v-if="store.outputPanel.visible">
-    <div class="output-header">
-      <div class="output-tabs">
-        <button
-          v-for="tab in outputTabs"
-          :key="tab"
-          :class="['output-tab', { active: store.outputPanel.currentTab === tab }]"
-          @click="switchTab(tab)"
-        >
-          {{ tabLabels[tab] }}
-        </button>
-      </div>
-      <button class="output-close" @click="handleClose" title="关闭">✕</button>
-    </div>
+	<div v-if="store.outputPanel.visible" class="output-panel card card-blur">
+		<div class="output-header">
+			<div class="output-tabs">
+				<button
+					v-for="tab in outputTabs"
+					:key="tab"
+					:class="['output-tab', { active: store.outputPanel.currentTab === tab }]"
+					@click="switchTab(tab)"
+				>
+					{{ tabLabels[tab] }}
+				</button>
+			</div>
+			<button class="output-close" title="关闭" @click="handleClose">
+				✕
+			</button>
+		</div>
 
-    <div v-if="store.outputPanel.currentTab === 'diff'">
-      <div class="diff-panel-wrapper" style="display:flex;flex-direction:column;height:100%">
-        <DiffView :leftContent="diffLeft" :rightContent="diffRight" />
-        <div class="output-actions">
-          <button @click="handleCopyOutput" class="output-action-btn">
-            📋 复制
-          </button>
-          <button @click="handleInsertToEditor" class="output-action-btn" title="替换主编辑区">
-            🔁 替换主编辑区
-          </button>
-        </div>
-      </div>
-    </div>
+		<div v-if="store.outputPanel.currentTab === 'diff'">
+			<div class="diff-panel-wrapper" style="display:flex;flex-direction:column;height:100%">
+				<DiffView :left-content="diffLeft" :right-content="diffRight" />
+				<div class="output-actions">
+					<button class="output-action-btn" @click="handleCopyOutput">
+						📋 复制
+					</button>
+					<button class="output-action-btn" title="替换主编辑区" @click="handleInsertToEditor">
+						🔁 替换主编辑区
+					</button>
+				</div>
+			</div>
+		</div>
 
-    <div class="output-content" v-else-if="hasContent">
-      <div v-if="shouldUseMonaco" ref="monacoContainer" class="output-monaco"></div>
-      <pre v-else :class="['output-text', { 'is-error': isError }]">{{ formattedContent }}</pre>
-      <div class="output-actions">
-        <button @click="handleCopyOutput" class="output-action-btn">
-          📋 复制
-        </button>
-        <button @click="handleInsertToEditor" class="output-action-btn" title="替换主编辑区">
-          🔁 替换主编辑区
-        </button>
-      </div>
-    </div>
+		<div v-else-if="hasContent" class="output-content">
+			<div v-if="shouldUseMonaco" ref="monacoContainer" class="output-monaco" />
+			<pre v-else :class="['output-text', { 'is-error': isError }]">{{ formattedContent }}</pre>
+			<div class="output-actions">
+				<button class="output-action-btn" @click="handleCopyOutput">
+					📋 复制
+				</button>
+				<button class="output-action-btn" title="替换主编辑区" @click="handleInsertToEditor">
+					🔁 替换主编辑区
+				</button>
+			</div>
+		</div>
 
-    <div class="output-empty" v-else>
-      <p>暂无输出内容</p>
-    </div>
-  </div>
+		<div v-else class="output-empty">
+			<p>暂无输出内容</p>
+		</div>
+	</div>
 </template>
 
 <style scoped>

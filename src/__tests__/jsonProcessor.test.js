@@ -5,329 +5,329 @@ import { nextTick } from 'vue';
 import { useJsonStore } from '../store/index.js';
 
 const { editorFormatSpy, statusBarEscapePayload, statusBarCopyPayload } = vi.hoisted(() => ({
-  editorFormatSpy: vi.fn(),
-  statusBarEscapePayload: { value: '' },
-  statusBarCopyPayload: { value: '' }
+	editorFormatSpy: vi.fn(),
+	statusBarEscapePayload: { value: '' },
+	statusBarCopyPayload: { value: '' }
 }));
 
 vi.mock('../components/Editor.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-      name: 'EditorStub',
-      props: {
-        content: {
-          type: String,
-          default: ''
-        }
-      },
-      setup(props, { expose }) {
-        expose({
-          format: editorFormatSpy
-        });
-        return () => h('div', { 'data-testid': 'editor-stub' }, props.content);
-      }
-    })
-  };
+	const { defineComponent, h } = await import('vue');
+	return {
+		default: defineComponent({
+			name: 'EditorStub',
+			props: {
+				content: {
+					type: String,
+					default: ''
+				}
+			},
+			setup(props, { expose }) {
+				expose({
+					format: editorFormatSpy
+				});
+				return () => h('div', { 'data-testid': 'editor-stub' }, props.content);
+			}
+		})
+	};
 });
 
 vi.mock('../components/StatusBar.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-      name: 'StatusBarStub',
-      props: {
-        content: {
-          type: String,
-          default: ''
-        }
-      },
-      emits: ['copy', 'format', 'escape', 'unescape', 'compare'],
-      setup(props, { emit }) {
-        return () => h('div', [
-          h('button', {
-            'data-testid': 'status-bar-stub-escape',
-            onClick: () => emit('escape', statusBarEscapePayload.value)
-          }, 'emit-escape'),
-          h('button', {
-            'data-testid': 'status-bar-stub-copy',
-            onClick: () => emit('copy')
-          }, 'emit-copy')
-          , h('button', {
-            'data-testid': 'status-bar-stub-compare',
-            onClick: () => emit('compare', props.content, '')
-          }, 'emit-compare')
-        ]);
-      }
-    })
-  };
+	const { defineComponent, h } = await import('vue');
+	return {
+		default: defineComponent({
+			name: 'StatusBarStub',
+			props: {
+				content: {
+					type: String,
+					default: ''
+				}
+			},
+			emits: ['copy', 'format', 'escape', 'unescape', 'compare'],
+			setup(props, { emit }) {
+				return () => h('div', [
+					h('button', {
+						'data-testid': 'status-bar-stub-escape',
+						onClick: () => emit('escape', statusBarEscapePayload.value)
+					}, 'emit-escape'),
+					h('button', {
+						'data-testid': 'status-bar-stub-copy',
+						onClick: () => emit('copy')
+					}, 'emit-copy')
+					, h('button', {
+						'data-testid': 'status-bar-stub-compare',
+						onClick: () => emit('compare', props.content, '')
+					}, 'emit-compare')
+				]);
+			}
+		})
+	};
 });
 
 vi.mock('../components/TabBar.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-      name: 'TabBarStub',
-      setup() {
-        return () => h('div', { 'data-testid': 'tab-bar-stub' });
-      }
-    })
-  };
+	const { defineComponent, h } = await import('vue');
+	return {
+		default: defineComponent({
+			name: 'TabBarStub',
+			setup() {
+				return () => h('div', { 'data-testid': 'tab-bar-stub' });
+			}
+		})
+	};
 });
 
 vi.mock('../components/DiffView.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-      name: 'DiffViewStub',
-      props: {
-        leftContent: {
-          type: String,
-          default: ''
-        },
-        rightContent: {
-          type: String,
-          default: ''
-        }
-      },
-      setup(props) {
-        return () => h('div', { 'data-testid': 'diff-view-stub' }, `${props.leftContent}|${props.rightContent}`);
-      }
-    })
-  };
+	const { defineComponent, h } = await import('vue');
+	return {
+		default: defineComponent({
+			name: 'DiffViewStub',
+			props: {
+				leftContent: {
+					type: String,
+					default: ''
+				},
+				rightContent: {
+					type: String,
+					default: ''
+				}
+			},
+			setup(props) {
+				return () => h('div', { 'data-testid': 'diff-view-stub' }, `${props.leftContent}|${props.rightContent}`);
+			}
+		})
+	};
 });
 
 vi.mock('../components/OutputPanel.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-      name: 'OutputPanelStub',
-      setup() {
-        return () => h('div', { 'data-testid': 'output-panel-stub' });
-      }
-    })
-  };
+	const { defineComponent, h } = await import('vue');
+	return {
+		default: defineComponent({
+			name: 'OutputPanelStub',
+			setup() {
+				return () => h('div', { 'data-testid': 'output-panel-stub' });
+			}
+		})
+	};
 });
 
 vi.mock('../components/DiffSidebar.vue', async () => {
-  const { defineComponent, h } = await import('vue');
-  return {
-    default: defineComponent({
-      name: 'DiffSidebarStub',
-      emits: ['openLineDiff', 'openCenteredDiff'],
-      setup(_, { emit }) {
-        return () => h('div', { 'data-testid': 'diff-sidebar-stub' }, [
-          h('button', {
-            'data-testid': 'diff-sidebar-open-centered',
-            onClick: () => emit('openCenteredDiff', '{"left":1}', '{"right":2}')
-          }, 'emit-open-centered')
-        ]);
-      }
-    })
-  };
+	const { defineComponent, h } = await import('vue');
+	return {
+		default: defineComponent({
+			name: 'DiffSidebarStub',
+			emits: ['openLineDiff', 'openCenteredDiff'],
+			setup(_, { emit }) {
+				return () => h('div', { 'data-testid': 'diff-sidebar-stub' }, [
+					h('button', {
+						'data-testid': 'diff-sidebar-open-centered',
+						onClick: () => emit('openCenteredDiff', '{"left":1}', '{"right":2}')
+					}, 'emit-open-centered')
+				]);
+			}
+		})
+	};
 });
 
 const JsonProcessor = (await import('../components/JsonProcessor.vue')).default;
 
 describe('JsonProcessor', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia());
-    editorFormatSpy.mockReset();
-    statusBarEscapePayload.value = '';
-    statusBarCopyPayload.value = '';
-    // mock alert to avoid test environment errors
-    global.alert = vi.fn();
-  });
+	beforeEach(() => {
+		setActivePinia(createPinia());
+		editorFormatSpy.mockReset();
+		statusBarEscapePayload.value = '';
+		statusBarCopyPayload.value = '';
+		// mock alert to avoid test environment errors
+		global.alert = vi.fn();
+	});
 
-  it('creates a new tab and formats content when enterAction text changes', async () => {
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+	it('creates a new tab and formats content when enterAction text changes', async () => {
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    const store = useJsonStore();
+		const store = useJsonStore();
 
-    expect(store.tabs).toHaveLength(1);
-    expect(store.getActiveTab().content).toBe('{}');
+		expect(store.tabs).toHaveLength(1);
+		expect(store.getActiveTab().content).toBe('{}');
 
-    await wrapper.setProps({
-      enterAction: {
-        text: '{"name":"uTools","enabled":true}'
-      }
-    });
-    await flushPromises();
-    await nextTick();
+		await wrapper.setProps({
+			enterAction: {
+				text: '{"name":"uTools","enabled":true}'
+			}
+		});
+		await flushPromises();
+		await nextTick();
 
-    expect(store.tabs).toHaveLength(2);
-    expect(store.getActiveTab().content).toContain('"name": "uTools"');
-    expect(editorFormatSpy).toHaveBeenCalled();
-  });
+		expect(store.tabs).toHaveLength(2);
+		expect(store.getActiveTab().content).toContain('"name": "uTools"');
+		expect(editorFormatSpy).toHaveBeenCalled();
+	});
 
-  it('copies escaped content to clipboard after escape event', async () => {
-    window.utools = {
-      copyText: vi.fn()
-    };
+	it('copies escaped content to clipboard after escape event', async () => {
+		window.utools = {
+			copyText: vi.fn()
+		};
 
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    const store = useJsonStore();
-    const escaped = '"{\\\"name\\\":\\\"uTools\\\"}"';
-    statusBarEscapePayload.value = escaped;
+		const store = useJsonStore();
+		const escaped = '"{\\\"name\\\":\\\"uTools\\\"}"';
+		statusBarEscapePayload.value = escaped;
 
-    await nextTick();
-    await wrapper.get('[data-testid="status-bar-stub-escape"]').trigger('click');
-    await nextTick();
+		await nextTick();
+		await wrapper.get('[data-testid="status-bar-stub-escape"]').trigger('click');
+		await nextTick();
 
-    expect(store.getActiveTab().content).toBe(escaped);
-    expect(window.utools.copyText).toHaveBeenCalledWith(escaped);
-  });
+		expect(store.getActiveTab().content).toBe(escaped);
+		expect(window.utools.copyText).toHaveBeenCalledWith(escaped);
+	});
 
-  it('preserves active tab whitespace when copy setting is enabled', async () => {
-    window.utools = {
-      copyText: vi.fn()
-    };
+	it('preserves active tab whitespace when copy setting is enabled', async () => {
+		window.utools = {
+			copyText: vi.fn()
+		};
 
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    const store = useJsonStore();
+		const store = useJsonStore();
 
-    store.updateTabContent(store.getActiveTab().id, '');
-    await nextTick();
-    await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
-    await nextTick();
-    expect(window.utools.copyText).toHaveBeenCalledWith('');
+		store.updateTabContent(store.getActiveTab().id, '');
+		await nextTick();
+		await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
+		await nextTick();
+		expect(window.utools.copyText).toHaveBeenCalledWith('');
 
-    store.updateTabContent(store.getActiveTab().id, '   ');
-    await nextTick();
-    await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
-    await nextTick();
-    expect(window.utools.copyText).toHaveBeenCalledWith('   ');
-  });
+		store.updateTabContent(store.getActiveTab().id, '   ');
+		await nextTick();
+		await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
+		await nextTick();
+		expect(window.utools.copyText).toHaveBeenCalledWith('   ');
+	});
 
-  it('strips active tab whitespace when copy setting is disabled', async () => {
-    window.utools = {
-      copyText: vi.fn()
-    };
+	it('strips active tab whitespace when copy setting is disabled', async () => {
+		window.utools = {
+			copyText: vi.fn()
+		};
 
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    const store = useJsonStore();
-    store.editorSettings.preserveWhitespaceOnCopy = false;
-    store.updateTabContent(store.getActiveTab().id, ' { "a" : 1 } ');
+		const store = useJsonStore();
+		store.editorSettings.preserveWhitespaceOnCopy = false;
+		store.updateTabContent(store.getActiveTab().id, ' { "a" : 1 } ');
 
-    await nextTick();
-    await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
-    await nextTick();
+		await nextTick();
+		await wrapper.get('[data-testid="status-bar-stub-copy"]').trigger('click');
+		await nextTick();
 
-    expect(window.utools.copyText).toHaveBeenCalledWith('{"a":1}');
-  });
+		expect(window.utools.copyText).toHaveBeenCalledWith('{"a":1}');
+	});
 
-  it('hides output sidebar from floating toggle and reflects active state for jsonpath output', async () => {
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+	it('hides output sidebar from floating toggle and reflects active state for jsonpath output', async () => {
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    const store = useJsonStore();
-    const hideOutputPanelSpy = vi.spyOn(store, 'hideOutputPanel');
+		const store = useJsonStore();
+		const hideOutputPanelSpy = vi.spyOn(store, 'hideOutputPanel');
 
-    store.outputPanel.visible = true;
-    store.outputPanel.currentTab = 'jsonpath';
-    store.diffSidebar.visible = false;
-    store.diffSidebar.collapsed = true;
+		store.outputPanel.visible = true;
+		store.outputPanel.currentTab = 'jsonpath';
+		store.diffSidebar.visible = false;
+		store.diffSidebar.collapsed = true;
 
-    await nextTick();
+		await nextTick();
 
-    const toggle = wrapper.get('.global-sidebar-toggle');
-    expect(toggle.classes()).toContain('is-active');
-    expect(toggle.text()).toContain('◀');
+		const toggle = wrapper.get('.global-sidebar-toggle');
+		expect(toggle.classes()).toContain('is-active');
+		expect(toggle.text()).toContain('◀');
 
-    await toggle.trigger('click');
-    await nextTick();
+		await toggle.trigger('click');
+		await nextTick();
 
-    expect(hideOutputPanelSpy).toHaveBeenCalledTimes(1);
-    expect(store.outputPanel.visible).toBe(false);
-    expect(store.diffSidebar.visible).toBe(false);
-  });
+		expect(hideOutputPanelSpy).toHaveBeenCalledTimes(1);
+		expect(store.outputPanel.visible).toBe(false);
+		expect(store.diffSidebar.visible).toBe(false);
+	});
 
-  it('opens the diff sidebar from compare even when it was previously collapsed', async () => {
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+	it('opens the diff sidebar from compare even when it was previously collapsed', async () => {
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    const store = useJsonStore();
-    store.diffSidebar.visible = false;
-    store.diffSidebar.collapsed = true;
+		const store = useJsonStore();
+		store.diffSidebar.visible = false;
+		store.diffSidebar.collapsed = true;
 
-    await nextTick();
+		await nextTick();
 
-    await wrapper.get('[data-testid="status-bar-stub-compare"]').trigger('click');
-    await nextTick();
+		await wrapper.get('[data-testid="status-bar-stub-compare"]').trigger('click');
+		await nextTick();
 
-    expect(store.diffSidebar.visible).toBe(true);
-    expect(store.diffSidebar.collapsed).toBe(false);
-    expect(store.diffSidebar.mode).toBe('input');
-  });
+		expect(store.diffSidebar.visible).toBe(true);
+		expect(store.diffSidebar.collapsed).toBe(false);
+		expect(store.diffSidebar.mode).toBe('input');
+	});
 
-  it('opens a centered diff modal when DiffSidebar requests larger preview', async () => {
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+	it('opens a centered diff modal when DiffSidebar requests larger preview', async () => {
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    await nextTick();
-    await wrapper.get('[data-testid="diff-sidebar-open-centered"]').trigger('click');
-    await nextTick();
+		await nextTick();
+		await wrapper.get('[data-testid="diff-sidebar-open-centered"]').trigger('click');
+		await nextTick();
 
-    expect(wrapper.find('.centered-diff-overlay').exists()).toBe(true);
-    expect(wrapper.find('.centered-diff-close').exists()).toBe(true);
-  });
+		expect(wrapper.find('.centered-diff-overlay').exists()).toBe(true);
+		expect(wrapper.find('.centered-diff-close').exists()).toBe(true);
+	});
 
-  it('resizes left control panel width by mouse drag while keeping default width initially', async () => {
-    const wrapper = mount(JsonProcessor, {
-      props: {
-        enterAction: {}
-      },
-      global: {}
-    });
+	it('resizes left control panel width by mouse drag while keeping default width initially', async () => {
+		const wrapper = mount(JsonProcessor, {
+			props: {
+				enterAction: {}
+			},
+			global: {}
+		});
 
-    const store = useJsonStore();
-    store.editorSettings.controlPanelVisible = true;
-    await nextTick();
+		const store = useJsonStore();
+		store.editorSettings.controlPanelVisible = true;
+		await nextTick();
 
-    const panel = wrapper.get('.control-panel-wrapper');
-    expect(panel.attributes('style') || '').toContain('340px');
+		const panel = wrapper.get('.control-panel-wrapper');
+		expect(panel.attributes('style') || '').toContain('340px');
 
-    const resizer = wrapper.get('.left-panel-resizer');
-    await resizer.trigger('mousedown', { clientX: 340, button: 0 });
-    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 390 }));
-    window.dispatchEvent(new MouseEvent('mouseup'));
-    await nextTick();
+		const resizer = wrapper.get('.left-panel-resizer');
+		await resizer.trigger('mousedown', { clientX: 340, button: 0 });
+		window.dispatchEvent(new MouseEvent('mousemove', { clientX: 390 }));
+		window.dispatchEvent(new MouseEvent('mouseup'));
+		await nextTick();
 
-    expect(panel.attributes('style') || '').toContain('390px');
-  });
+		expect(panel.attributes('style') || '').toContain('390px');
+	});
 });
