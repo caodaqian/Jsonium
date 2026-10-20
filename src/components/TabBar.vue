@@ -25,24 +25,32 @@ const emit = defineEmits([
 
 const editingTabId = ref(null);
 const editingName = ref('');
+const editingInput = ref(null);
 
-function startEdit(tab) {
+async function startEdit(tab) {
 	editingTabId.value = tab.id;
 	editingName.value = tab.name;
+	await nextTick();
+	if (editingTabId.value !== tab.id) return;
+	editingInput.value?.focus();
+	editingInput.value?.select();
 }
 
 function saveEdit(tabId) {
-	// 保存重命名并通知父组件
-	emit('renameTab', tabId, editingName.value);
+	if (editingTabId.value !== tabId) return;
+	const name = editingName.value;
 	editingTabId.value = null;
 	editingName.value = '';
+	emit('renameTab', tabId, name);
 }
 
 function handleKeyDown(e, tabId) {
 	if (e.key === 'Enter') {
+		e.preventDefault();
 		saveEdit(tabId);
 	} else if (e.key === 'Escape') {
 		editingTabId.value = null;
+		editingName.value = '';
 	}
 }
 
@@ -141,12 +149,12 @@ watch(showMenu, (v) => {
 					<span v-if="editingTabId === tab.id" class="tab-label-edit">
 						<input
 							:id="`tab-name-${tab.id}`"
+							:ref="el => editingInput = el"
 							v-model="editingName"
 							aria-label="标签页名称"
 							class="tab-input"
-							autofocus
 							@blur="saveEdit(tab.id)"
-							@keydown="handleKeyDown($event, tab.id)"
+							@keydown.stop="handleKeyDown($event, tab.id)"
 							@click.stop
 						>
 					</span>

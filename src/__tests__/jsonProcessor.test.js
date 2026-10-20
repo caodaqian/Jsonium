@@ -1,7 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
+import ControlPanel from '../components/ControlPanel.vue';
 import { useJsonStore } from '../store/index.js';
 
 const { editorFormatSpy, statusBarEscapePayload, statusBarCopyPayload } = vi.hoisted(() => ({
@@ -163,6 +164,48 @@ describe('JsonProcessor', () => {
 		expect(store.tabs).toHaveLength(2);
 		expect(store.getActiveTab().content).toContain('"name": "uTools"');
 		expect(editorFormatSpy).toHaveBeenCalled();
+	});
+
+	describe('imported tab titles', () => {
+		let wrapper;
+
+		beforeEach(() => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(2026, 0, 2, 3, 4, 5));
+			useJsonStore().editorSettings.controlPanelVisible = true;
+			wrapper = mount(JsonProcessor, { props: { enterAction: {} } });
+		});
+
+		afterEach(() => {
+			wrapper.unmount();
+			vi.useRealTimers();
+		});
+
+		it('uses local date and time for plugin entry imports', async () => {
+			const store = useJsonStore();
+			const originalTab = store.getActiveTab();
+			store.updateTabName(originalTab.id, 'Keep this title');
+
+			await wrapper.setProps({ enterAction: { text: '{"imported":true}' } });
+			await flushPromises();
+
+			expect(store.tabs).toHaveLength(2);
+			expect(store.getActiveTab().name).toBe('2026-01-02 03:04:05');
+			expect(JSON.parse(store.getActiveTab().content)).toEqual({ imported: true });
+			expect(store.getActiveTab().format).toBe('json');
+			expect(originalTab.name).toBe('Keep this title');
+		});
+
+		it('uses local date and time for manual text imports', async () => {
+			const store = useJsonStore();
+			wrapper.findComponent(ControlPanel).vm.$emit('import', '{"manual":true}');
+			await flushPromises();
+
+			expect(store.tabs).toHaveLength(2);
+			expect(store.getActiveTab().name).toBe('2026-01-02 03:04:05');
+			expect(JSON.parse(store.getActiveTab().content)).toEqual({ manual: true });
+			expect(store.getActiveTab().format).toBe('json');
+		});
 	});
 
 	it('copies escaped content to clipboard after escape event', async () => {

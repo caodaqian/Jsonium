@@ -255,7 +255,7 @@ const handleBottomUnescape = (unescaped) => {
 const handleImportText = async (text) => {
 	const result = await detectAndConvert(text);
 	if (result.success) {
-		store.addTab(result.data, '导入文本', result.originalFormat);
+		store.addTab(result.data, '', result.originalFormat);
 		activePanel.value = 'editor';
 	}
 };

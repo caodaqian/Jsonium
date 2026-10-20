@@ -43,7 +43,7 @@ export function useEnterActionImport(store, editorRef, activePanel) {
 			return;
 		}
 
-		store.addTab(result.data, '导入内容', result.originalFormat);
+		store.addTab(result.data, '', result.originalFormat);
 		activePanel.value = 'editor';
 
 		await nextTick();
