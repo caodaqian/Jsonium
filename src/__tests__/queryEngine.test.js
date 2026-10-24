@@ -133,6 +133,40 @@ describe('JSON 查询引擎', () => {
 		});
 	});
 
+	describe('expression diagnostics', () => {
+		it.each(['$.store.book[', '$.store.book]', '$.store.book[?(@.price > 1]', '$["store]']) (
+			'rejects malformed JSONPath delimiters in %s', (expression) => {
+				const result = queryJsonPath(testData, expression);
+				expect(result.success).toBe(false);
+				expect(result.error).toMatch(/JSONPath.*位置/);
+				expect(validateQuery(expression, 'jsonpath').valid).toBe(false);
+			}
+		);
+
+		it('does not confuse quoted delimiters with JSONPath syntax', () => {
+			const result = queryJsonPath({ 'a)b': 42 }, '$["a)b"]');
+			expect(result.success).toBe(true);
+			expect(result.results).toEqual([42]);
+		});
+
+		it('keeps valid missing paths as successful empty matches', () => {
+			expect(queryJsonPath(testData, '$.missing')).toMatchObject({ success: true, count: 0 });
+		});
+
+		it.each(['.. | select(', '.[] | select(.mail == "a@.b")']) (
+			'uses the jq engine for %s', (expression) => {
+				expect(detectQueryType(expression)).toBe('jq');
+			}
+		);
+
+		it('preserves jq syntax error details', async () => {
+			const result = await queryJq(testData, '.store |');
+			expect(result.success).toBe(false);
+			expect(result.error).toMatch(/syntax error/);
+			expect(result.error).toContain('^');
+		});
+	});
+
 	describe('错误处理', () => {
 		it('should handle invalid JSON input', () => {
 			const result = queryJsonPath('invalid json', '$.foo');

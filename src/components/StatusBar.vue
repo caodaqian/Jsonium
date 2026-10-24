@@ -198,6 +198,7 @@ const handleMoreAction = (id) => {
 };
 
 onBeforeUnmount(() => {
+	queryExecutionId++;
 	document.removeEventListener('click', handleDocumentClick);
 	window.removeEventListener('resize', handleWindowResize);
 	try { window.removeEventListener('scroll', handleWindowScroll, { capture: true, passive: true }); } catch (e) { window.removeEventListener('scroll', handleWindowScroll, true); }
@@ -210,33 +211,38 @@ onBeforeUnmount(() => {
 	}
 });
 
+let queryExecutionId = 0;
+
 const executeQuery = async () => {
+	const executionId = ++queryExecutionId;
+	const expression = queryExpression.value;
+	const type = queryType.value;
+	const tabKey = type === 'jsonpath' ? 'jsonpath' : 'jq';
 	try {
 		queryError.value = '';
 		queryResult.value = null;
 
-		if (!queryExpression.value.trim()) {
+		if (!expression.trim()) {
 			queryError.value = '请输入查询表达式';
+			store.showOutputPanel(tabKey, { value: null, error: queryError.value });
 			return;
 		}
 
-		// Pre-validate expression syntax
-		const validation = validateQuery(queryExpression.value, queryType.value);
+		const validation = validateQuery(expression, type);
 		if (!validation.valid) {
 			queryError.value = validation.message;
-			const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
 			store.showOutputPanel(tabKey, { value: null, error: queryError.value });
 			return;
 		}
 
 		let result;
-		if (queryType.value === 'jsonpath') {
-			result = queryJsonPath(props.content, queryExpression.value);
+		if (type === 'jsonpath') {
+			result = queryJsonPath(props.content, expression);
 		} else {
-			result = await queryJq(props.content, queryExpression.value);
+			result = await queryJq(props.content, expression);
 		}
 
-		const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
+		if (executionId !== queryExecutionId) return;
 		const display = result.display !== undefined ? result.display : result.results;
 
 		if (result.success) {
@@ -246,7 +252,7 @@ const executeQuery = async () => {
 				queryError.value = '查询结果为空（0 条匹配）';
 				store.showOutputPanel(tabKey, { value: null, error: queryError.value });
 			} else {
-				store.addQueryHistory(queryExpression.value, queryType.value);
+				store.addQueryHistory(expression, type);
 				store.showOutputPanel(tabKey, { value: display, error: null });
 			}
 		} else {
@@ -255,9 +261,9 @@ const executeQuery = async () => {
 			store.showOutputPanel(tabKey, { value: null, error: queryError.value });
 		}
 	} catch (e) {
-		queryError.value = e.message;
-		const tabKey = queryType.value === 'jsonpath' ? 'jsonpath' : 'jq';
-		store.showOutputPanel(tabKey, { value: null, error: e.message });
+		if (executionId !== queryExecutionId) return;
+		queryError.value = e?.message || '查询失败';
+		store.showOutputPanel(tabKey, { value: null, error: queryError.value });
 	}
 };
 
@@ -270,6 +276,7 @@ const handleKeyDown = (e) => {
 };
 
 const clearQuery = () => {
+	queryExecutionId++;
 	queryExpression.value = '';
 	queryError.value = '';
 	queryResult.value = null;
@@ -566,7 +573,7 @@ const unescapeJson = () => {
 				</div>
 			</div>
 		</div>
-		<div v-if="queryError" class="query-error">
+		<div v-if="queryError" class="query-error" role="alert">
 			{{ queryError }}
 		</div>
 
@@ -786,6 +793,11 @@ const unescapeJson = () => {
 
 
 .query-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow-y: auto;
+  flex-shrink: 0;
   padding: 6px 8px;
   background: rgba(239, 68, 68, 0.1);
   color: var(--color-error);

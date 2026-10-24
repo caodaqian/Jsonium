@@ -208,6 +208,18 @@ describe('JsonProcessor', () => {
 		});
 	});
 
+	it('shows query failures from the control panel in the persistent output panel', async () => {
+		const wrapper = mount(JsonProcessor, { props: { enterAction: {} } });
+		const store = useJsonStore();
+		store.editorSettings.controlPanelVisible = true;
+		await nextTick();
+		wrapper.findComponent(ControlPanel).vm.$emit('query', '$.items[', 'jsonpath');
+		await flushPromises();
+		expect(store.outputPanel.visible).toBe(true);
+		expect(store.outputPanel.content.jsonpath.error).toMatch(/JSONPath.*位置/);
+		wrapper.unmount();
+	});
+
 	it('copies escaped content to clipboard after escape event', async () => {
 		window.utools = {
 			copyText: vi.fn()

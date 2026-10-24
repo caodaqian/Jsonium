@@ -21,14 +21,15 @@ export function detectQueryType(expression) {
 
 	// JSONPath 特征
 	if (trimmed.startsWith('$')) return 'jsonpath';
+
+	// jq 的递归下降和字符串内容也可能包含 JSONPath 特征，优先识别 jq 的起始语法。
+	if (trimmed.startsWith('.')) return 'jq';
+	if (looksLikeJqFunctionExpression(trimmed)) return 'jq';
 	if (trimmed.includes('@.') || trimmed.includes('@[') || trimmed.includes('@(')) return 'jsonpath'; // 过滤器
 	if (trimmed.includes('..')) return 'jsonpath'; // 递归下降
 
 	// jq 特征
-	if (trimmed.startsWith('.')) return 'jq';
-	if (trimmed === '.' || trimmed === '.[]') return 'jq';
 	if (trimmed.includes('|')) return 'jq'; // 管道符
-	if (looksLikeJqFunctionExpression(trimmed)) return 'jq';
 
 	// 如果都不符合，尝试检查括号形式
 	if (trimmed.startsWith('[') && !trimmed.includes('..')) return 'jq'; // jq 风格的数组索引
@@ -50,6 +51,9 @@ export function queryJsonPath(data, expression) {
 		if (typeof data === 'string') {
 			data = JSON.parse(data);
 		}
+
+		const syntaxError = getJsonPathSyntaxError(expression);
+		if (syntaxError) throw new Error(syntaxError);
 
 		const results = JSONPath({
 			path: expression,
@@ -309,13 +313,47 @@ export function getQueryPaths(data, expression, type = 'jsonpath') {
 	}
 }
 
+function getJsonPathSyntaxError(expression) {
+	if (typeof expression !== 'string' || !expression.trim()) return 'JSONPath 表达式不能为空';
+	const stack = [];
+	let quote = null;
+	let quotePosition = 0;
+	let escaped = false;
+	const closing = { ']': '[', ')': '(' };
+	for (let i = 0; i < expression.length; i++) {
+		const char = expression[i];
+		if (quote) {
+			if (escaped) escaped = false;
+			else if (char === '\\') escaped = true;
+			else if (char === quote) quote = null;
+			continue;
+		}
+		if ((char === '"' || char === "'") && stack.length) {
+			quote = char;
+			quotePosition = i;
+		} else if (char === '[' || char === '(') {
+			stack.push({ char, position: i });
+		} else if (closing[char]) {
+			if (stack.at(-1)?.char !== closing[char]) {
+				return `JSONPath 表达式错误（位置 ${i + 1}）：意外的 ${char}`;
+			}
+			stack.pop();
+		}
+	}
+	if (quote) return `JSONPath 表达式错误（位置 ${quotePosition + 1}）：引号未闭合`;
+	const unclosed = stack.at(-1);
+	return unclosed ? `JSONPath 表达式错误（位置 ${unclosed.position + 1}）：${unclosed.char} 未闭合` : null;
+}
+
 /**
  * 验证查询表达式
  */
 export function validateQuery(expression, type = 'jsonpath') {
 	try {
 		if (type === 'jsonpath') {
-			if (!expression.startsWith('$')) {
+			const syntaxError = getJsonPathSyntaxError(expression);
+			if (syntaxError) return { valid: false, message: syntaxError };
+			if (!expression.trim().startsWith('$')) {
 				return { valid: false, message: 'JSONPath 必须以 $ 开头' };
 			}
 		} else if (type === 'jq') {

@@ -318,10 +318,14 @@ const handleQuery = async (expression, type) => {
 			store.addTab(queryResult, `查询结果 - ${type}`, FORMAT_TYPES.JSON);
 			store.addQueryHistory(expression, type);
 		} else {
-			notify.error('查询失败: ' + result.error);
+			const error = result.error || '查询失败';
+			store.showOutputPanel(type, { value: null, error });
+			notify.error('查询失败: ' + error);
 		}
 	} catch (e) {
-		notify.error('查询失败: ' + e.message);
+		const error = e?.message || '查询失败';
+		store.showOutputPanel(type, { value: null, error });
+		notify.error('查询失败: ' + error);
 	}
 };
 
